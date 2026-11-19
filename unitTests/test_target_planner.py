@@ -7,6 +7,13 @@ Rules checked:
     bad line is reported with its number and a reason (not a number, more than two fields,
     center below 1, radius below 0, below 10^7, above the highest number, too many
     targets); the interval is [center - radius, center + radius];
+  - engine: an optional last field names the engine (v4.1, v5, v6, v7, pt1 or pt1.1,
+    pt1-pss, pss or pseudosquares, any case), also without a radius (radius 0); an unknown
+    name, two engines or an engine before a number is a bad line;
+  - lanes: targets with an engine are planned in their own lane (its stored windows, cap
+    and costs), never grouped with others, the forced method used even when another is
+    faster; a forced group without a time stays in the plan with no seconds; the plan's
+    seconds sum all lanes, the comparison totals come from the targets without an engine;
   - windows: an interval maps to the window grid of its floor and is split at a floor
     boundary; overlapping and repeated targets share windows; stored windows are dropped
     and a target with all its windows stored counts as already in the storage;
@@ -74,7 +81,7 @@ def parse_checks(tp):
     r = tp.parse_targets("10**25 0", MAX_NUMBER)
     passed &= check(not r.errors and r.targets[0].lo == r.targets[0].hi == F25,
                     "radius 0: the center alone")
-    cases = (("abc", "not_number"), ("10**25 x", "not_number"),
+    cases = (("abc", "not_number"), ("10**25 x", "unknown_engine"), ("10**25 1 x", "unknown_engine"),
              ("23 081 664 151", "too_many_fields"), ("0", "center_below_one"),
              ("-5", "center_below_one"), ("10**25 -1", "radius_negative"),
              ("9999999", "below_min"), ("10**7+5 10", "below_min"),
@@ -98,6 +105,113 @@ def parse_checks(tp):
                     f"exactly {tp.MAX_TARGETS} targets: accepted")
     r = tp.parse_targets("  \n# only a comment\n", MAX_NUMBER)
     passed &= check(not r.errors and not r.targets, "nothing to plan: no targets, no error")
+    return passed
+
+
+def engine_parse_checks(tp):
+    passed = True
+    names = (("v4.1", "v4.1"), ("v5", "v5"), ("V6", "v6"), ("v7", "v7"), ("pt1", "pt1"),
+             ("pt1.1", "pt1"), ("PT1.1", "pt1"), ("pt1-pss", "pt1-pss"),
+             ("pss", tp.METHOD_PSS), ("Pseudosquares", tp.METHOD_PSS))
+    for name, engine in names:
+        r = tp.parse_targets(f"10**25+3 1000 {name}", MAX_NUMBER)
+        passed &= check(not r.errors and r.targets[0].engine == engine
+                        and (r.targets[0].lo, r.targets[0].hi) == (F25 - 997, F25 + 1003),
+                        f"'{name}' after the radius: engine {engine} ({r})")
+    r = tp.parse_targets("10**25+3 pss", MAX_NUMBER)
+    passed &= check(not r.errors and r.targets[0].engine == tp.METHOD_PSS
+                    and r.targets[0].lo == r.targets[0].hi == F25 + 3,
+                    "an engine without a radius: radius 0")
+    r = tp.parse_targets("10**25+3;7,v7", MAX_NUMBER)
+    passed &= check(not r.errors and r.targets[0].engine == "v7",
+                    "';' and ',' separate the engine too")
+    r = tp.parse_targets("10**25+3 7", MAX_NUMBER)
+    passed &= check(not r.errors and r.targets[0].engine is None, "no engine: None")
+    cases = (("10**25 7 v9", "unknown_engine"), ("10**25 primesieve", "unknown_engine"),
+             ("10**25 v7 pss", "too_many_engines"), ("10**25 pss 7", "engine_not_last"),
+             ("v7 10**25", "engine_not_last"), ("10**25 7 9 v7", "too_many_fields"),
+             ("v7", "not_number"), ("10**25 # note", "too_many_fields"))
+    for text, key in cases:
+        r = tp.parse_targets(text, MAX_NUMBER)
+        got = r.errors[0].key if r.errors else None
+        passed &= check(got == key and not r.targets, f"{text!r}: error {key} (got {got})")
+    return passed
+
+
+def lane_checks(tp):
+    """Targets with an engine are planned in their own lane, never grouped with others."""
+    passed = True
+    asked = []
+
+    def lane_for(choice):
+        asked.append(choice)
+        if choice == tp.METHOD_PSS:
+            return tp.Lane(no_stored, cap_of(1000), none_cost, pss_linear())
+        if choice == "pt1":
+            return tp.Lane(no_stored, cap_of(1000), atlas_linear(prep=1.0, engine="pt1"),
+                           none_cost)
+        return tp.Lane(no_stored, cap_of(1000), none_cost, none_cost)
+
+    # Free lane: Atlas over 200 windows. The same windows forced to PSS and to pt1.
+    targets = [tp.Target(1, F25, F25 + 200 * W - 1),
+               tp.Target(2, F25, F25 + 200 * W - 1, tp.METHOD_PSS),
+               tp.Target(3, F25 + 5, F25 + 5, "pt1"), tp.Target(4, F25 + 9, F25 + 9, "pt1")]
+    p = tp.plan_targets(targets, W, no_stored, cap_of(1000), atlas_linear(), pss_linear(),
+                        lane_for=lane_for)
+    shape = sorted((g.method, g.engine, g.windows, g.targets, g.forced) for g in p.groups)
+    passed &= check(shape == sorted([(tp.METHOD_ATLAS, "v7", 200, 1, False),
+                                     (tp.METHOD_PSS, None, 200, 1, True),
+                                     (tp.METHOD_ATLAS, "pt1", 1, 2, True)]),
+                    f"three lanes, each its own groups; pt1 targets share a window ({shape})")
+    passed &= check(sorted(asked) == sorted(["pt1", tp.METHOD_PSS]),
+                    f"a lane is asked once per forced choice ({asked})")
+    passed &= check(abs(p.seconds - (120.0 + 401.0 + 1.1)) < 1e-9,
+                    f"the plan's seconds sum every lane ({p.seconds})")
+    passed &= check(p.compared and abs(p.atlas_seconds - 120.0) < 1e-9
+                    and abs(p.pss_seconds - 401.0) < 1e-9,
+                    "the comparison totals come from the free lane only")
+    # pt1 forced on a far pair: pt1 is cheap, but PSS would be cheaper still; forced wins.
+    pair = [tp.Target(1, F25, F25, "pt1"), tp.Target(2, F25 + 50 * W, F25 + 50 * W, "pt1")]
+    p = tp.plan_targets(pair, W, no_stored, cap_of(1000), atlas_linear(), pss_linear(0, 0.01),
+                        lane_for=lane_for)
+    passed &= check(all(g.method == tp.METHOD_ATLAS and g.engine == "pt1" for g in p.groups)
+                    and not p.compared,
+                    f"a forced engine is used even when another is faster; no free lane, no "
+                    f"comparison ({p.groups})")
+    # v5 forced, no calibration: the rows stay, with no time.
+    p = tp.plan_targets([tp.Target(1, F25, F25, "v5"), tp.Target(2, F25 + 9 * W, F25 + 9 * W,
+                                                                  "v5")],
+                        W, no_stored, cap_of(1000), atlas_linear(), pss_linear(),
+                        lane_for=lane_for)
+    passed &= check([(g.method, g.engine, g.seconds, g.forced) for g in p.groups]
+                    == [(tp.METHOD_ATLAS, "v5", None, True)] * 2 and not p.unplanned
+                    and p.seconds == 0,
+                    f"a forced engine without measurements: its rows stay, time None ({p})")
+    # Cap of the forced lane holds.
+    p = tp.plan_targets([tp.Target(1, F25, F25 + 25 * W - 1, "pt1")], W, no_stored,
+                        cap_of(1000), atlas_linear(), pss_linear(),
+                        lane_for=lambda c: tp.Lane(no_stored, cap_of(10),
+                                                   atlas_linear(engine="pt1"), none_cost))
+    passed &= check(all(g.windows <= 10 for g in p.groups)
+                    and sum(g.windows for g in p.groups) == 25,
+                    "the forced lane's own cap cuts its runs")
+    # Stored windows come from the lane.
+    p = tp.plan_targets([tp.Target(1, F25, F25 + 2 * W - 1, "pt1")], W, no_stored,
+                        cap_of(1000), atlas_linear(), pss_linear(),
+                        lane_for=lambda c: tp.Lane(lambda f: {0}, cap_of(10),
+                                                   atlas_linear(engine="pt1"), none_cost))
+    passed &= check([(g.idx, g.windows) for g in p.groups] == [(1, 1)],
+                    "the forced lane's own stored windows are dropped")
+    # Groups come sorted by floor and first number.
+    p = tp.plan_targets([tp.Target(1, F25 + 9 * W, F25 + 9 * W, tp.METHOD_PSS),
+                         tp.Target(2, F25, F25)], W, no_stored, cap_of(1000),
+                        atlas_linear(), pss_linear(), lane_for=lane_for)
+    passed &= check([g.lo for g in p.groups] == sorted(g.lo for g in p.groups),
+                    "rows sorted by their first number")
+    # Without lane_for every target is free (the plan of earlier callers is unchanged).
+    p = tp.plan_targets([tp.Target(1, F25, F25)], W, no_stored, cap_of(10), atlas_linear(),
+                        pss_linear())
+    passed &= check(p.compared and not p.groups[0].forced, "no engine: a free group")
     return passed
 
 
@@ -254,7 +368,8 @@ def speed_checks(tp):
 def main():
     from primeatlas.generation import target_planner as tp
     passed = True
-    for checks in (parse_checks, window_checks, plan_checks, optimum_checks, speed_checks):
+    for checks in (parse_checks, engine_parse_checks, window_checks, plan_checks, lane_checks,
+                   optimum_checks, speed_checks):
         passed &= checks(tp)
     print("ALL CHECKS PASSED" if passed else "SOME CHECKS FAILED")
     return 0 if passed else 1

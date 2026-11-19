@@ -1,0 +1,17 @@
+# Target planner example. One target per line: number [radius] [engine].
+# The radius checks that many numbers on each side; the engine is optional
+# (v4.1, v5, v6, v7, pt1.1, pt1-pss or pss for Pseudosquares).
+
+# Two targets close to each other: one Atlas run usually covers both.
+10**12+39
+10**12+5*10**6 1000
+
+# A wider range.
+2*10**15 5000
+
+# A lone, high number: Pseudosquares is usually faster here.
+10**18+3 100
+
+# The same kind of targets with the engine chosen by hand.
+10**13+7 500 pt1.1
+10**16+1 pss

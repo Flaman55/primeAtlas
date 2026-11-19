@@ -16,6 +16,16 @@ rows at floor 25, a fake 64 GB of free WSL RAM). Checks:
   - a small RAM budget keeps every Atlas row at or under run_ram.max_windows_in_budget();
     with no room for even one window, Pseudosquares takes the range uncut;
   - Load file reads a CRLF file into the targets field;
+  - Insert example: an empty field gets the example with the cursor at its start and no
+    question; the field already holding the example: no question, nothing changes; other
+    text: a Yes/No question (No by default), No keeps it, Yes replaces it; the table and
+    the message stay as they were (nothing is planned); a double click inserts once;
+  - the example, planned, gives rows and no bad line;
+  - Load file opens in the storage folder, where the example copy is written first when
+    missing; that copy loaded gives the same text as Insert example;
+  - Use on a group with a forced Atlas engine selects that engine in the Generation form
+    and fills Quick-gen; Use on a free group or a forced Pseudosquares group leaves the
+    form's engine as it was.
   - a new plan replaces the rows of the last one.
 Windows, real display:
     python unitTests/test_target_planner_gui.py
@@ -232,11 +242,118 @@ def load_checks(gen, app, portal):
     return passed
 
 
+def example_checks(gen, app, asked):
+    from primeatlas.generation import target_planner_example as example
+    passed = True
+    view = gen._target_planner_view
+    text = example.example_text().rstrip("\n")
+    rows = _plan(view, app, f"{F25 + 5}")
+    message = view.message_var.get()
+    view.set_text("")
+    asked.clear()
+    view.example_button.invoke()
+    view.example_button.invoke()
+    app.update()
+    passed &= check(view.get_text() == text and not asked
+                    and view.text.index("insert") == "1.0",
+                    f"empty field, double click: the example once, cursor at its start, no "
+                    f"question ({len(asked)} asked)")
+    passed &= check(view.tree.get_children() == rows and view.message_var.get() == message,
+                    "inserting plans nothing: the table and the message stay")
+    asked.clear()
+    view.example_button.invoke()
+    app.update()
+    passed &= check(view.get_text() == text and not asked,
+                    "the field already holds the example: no question")
+    for answer, want in ((False, "10**20 5"), (True, text)):
+        view.set_text("10**20 5")
+        asked.clear()
+        asked.append(answer)
+        view.example_button.invoke()
+        app.update()
+        question = asked[1:] and asked[1]
+        passed &= check(view.get_text() == want and question
+                        and question.get("default") == "no",
+                        f"other text, answer {'Yes' if answer else 'No'}: field "
+                        f"{'replaced' if answer else 'kept'}, asked with No by default")
+    rows = _plan(view, app, text)
+    message = view.message_var.get()
+    passed &= check(rows and gen.T("target_planner.errors_header") not in message,
+                    f"the example planned: {len(rows)} rows, no bad line ({message!r})")
+    return passed
+
+
+def load_example_checks(gen, app, portal):
+    from tkinter import filedialog
+    from primeatlas.generation import target_planner_example as example
+    passed = True
+    view = gen._target_planner_view
+    copy = os.path.join(portal, example.EXAMPLE_FILE_NAME)
+    if os.path.exists(copy):
+        os.remove(copy)
+    seen = {}
+
+    def dialog(**kwargs):
+        seen.update(kwargs)
+        seen["copy_there"] = os.path.isfile(copy)
+        return copy
+    original = filedialog.askopenfilename
+    filedialog.askopenfilename = dialog
+    try:
+        view.set_text("")
+        view.load_button.invoke()
+        app.update()
+    finally:
+        filedialog.askopenfilename = original
+    passed &= check(os.path.normcase(os.path.abspath(seen.get("initialdir", "")))
+                    == os.path.normcase(os.path.abspath(portal)) and seen.get("copy_there"),
+                    f"Load file opens in the storage folder, the example copy already there "
+                    f"({seen.get('initialdir')})")
+    passed &= check(view.get_text() == example.example_text().rstrip("\n"),
+                    "the copy loaded: the same text as Insert example")
+    return passed
+
+
+def forced_use_checks(gen, app):
+    passed = True
+    view = gen._target_planner_view
+    engine = gen._engine_fields.engine_var
+    engine.set("v7")
+    rows = _plan(view, app, "10**25+3 pt1.1")
+    passed &= check(len(rows) == 1 and view.groups[0].engine == "pt1"
+                    and view.groups[0].forced, f"a target forced to pt1.1: a pt1 row "
+                                               f"({view.groups})")
+    _select_first(view, app)
+    view.use_button.invoke()
+    app.update()
+    passed &= check(engine.get() == "pt1" and gen.quick_mode_var.get() == "floor"
+                    and gen.quick_floor_start_var.get() == str(view.groups[0].lo),
+                    f"Use: the form's engine becomes pt1, Quick-gen filled ({engine.get()})")
+    engine.set("v6")
+    for text, what in ((f"{F25 + 100 * W} {100 * W}", "a free group"),
+                       ("10**25+3 pss", "a forced Pseudosquares group")):
+        _plan(view, app, text)
+        _select_first(view, app)
+        view.use_button.invoke()
+        app.update()
+        passed &= check(engine.get() == "v6", f"Use on {what}: the engine stays v6 "
+                                              f"({engine.get()})")
+    engine.set("v7")
+    return passed
+
+
 def main():
     import prime_atlas_v2
     from tkinter import messagebox
     messagebox.showinfo = lambda *a, **k: None
     messagebox.showerror = lambda *a, **k: None
+    asked = []
+
+    def ask(*_a, **kwargs):
+        answer = asked[0] if asked else False
+        asked.append(kwargs)
+        return answer
+    messagebox.askyesno = ask
     portal = tempfile.mkdtemp(prefix="primeatlas_planner_test_")
     _seed_log(portal)
     app = None
@@ -259,6 +376,9 @@ def main():
         passed &= stored_checks(gen, app)
         passed &= ram_checks(gen, app)
         passed &= load_checks(gen, app, portal)
+        passed &= example_checks(gen, app, asked)
+        passed &= load_example_checks(gen, app, portal)
+        passed &= forced_use_checks(gen, app)
     finally:
         if app is not None:
             try:
