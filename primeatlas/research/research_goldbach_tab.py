@@ -152,7 +152,7 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
         top.pack(fill="x", padx=6, pady=(10, 4))
         ttk.Label(top, text=T("research_goldbach.field_n")).pack(side="left")
         self.goldbach_n_entry = ttk.Entry(top, width=20)
-        number_field.attach(self.goldbach_n_entry, self.T)
+        number_field.attach(self.goldbach_n_entry, self.T, "field_tip.goldbach_n")
         self.goldbach_n_entry.pack(side="left", padx=(6, 16))
         self.goldbach_n_entry.insert(0, "1000")
 

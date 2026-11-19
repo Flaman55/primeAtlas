@@ -25,7 +25,9 @@ MAX_WORD = "Max"
 
 
 class ThreadsField(ttk.Spinbox):
-    def __init__(self, parent, T, variable, words=(), over=None, resolve=None, width=8, **kw):
+    def __init__(self, parent, T, variable, purpose, words=(), over=None, resolve=None,
+                 width=8, **kw):
+        """`purpose`: the locale key of the field's hover tip's first line (number_field)."""
         self.variable = variable
         self._words = tuple(words)
         self._over = over
@@ -33,7 +35,7 @@ class ThreadsField(ttk.Spinbox):
         self._display = tk.StringVar(master=parent)
         self._pending = None
         super().__init__(parent, textvariable=self._display, width=width, **kw)
-        self.number_field = number_field.attach(self, T, words=self._words, minimum=1,
+        self.number_field = number_field.attach(self, T, purpose, words=self._words, minimum=1,
                                                 text_of=threads_choice.word_of)
         self._variable_trace = variable.trace_add("write", lambda *_: self._schedule())
         self._display.trace_add("write", lambda *_: self._from_display())

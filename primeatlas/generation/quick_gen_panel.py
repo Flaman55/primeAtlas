@@ -33,7 +33,7 @@ def _floor_spinbox(parent, var, width, T, to=QUICK_FLOOR_MAX):
     """A Floor field: the arrows and the mouse wheel step the floor through [0, to]; any
     notation can be typed (a number field, red outside [0, to])."""
     spinbox = ttk.Spinbox(parent, from_=0, to=to, increment=1, textvariable=var, width=width)
-    number_field.attach(spinbox, T, minimum=0, maximum=to)
+    number_field.attach(spinbox, T, "field_tip.floor", minimum=0, maximum=to)
     return spinbox
 
 
@@ -290,7 +290,7 @@ class QuickGenPanel:
         width_spinbox = ttk.Spinbox(
             frame, from_=1, to=self._quick_width_cap(), textvariable=self.quick_floor_width_var,
             width=6)
-        number_field.attach(width_spinbox, self.T, minimum=1, maximum=self._quick_width_cap)
+        number_field.attach(width_spinbox, self.T, "field_tip.quick_width", minimum=1, maximum=self._quick_width_cap)
         width_spinbox.pack(side="left", padx=(6, 4))
         self._quick_width_spinboxes.append(width_spinbox)
         ttk.Button(frame, text=self.T("quick.auto_button"),
@@ -298,7 +298,8 @@ class QuickGenPanel:
                        self.quick_floor_width_var,
                        self._quick_floor_of(self.quick_floor_var))).pack(side="left", padx=(0, 20))
         ttk.Label(frame, text=self.T("quick.field_start")).pack(side="left")
-        number_field.attach(ttk.Entry(frame, textvariable=self.quick_floor_start_var, width=20), self.T).entry.pack(
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_floor_start_var, width=20), self.T,
+                            "field_tip.quick_start").entry.pack(
             side="left", padx=(6, 0))
         gap_row = ttk.Frame(outer)
         gap_row.grid(row=1, column=0, sticky="w", pady=(4, 0))
@@ -369,10 +370,12 @@ class QuickGenPanel:
         frame = ttk.Frame(container)
         frame.grid(row=0, column=0, sticky="w")
         ttk.Label(frame, text=self.T("quick.field_from")).pack(side="left")
-        number_field.attach(ttk.Entry(frame, textvariable=self.quick_from_var, width=20), self.T).entry.pack(
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_from_var, width=20), self.T,
+                            "field_tip.quick_from").entry.pack(
             side="left", padx=(6, 20))
         ttk.Label(frame, text=self.T("quick.field_to")).pack(side="left")
-        number_field.attach(ttk.Entry(frame, textvariable=self.quick_to_var, width=20), self.T).entry.pack(
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_to_var, width=20), self.T,
+                            "field_tip.quick_to").entry.pack(
             side="left", padx=(6, 20))
         # Range mode has no window-COUNT field to fill in (From/To are literal
         # numbers, not a window multiplier) -- Auto here reports the recommendation
@@ -434,13 +437,13 @@ class QuickGenPanel:
         ttk.Label(frame, text=self.T("quick.field_iterations")).pack(side="left")
         iterations = ttk.Spinbox(frame, from_=1, to=QUICK_ITERATIONS_MAX,
                                  textvariable=self.quick_iterations_var, width=6)
-        number_field.attach(iterations, self.T, minimum=1, maximum=QUICK_ITERATIONS_MAX)
+        number_field.attach(iterations, self.T, "field_tip.quick_iterations", minimum=1, maximum=QUICK_ITERATIONS_MAX)
         iterations.pack(side="left", padx=(6, 20))
         ttk.Label(frame, text=self.T("quick.field_width")).pack(side="left")
         width_spinbox = ttk.Spinbox(
             frame, from_=1, to=self._quick_width_cap(), textvariable=self.quick_explore_width_var,
             width=6)
-        number_field.attach(width_spinbox, self.T, minimum=1, maximum=self._quick_width_cap)
+        number_field.attach(width_spinbox, self.T, "field_tip.quick_width", minimum=1, maximum=self._quick_width_cap)
         width_spinbox.pack(side="left", padx=(6, 4))
         self._quick_width_spinboxes.append(width_spinbox)
         ttk.Button(frame, text=self.T("quick.auto_button"),
@@ -478,17 +481,19 @@ class QuickGenPanel:
                              self.T("quick.hybrid_target_exact_window"))).pack(side="left", padx=(6, 12))
         value_group = ttk.Frame(frame)
         ttk.Label(value_group, text=self.T("quick.hybrid_field_n_or_index")).pack(side="left")
-        number_field.attach(ttk.Entry(value_group, textvariable=self.quick_hybrid_value_var, width=20), self.T).entry.pack(side="left", padx=(6, 12))
+        number_field.attach(ttk.Entry(value_group, textvariable=self.quick_hybrid_value_var, width=20), self.T,
+                            "field_tip.quick_hybrid_value").entry.pack(side="left", padx=(6, 12))
         floor_group = ttk.Frame(frame)
         ttk.Label(floor_group, text=self.T("quick.field_floor")).pack(side="left")
         _floor_spinbox(floor_group, self.quick_hybrid_target_floor_var, 7, self.T).pack(side="left", padx=(6, 12))
         ttk.Label(frame, text="MAIN <=").pack(side="left")
-        number_field.attach(ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8), self.T).entry.pack(side="left", padx=(6, 12))
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8), self.T,
+                            "field_tip.quick_hybrid_main_cap").entry.pack(side="left", padx=(6, 12))
         ttk.Label(frame, text=self.T("quick.field_filter_prime_count")).pack(side="left")
         filter_count = ttk.Spinbox(frame, from_=1, to=HYBRID_FILTER_PRIME_COUNT_MAX,
                                    textvariable=self.quick_hybrid_filter_prime_count_var,
                                    width=9)
-        number_field.attach(filter_count, self.T, minimum=1,
+        number_field.attach(filter_count, self.T, "field_tip.quick_hybrid_filter_count", minimum=1,
                             maximum=HYBRID_FILTER_PRIME_COUNT_MAX)
         filter_count.pack(side="left", padx=(6, 0))
         ttk.Label(wrapper, textvariable=self.quick_hybrid_range_var, wraplength=950).pack(fill="x")
@@ -550,7 +555,8 @@ class QuickGenPanel:
         _floor_spinbox(row1, self.quick_primesieve_floor_var, 10, self.T, to=UINT64_FLOOR_MAX).pack(
             side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
-        number_field.attach(ttk.Entry(row1, textvariable=self.quick_primesieve_from_var, width=24), self.T).entry.pack(
+        number_field.attach(ttk.Entry(row1, textvariable=self.quick_primesieve_from_var, width=24), self.T,
+                            "field_tip.quick_from").entry.pack(
             side="left", padx=(6, 4))
         ttk.Button(row1, text=self.T("quick.auto_button"),
                    command=self._on_primesieve_auto_from_clicked).pack(
@@ -558,7 +564,8 @@ class QuickGenPanel:
         ttk.Label(row1, text=self.T("quick.field_width")).pack(side="left")
         width = ttk.Spinbox(row1, from_=1, to=PRIMESIEVE_MAX_WIDTH_MULT,
                             textvariable=self.quick_primesieve_width_var, width=14)
-        number_field.attach(width, self.T, minimum=1, maximum=PRIMESIEVE_MAX_WIDTH_MULT)
+        number_field.attach(width, self.T, "field_tip.quick_width", minimum=1,
+                            maximum=PRIMESIEVE_MAX_WIDTH_MULT)
         width.pack(side="left", padx=(6, 0))
         row2 = ttk.Frame(frame)
         row2.pack(anchor="w", pady=(4, 0))
@@ -683,7 +690,8 @@ class QuickGenPanel:
         _floor_spinbox(row1, self.quick_cudasieve_floor_var, 10, self.T, to=UINT64_FLOOR_MAX).pack(
             side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
-        number_field.attach(ttk.Entry(row1, textvariable=self.quick_cudasieve_from_var, width=24), self.T).entry.pack(
+        number_field.attach(ttk.Entry(row1, textvariable=self.quick_cudasieve_from_var, width=24), self.T,
+                            "field_tip.quick_from").entry.pack(
             side="left", padx=(6, 4))
         ttk.Button(row1, text=self.T("quick.auto_button"),
                    command=self._on_cudasieve_auto_from_clicked).pack(
@@ -691,7 +699,8 @@ class QuickGenPanel:
         ttk.Label(row1, text=self.T("quick.field_width")).pack(side="left")
         width = ttk.Spinbox(row1, from_=1, to=CUDASIEVE_MAX_WIDTH_MULT,
                             textvariable=self.quick_cudasieve_width_var, width=14)
-        number_field.attach(width, self.T, minimum=1, maximum=CUDASIEVE_MAX_WIDTH_MULT)
+        number_field.attach(width, self.T, "field_tip.quick_width", minimum=1,
+                            maximum=CUDASIEVE_MAX_WIDTH_MULT)
         width.pack(side="left", padx=(6, 0))
         ttk.Label(frame, text=self.T("quick.attribution_cudasieve"), style="Hint.TLabel",
                   font=("TkDefaultFont", 8), wraplength=860, justify="left").pack(

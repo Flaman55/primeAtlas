@@ -43,7 +43,7 @@ class RangesView(BaseTab):
                                                                            padx=(0, 6))
             for suffix, lab in (("s", "start_label"), ("z", "size_label"), ("c", "count_label")):
                 key = prefix + suffix
-                self.param_entries[key] = entry(T, 
+                self.param_entries[key] = entry(T, f"field_tip.irreducibility_layout_{key}",
                     row, T(f"research_irreducibility.{lab}"), str(DEFAULTS["A"][1][key]),
                     f"research.irreducibility.ranges_{key}", width=5, on_return=self.show)
         row = ttk.Frame(self)
@@ -71,7 +71,8 @@ class RangesView(BaseTab):
                       padx=6, pady=(0, 4))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(0, 4))
-        self.n_entry = entry(T, row, "n", "1" + "0" * 24, "research.irreducibility.fit_n", width=34,
+        self.n_entry = entry(T, "field_tip.irreducibility_fit_n",
+                             row, "n", "1" + "0" * 24, "research.irreducibility.fit_n", width=34,
                              on_return=self.find)
         ttk.Button(row, text=T("research_irreducibility.find"), command=self.find).pack(
             side="left")

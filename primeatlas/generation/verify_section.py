@@ -108,7 +108,7 @@ class VerifySection:
         label(form, "width")
         self._verify_width_box = ttk.Spinbox(form, textvariable=self._verify_vars["width"],
                                              width=16)
-        number_field.attach(self._verify_width_box, self.T, minimum=1)
+        number_field.attach(self._verify_width_box, self.T, "field_tip.verify_width", minimum=1)
         self._verify_width_box.pack(side="left", padx=(6, 4))
         _bind_steps(self._verify_width_box, self._step_verify_width)
         for event in ("<FocusOut>", "<Return>"):
@@ -127,7 +127,7 @@ class VerifySection:
         self._verify_split_var = tk.StringVar(value="")
         self._verify_split_box = ttk.Spinbox(split_row, textvariable=self._verify_split_var,
                                              width=8)
-        number_field.attach(self._verify_split_box, self.T, minimum=1)
+        number_field.attach(self._verify_split_box, self.T, "field_tip.verify_split", minimum=1)
         self._verify_split_box.pack(side="left", padx=(6, 4))
         _bind_steps(self._verify_split_box, self._step_verify_split)
         for event in ("<FocusOut>", "<Return>"):
@@ -142,7 +142,8 @@ class VerifySection:
         self._verify_windows_box = ttk.Spinbox(
             count_row, from_=1, to=1, increment=1,
             textvariable=self._verify_vars["max_windows"], width=8)
-        number_field.attach(self._verify_windows_box, self.T, minimum=1)
+        number_field.attach(self._verify_windows_box, self.T, "field_tip.verify_max_windows",
+                            minimum=1)
         self._verify_windows_box.pack(side="left", padx=(6, 4))
         self._verify_total_text = tk.StringVar()
         ttk.Label(count_row, textvariable=self._verify_total_text, style="Hint.TLabel").pack(
@@ -152,7 +153,7 @@ class VerifySection:
         threads = ThreadsField(
             count_row, self.T, self._verify_vars["threads"],
             words=(verify_plan.THREADS_AUTO, verify_plan.THREADS_MAX),
-            over=verify_plan.THREADS_MAX, width=9,
+            over=verify_plan.THREADS_MAX, width=9, purpose="field_tip.verify_threads",
             resolve=lambda word: verify_plan.resolve_threads(
                 word, self._loop_vars["workers"].get(), cpu_dynamic.WSL_CPUS))
         self._loop_vars["workers"].trace_add("write", lambda *_: threads.refresh())

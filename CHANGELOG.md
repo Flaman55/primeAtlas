@@ -149,6 +149,21 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   poleceń i wartości wpisywane przez aplikację do pól liczbowych zostają w prostej postaci;
   krótkie szerokości jak 2.5e8 zachowują kropkę.
 
+### +10 — Number field tips say what the field is for
+
+- English: Hovering a number field now starts with what the field is for (with its unit,
+  e.g. windows of 10 million numbers) and its range in the app's number notation
+  ("Range: 1 to 100,000"); a range error groups the digits the same way. The list of accepted
+  notations shows only on fields that take large numbers (no maximum, or a maximum of at least
+  10^6); other fields get one short line of the power and scientific forms (10^4 · 1e4).
+  The fraction line shows only on fields that take fractions.
+- Polski: Dymek pola liczbowego zaczyna się teraz od tego, do czego pole służy (z jednostką,
+  np. okna po 10 milionów liczb), i jego zakresu w notacji liczb aplikacji („Zakres: od 1 do
+  100 000”); błąd zakresu grupuje cyfry tak samo. Lista przyjmowanych notacji pokazuje się
+  tylko w polach na duże liczby (bez maksimum albo z maksimum co najmniej 10^6); pozostałe
+  pola dostają jedną krótką linię o zapisie potęgi i naukowym (10^4 · 1e4). Linia o ułamkach
+  pokazuje się tylko w polach, które przyjmują ułamki.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

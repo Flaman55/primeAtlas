@@ -1378,11 +1378,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               also guards every f-string of primeatlas/)
   number_format_dynamic.py      STYLE -- the notation the app runs in (English until
                               app_dynamic or the renderer applies the saved choice)
-  number_field.py               attach(entry, T) -- the app's one number field (Entry
+  number_field.py               attach(entry, T, purpose) -- the app's one number field (Entry
                               or Spinbox, whole or fraction, words like Auto): red
                               when invalid, a "Could be" popup with the readings
-                              when ambiguous, red outside its range, the accepted
-                              forms in a hover tip; refuse_problem stops a run on a
+                              when ambiguous, red outside its range, a hover tip
+                              of its purpose (field_tip.* key), range and accepted
+                              forms; refuse_problem stops a run on a
                               red field (unitTests/test_number_field.py; every Entry
                               and Spinbox is a number field or marked why not:
                               unitTests/test_number_field_coverage.py; the app's

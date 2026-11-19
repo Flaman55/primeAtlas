@@ -51,7 +51,8 @@ class WslLimitRow(ttk.Frame):
         ttk.Label(self, text=T("about.wsl_limit_label")).pack(side="left")
         self.entry = ttk.Entry(self, textvariable=self.value_var, width=6)
         self.entry.pack(side="left", padx=(6, 2))
-        self.field = number_field.attach(self.entry, T, minimum=lambda: self._min_gib,
+        self.field = number_field.attach(self.entry, T, "field_tip.wsl_ram_limit",
+                                         minimum=lambda: self._min_gib,
                                          maximum=lambda: self._max_gib)
         ttk.Label(self, text=T("about.wsl_limit_unit")).pack(side="left")
         self.save_button = ttk.Button(self, text=T("about.wsl_limit_save"), command=self.save)

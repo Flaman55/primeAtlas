@@ -31,11 +31,14 @@ class CombView(BaseTab):
                       padx=6, pady=(8, 4))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(0, 4))
-        self.a_entry = entry(T, row, "a", "17", "research.irreducibility.comb_a", width=6,
+        self.a_entry = entry(T, "field_tip.irreducibility_comb_a",
+                             row, "a", "17", "research.irreducibility.comb_a", width=6,
                              on_return=self.draw)
-        self.b_entry = entry(T, row, "b", "5", "research.irreducibility.comb_b", width=6,
+        self.b_entry = entry(T, "field_tip.irreducibility_comb_b",
+                             row, "b", "5", "research.irreducibility.comb_b", width=6,
                              on_return=self.draw)
-        self.scale_entry = entry(T, row, T("research_irreducibility.scale_label"), "8",
+        self.scale_entry = entry(T, "field_tip.irreducibility_comb_scale",
+                                 row, T("research_irreducibility.scale_label"), "8",
                                  "research.irreducibility.comb_scale", width=6,
                                  on_return=self.draw, fraction=True)
         ttk.Button(row, text=T("research_irreducibility.draw"), command=self.draw).pack(

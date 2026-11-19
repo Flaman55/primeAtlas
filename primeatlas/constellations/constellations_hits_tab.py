@@ -108,7 +108,8 @@ class ConstellationsHitsTab(BaseTab):
 
         ttk.Label(top, text=T("common.search_label")).pack(side="left")
         self.hits_search_entry = ttk.Entry(top, width=26)
-        number_field.attach(self.hits_search_entry, self.T, minimum=0)
+        number_field.attach(self.hits_search_entry, self.T,
+                            "field_tip.constellation_search", minimum=0)
         self.hits_search_entry.pack(side="left", padx=(4, 4))
         self.hits_search_entry.bind("<Return>", lambda _e: self.search_constellation())
         self.hits_search_button = ttk.Button(

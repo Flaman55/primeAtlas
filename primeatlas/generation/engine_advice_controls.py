@@ -72,7 +72,8 @@ class EngineAdviceControls:
         cell = ttk.Frame(form)
         cell.grid(row=row, column=1, sticky="w", padx=(0, 20), pady=2)
         offset = ttk.Entry(cell, textvariable=self._advice_offset_var, width=10)
-        number_field.attach(offset, self.T, fraction=True, minimum=1)
+        number_field.attach(offset, self.T, "field_tip.advisor_bpsw_offset", fraction=True,
+                            minimum=1)
         offset.pack(side="left")
         InfoTip(cell, lambda: self.T("gen.info_advisor_bpsw_offset")).label.pack(
             side="left", padx=(4, 0))

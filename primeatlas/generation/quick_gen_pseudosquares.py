@@ -55,10 +55,12 @@ class QuickGenPseudosquares:
         _floor_spinbox(row1, self.quick_pseudosquares_floor_var, 10, self.T,
                        to=pseudosquares_const.MAX_FLOOR).pack(side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
-        number_field.attach(ttk.Entry(row1, textvariable=self.quick_pseudosquares_from_var, width=36), self.T).entry.pack(
+        number_field.attach(ttk.Entry(row1, textvariable=self.quick_pseudosquares_from_var, width=36), self.T,
+                            "field_tip.quick_from").entry.pack(
             side="left", padx=(6, 20))
         ttk.Label(row1, text=self.T("quick.field_width")).pack(side="left")
-        number_field.attach(ttk.Entry(row1, textvariable=self.quick_pseudosquares_width_var, width=14), self.T).entry.pack(
+        number_field.attach(ttk.Entry(row1, textvariable=self.quick_pseudosquares_width_var, width=14), self.T,
+                            "field_tip.quick_width").entry.pack(
             side="left", padx=(6, 0))
 
         row2 = ttk.Frame(frame)
@@ -86,7 +88,8 @@ class QuickGenPseudosquares:
         ttk.Label(row2, text=self.T("quick.field_threads")).pack(side="left")
         # Auto: the program picks its own count, so it shows no number.
         threads = ThreadsField(row2, self.T, self.quick_pseudosquares_threads_var,
-                               words=(AUTO_WORD, MAX_WORD), over=MAX_WORD, width=9)
+                               words=(AUTO_WORD, MAX_WORD), over=MAX_WORD, width=9,
+                               purpose="field_tip.pseudosquares_threads")
         threads.pack(side="left", padx=(6, 0))
         self._pseudosquares_threads_spinboxes.append(threads)
 

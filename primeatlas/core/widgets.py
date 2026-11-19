@@ -123,7 +123,7 @@ def _build_goto_group(parent, T, on_goto):
     goto_frame = ttk.Frame(parent)
     ttk.Label(goto_frame, text=T("common.page_prefix")).pack(side="left")
     goto_entry = ttk.Entry(goto_frame, width=6)
-    number_field.attach(goto_entry, T, minimum=1)
+    number_field.attach(goto_entry, T, "field_tip.goto_page", minimum=1)
     goto_entry.bind("<Return>", lambda _e: on_goto())
     goto_btn = ttk.Button(goto_frame, text=T("common.goto"), command=on_goto)
     # The "clam" theme (see PortalBrowserApp's _apply_theme) gives TButton more

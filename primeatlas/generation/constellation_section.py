@@ -92,7 +92,7 @@ class ConstellationSection:
             value=str(const_settings.get("base_exponent", "")))
         base_exponent = ttk.Entry(const_form, textvariable=self._const_base_exponent_var,
                                   width=10)
-        number_field.attach(base_exponent, self.T, minimum=0)
+        number_field.attach(base_exponent, self.T, "field_tip.const_floor", minimum=0)
         base_exponent.pack(side="left", padx=(6, 0))
         remember_generation_field("constellation", "base_exponent", self._const_base_exponent_var)
 

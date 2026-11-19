@@ -88,10 +88,11 @@ class LoopSection:
             var = tk.StringVar(value=str(loop_settings.get(key, "")))
             if key == "workers":
                 entry = ThreadsField(cell, self.T, var, words=(wsl_resources.WORKERS_MAX,),
-                                     over=wsl_resources.WORKERS_MAX, width=width)
+                                     over=wsl_resources.WORKERS_MAX, width=width,
+                                     purpose=f"field_tip.loop_{key}")
             else:
                 entry = ttk.Entry(cell, textvariable=var, width=width)
-                number_field.attach(entry, self.T)
+                number_field.attach(entry, self.T, f"field_tip.loop_{key}")
             entry.pack(side="left")
             self._loop_vars[key] = var
             remember_generation_field("loop", key, var)
