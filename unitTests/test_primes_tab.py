@@ -27,9 +27,13 @@ PrimesTab instance) directly:
      worker and back into on_prime_search_result(), landing the found prime in the
      preview pane.
   5. Tree columns: "kind" (D/P) and "generated" (last) are shown only while an open floor lists files;
-     column widths fit their content; the tree pane is pinned to the content width
-     (resizes, hidden-tab layout, sash drags snap back), with a horizontal
-     scrollbar only while the window is too narrow for it.
+     column widths fit their content; the tree pane is pinned to the wider of the
+     content width and the widest floor-nav group (resizes, hidden-tab layout, sash drags
+     snap back); the horizontal scrollbar's room is always reserved, the bar disabled
+     while the content fits, so it never changes the tree's height.
+  6. The floor nav is the app-wide page nav: a FlowRow of two whole groups (Prev/Next/
+     page count, then Page:/entry/Go) and the page subtotal, wrapping to the tree pane's
+     width; Enter in the entry goes to the page.
 
 Usage (Windows, real display):
     python unitTests\\test_primes_tab.py
@@ -251,6 +255,24 @@ def main():
         widget._goto_floor_page()
         check(state["page"] == 0, f"_goto_floor_page('1') landed back on page index 0 (got {state['page']})")
 
+        _check_floor_nav_layout(app, widget)
+        widget.floor_goto_entry.delete(0, "end")
+        widget.floor_goto_entry.insert(0, "3")
+        widget.floor_goto_entry.focus_force()
+        app.update()
+        widget.floor_goto_entry.event_generate("<Return>")
+        _pump(app, 0.2)
+        check(state["page"] == 2, f"Enter in the page entry went to page 3 (got index {state['page']})")
+        widget.floor_goto_entry.delete(0, "end")
+        widget.floor_goto_entry.insert(0, "abc")
+        widget._goto_floor_page()
+        check(state["page"] == 2, f"a non-number in the page entry changes nothing (got {state['page']})")
+        widget.floor_goto_entry.delete(0, "end")
+        widget.floor_goto_entry.insert(0, "99")
+        widget._goto_floor_page()
+        check(0 <= state["page"] <= 2, f"a page past the end stays within the pages (got {state['page']})")
+        widget._show_floor_page(node3, 0)
+
         # Collapsing drops the cached page state.
         widget.tree.focus(node3)
         widget._on_tree_close(None)
@@ -304,11 +326,71 @@ def main():
         check(any(kind == "error" for kind, _a, _k in shown),
               f"an invalid search query shows an error dialog instead (got: {shown})")
 
-        _test_tree_columns(app, widget, node0, node3)
+        result = _test_tree_columns(app, widget, node0, node3)
 
         app.destroy()
+        return result
     finally:
         shutil.rmtree(tmp_portal, ignore_errors=True)
+
+
+def _check_floor_nav_layout(app, widget):
+    """6. The floor nav: two whole groups and the subtotal in a FlowRow that wraps to the
+    tree pane's width; the pane is never narrower than the widest group."""
+    from tkinter import ttk
+    from primeatlas.core.widgets import FlowRow
+    nav = getattr(widget, "floor_nav", None)
+    check(isinstance(nav, FlowRow), "the floor nav is a FlowRow")
+    if not isinstance(nav, FlowRow):
+        return
+    items = [item for item, _gap in nav._items]
+    check(len(items) == 3, f"two whole nav groups, then the page subtotal (got {len(items)})")
+    if len(items) != 3:
+        return
+    check(str(items[2].cget("textvariable")) == str(widget.floor_subtotal_label),
+          "the third item is the page subtotal")
+    groups = items[:2]
+    first = groups[0].pack_slaves()
+    check(first[:2] == [widget.floor_prev_btn, widget.floor_next_btn]
+          and isinstance(first[2], ttk.Label),
+          "group one: Prev, Next, then the page count")
+    check(widget.floor_goto_entry in groups[1].pack_slaves(), "group two holds the page entry")
+    widest = max(g.winfo_reqwidth() for g in groups)
+    content_width = widget._tree_content_width
+    tree_pane = app.nametowidget(widget._tree_paned.panes()[0])
+    app.geometry("2400x800")
+    _pump(app, 1.0)
+    try:
+        for columns in (60, 900):
+            widget._tree_content_width = lambda columns=columns: columns
+            widget._fit_tree_pane()
+            _pump(app, 0.6)
+            expected = max(columns, widest)
+            check(widget._tree_pane_width() == expected,
+                  f"columns {columns} px: pane width = max(columns, widest group {widest}) "
+                  f"(got {widget._tree_pane_width()})")
+            check(abs(tree_pane.winfo_width() - expected) <= 12,
+                  f"columns {columns} px: the pane shows {tree_pane.winfo_width()} px "
+                  f"(expected {expected})")
+            wrapped = groups[1].winfo_y() > groups[0].winfo_y()
+            check(wrapped if columns == 60 else not wrapped,
+                  f"columns {columns} px: "
+                  f"{'the entry group wraps to the next line' if columns == 60 else 'one line'}")
+            check(all(g.winfo_width() == g.winfo_reqwidth() for g in groups),
+                  f"columns {columns} px: neither group is cut")
+            check(all(g.winfo_x() + g.winfo_width() <= nav.frame.winfo_width() + 1
+                      for g in groups), f"columns {columns} px: both groups inside the pane")
+        widget.floor_subtotal_label.set("subtotal " * 30)
+        _pump(app, 0.6)
+        label = items[2]
+        check(label.winfo_x() + label.winfo_width() <= nav.frame.winfo_width() + 1,
+              "a subtotal longer than the pane wraps inside it")
+        check(label.winfo_height() >= label.winfo_reqheight() - 1, "the subtotal is not cut")
+    finally:
+        widget._tree_content_width = content_width
+        widget.floor_subtotal_label.set("")
+        widget._fit_tree_pane()
+        _pump(app, 0.6)
 
 
 def _displayed(widget):
@@ -383,7 +465,8 @@ def _test_tree_columns(app, widget, node0, node3):
     tree_pane = widget._tree_paned.panes()[0]
 
     def pane_fits(label):
-        need = widget._tree_content_width()
+        need = widget._tree_pane_width()
+        check(need >= widget._tree_content_width(), f"{label}: pane width covers the columns")
         actual = app.nametowidget(tree_pane).winfo_width()
         check(abs(actual - need) <= 12,
               f"{label}: tree pane is as wide as its content ({actual}px, content {need}px)")
@@ -416,7 +499,7 @@ def _test_tree_columns(app, widget, node0, node3):
     pane_fits("after the tab is shown at a size it was never laid out at")
 
     # The sash is pinned to the content: a drag in either direction snaps back.
-    need_pane = widget._tree_content_width()
+    need_pane = widget._tree_pane_width()
     widget._tree_paned.sashpos(0, need_pane + 200)
     widget._on_sash_released(None)
     _pump(app, 0.3)
@@ -425,26 +508,42 @@ def _test_tree_columns(app, widget, node0, node3):
     widget._on_sash_released(None)
     _pump(app, 0.3)
     pane_fits("after dragging the sash narrower than the content")
-    check(not widget._tree_hsb.winfo_ismapped(),
-          "the horizontal scrollbar is hidden while the content fits")
+    check(widget._tree_hsb.winfo_ismapped() and widget._tree_hsb.instate(["disabled"]),
+          "the horizontal scrollbar keeps its room, disabled while the content fits")
 
     # A window too narrow for the content (the detail pane keeps its minimum width):
     # the tree pane gives way and a horizontal scrollbar reaches the cut-off columns.
     widget.tree.item(node3, open=True)
     widget._populate_floor_node(node3)
+    app.geometry("2400x700")
+    _pump(app, 1.0)
+    fit_height = widget.tree.winfo_height()
+    widget._on_tree_xscroll("0.0", "0.5")
+    _pump(app, 0.3)
+    check(widget.tree.winfo_height() == fit_height and widget._tree_hsb.instate(["!disabled"]),
+          f"enabling the scrollbar changes no tree height ({widget.tree.winfo_height()} vs "
+          f"{fit_height})")
+    widget._on_tree_xscroll("0.0", "1.0")
+    _pump(app, 0.3)
+    check(widget.tree.winfo_height() == fit_height, "disabling it changes none either")
+    # Columns wider than the room left (a large font): stood in for by a window below the
+    # app's minimum width, lifted for this step.
+    min_size = app.minsize()
+    app.minsize(1, min_size[1])
     app.geometry("800x700")
     _pump(app, 1.0)
     narrow = app.nametowidget(tree_pane).winfo_width()
     check(narrow < widget._tree_content_width(),
           f"fixture: an 800px window cannot fit the content ({narrow}px < "
           f"{widget._tree_content_width()}px)")
-    check(widget._tree_hsb.winfo_ismapped(),
-          "a too-narrow tree pane shows the horizontal scrollbar")
+    check(widget._tree_hsb.winfo_ismapped() and widget._tree_hsb.instate(["!disabled"]),
+          "a too-narrow tree pane enables the horizontal scrollbar")
+    app.minsize(*min_size)
     app.geometry("2400x800")
     _pump(app, 1.0)
     pane_fits("after widening the window back")
-    check(not widget._tree_hsb.winfo_ismapped(),
-          "the horizontal scrollbar hides again once the content fits")
+    check(widget._tree_hsb.winfo_ismapped() and widget._tree_hsb.instate(["disabled"]),
+          "the horizontal scrollbar is disabled again once the content fits")
 
     if failures:
         print(f"\n{len(failures)} FAILURE(S)")

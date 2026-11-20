@@ -241,6 +241,38 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   każdego przebiegu do niej odsyła; eksport CSV zapisuje komputery do drugiego pliku,
   <nazwa>_computers.csv.
 
+### +15 — Small screens: one layout pass for wrapping rows, Quick-gen modes and the floor nav wrap
+
+- English: Rows that wrap to their width are now laid out by one coordinator, top-down and
+  once per width change, so a row's own height can no longer start another layout and the app
+  cannot hang in a layout loop. On a small screen (1280 x 720, e.g. a 13" Full HD laptop at
+  150 %) the Quick-gen mode row wraps onto a second line instead of cutting off Pseudosquares
+  and cudasieve; a mode name wider than the whole row is shortened with "…" and an ⓘ marker,
+  and hovering it shows the full name. The floor page navigation above the Prime numbers tree
+  wraps the same way, so Go is no longer cut; its buttons read Previous, Next, then the page
+  count, as in the other page navigations. The tree pane is as wide as the wider of its
+  columns and the navigation's widest group, and its horizontal scrollbar keeps its room
+  (greyed out while not needed), so it no longer changes the tree's height. Under
+  Constellations > Storage the tree pane keeps its share of the width when the window is
+  resized, so making the window narrow and wide again restores the same split. The window can
+  no longer be made narrower than 1280 px (or the screen), the narrowest width at which every
+  tab is checked to show all its controls; it starts 1280 px wide.
+- Polski: Rzędy zawijane do swojej szerokości układa teraz jeden koordynator, od góry i raz na
+  zmianę szerokości, więc wysokość rzędu nie uruchamia już kolejnego układania, a aplikacja nie
+  może zawisnąć w pętli układu. Na małym ekranie (1280 x 720, np. laptop 13" Full HD przy
+  150 %) rząd trybów Quick-gen przechodzi do drugiej linii zamiast ucinać Pseudosquares
+  i cudasieve; nazwa trybu szersza niż cały rząd jest skracana „…” ze znacznikiem ⓘ, a po
+  najechaniu pokazuje pełną nazwę. Nawigacja stron piętra nad drzewem Liczb pierwszych zawija
+  się tak samo, więc Idź nie jest już ucięte; przyciski czytają się Poprzednia, Następna, potem
+  licznik stron, jak w pozostałych nawigacjach stron. Panel drzewa ma szerokość większą
+  z dwóch: kolumn albo najszerszej grupy nawigacji, a jego poziomy pasek przewijania ma stałe
+  miejsce (wyszarzony, gdy niepotrzebny), więc nie zmienia już wysokości drzewa.
+  W Konstelacje > Magazyn panel drzewa zachowuje swój udział w szerokości przy zmianie
+  rozmiaru okna, więc zwężenie i ponowne poszerzenie okna przywraca ten sam podział. Okna nie
+  da się już zwęzić poniżej 1280 px (albo szerokości ekranu), najmniejszej szerokości, przy
+  której każda zakładka ma sprawdzone, że pokazuje wszystkie swoje elementy; startuje
+  z szerokością 1280 px.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

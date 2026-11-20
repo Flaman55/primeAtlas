@@ -8,6 +8,10 @@ A. isolate_app() (app_sandbox.py): app_dynamic.PORTAL_FOLDER and
 B. Every unitTests/test_*.py that constructs the full app (prime_atlas_v2._build_gui())
    calls isolate_app(...) on a code line before the first construction (the app scans
    and recovers storage while it is built).
+C. isolate_app() arms a watchdog: a test process still running timeout_s seconds later
+   (default APP_TEST_TIMEOUT_S) prints a FAIL line naming the timeout and exits non-zero,
+   so a hung layout shows as a failure instead of silence; a process that ends in time
+   is not affected.
 
 Usage:
     python unitTests/test_app_sandbox.py
@@ -16,8 +20,10 @@ import glob
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
+import time
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
@@ -86,9 +92,46 @@ def _test_sources():
               f"{name} calls isolate_app() before building the app")
 
 
+_HANG = """
+import sys, time
+sys.path.insert(0, {tests!r})
+from app_sandbox import isolate_app
+isolate_app(timeout_s={timeout})
+print("started", flush=True)
+time.sleep({sleep})
+print("ended", flush=True)
+"""
+
+
+def _run_child(timeout, sleep):
+    code = _HANG.format(tests=_SCRIPT_DIR, timeout=timeout, sleep=sleep)
+    start = time.time()
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                          timeout=180)
+    return proc, time.time() - start
+
+
+def _test_watchdog():
+    print("\n--- C. watchdog ---")
+    import app_sandbox
+    check(getattr(app_sandbox, "APP_TEST_TIMEOUT_S", 0) >= 300,
+          "the default timeout leaves the slowest app test room")
+    proc, took = _run_child(timeout=3, sleep=120)
+    check(proc.returncode not in (0, None), f"a hung test exits non-zero (got {proc.returncode})")
+    check("started" in proc.stdout and "ended" not in proc.stdout, "it was stopped mid-sleep")
+    check(any(line.startswith("FAIL") and "timed out" in line
+              for line in proc.stdout.splitlines()),
+          f"a FAIL line names the timeout (got {proc.stdout[-300:]!r})")
+    check(took < 100, f"stopped soon after the timeout ({took:.0f} s)")
+    proc, _took = _run_child(timeout=60, sleep=0)
+    check(proc.returncode == 0 and "ended" in proc.stdout and "FAIL" not in proc.stdout,
+          "a test ending in time is not affected")
+
+
 def main():
     _test_isolate()
     _test_sources()
+    _test_watchdog()
     print()
     print("=" * 78)
     if failures:
