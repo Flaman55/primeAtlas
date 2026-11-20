@@ -219,6 +219,28 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   CPU, CL i XMP/EXPO w linii zainstalowanego RAM-u. Szczegóły CPU stoją teraz zaraz pod linią
   procesora, a szczegóły RAM-u zaraz pod linią RAM. Wartość niewpisana jest po prostu pomijana.
 
+### +14 — Benchmark: the computer of each run, clickable, filterable and in the exports
+
+- English: The Benchmark table's Computer cell names the computer a run ran on, e.g.
+  "Ryzen 9 5900X (3f9a0c)": the CPU model and the start of its id, as recorded in
+  benchmark_machines.json when the run started. A run from a computer without its file shows
+  the id alone; a run from before the id was logged stays blank. A click on the cell opens the
+  Computer window with every recorded state of that computer (hardware read from Windows and
+  the values typed in About). The Filter window gains a Computer dimension, which also tells
+  apart one computer before and after a RAM change. The HTML page and the PDF end with a
+  "Computers" section, a table per computer of the exported runs, and each run's cell links to
+  it; the CSV export writes the computers to a second file, <name>_computers.csv.
+- Polski: Komórka Komputer w tabeli Benchmarku nazywa komputer, na którym szedł przebieg, np.
+  „Ryzen 9 5900X (3f9a0c)”: model procesora i początek jego identyfikatora, tak jak zapisał je
+  benchmark_machines.json w chwili startu przebiegu. Przebieg z komputera bez jego pliku
+  pokazuje sam identyfikator, a przebieg sprzed zapisywania identyfikatora zostaje pusty.
+  Kliknięcie komórki otwiera okno Komputer z każdym zapisanym stanem tego komputera (sprzęt
+  odczytany z Windows i wartości wpisane w O programie). Okno Filtr dostaje wymiar Komputer,
+  który rozróżnia też ten sam komputer przed wymianą RAM-u i po niej. Strona HTML i PDF kończą
+  się sekcją „Komputery” z tabelą dla każdego komputera z eksportowanych przebiegów, a komórka
+  każdego przebiegu do niej odsyła; eksport CSV zapisuje komputery do drugiego pliku,
+  <nazwa>_computers.csv.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

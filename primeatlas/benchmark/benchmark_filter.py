@@ -1,10 +1,10 @@
 """BenchmarkFilter mixin of BenchmarkTab: the Filter window and the runs the charts compare.
 
 The window lists every dimension (run purpose, engine build, sieve threads, write threads,
-range width) with an All checkbox and one checkbox per value the log holds, all clickable at
-once. A dimension is at All until a value is clicked: that value alone is then kept, further
-clicks add or remove values, and removing the last one or clicking All goes back to All
-(chart_filter.toggle_value()/select_all()). Every change applies at once: the charts, the
+range width, computer) with an All checkbox and one checkbox per value the log holds, all
+clickable at once. A dimension is at All until a value is clicked: that value alone is then
+kept, further clicks add or remove values, and removing the last one or clicking All goes back
+to All (chart_filter.toggle_value()/select_all()). Every change applies at once: the charts, the
 mixed-width note, the PDF export and the tab's table use chart_filter.apply() of the log,
 and the summary next to the Filter button (and the PDF subtitle) names the selection. Below
 the dimensions, "Sieve measure" picks the time the sieve chart measures (sieve_measure.py):

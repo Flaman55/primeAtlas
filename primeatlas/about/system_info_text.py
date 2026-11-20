@@ -22,7 +22,7 @@ def _known(value, T):
     return value if value else T("about.system_unknown")
 
 
-def _cache(kb, T):
+def cache_text(kb, T):
     if not kb:
         return T("about.system_unknown")
     return f"{number_format.whole(kb // 1024)} MB" if kb % 1024 == 0 else f"{number_format.whole(kb)} KB"
@@ -56,7 +56,7 @@ def details_lines(details, manual, T):
     cpu.append(T("about.system_base", base=_mhz(details.base_mhz, T)))
     if manual.get("turbo_mhz") is not None:
         cpu.append(T("about.system_turbo", turbo=_mhz(manual["turbo_mhz"], T)))
-    cpu += [f"L2 {_cache(details.l2_kb, T)}", f"L3 {_cache(details.l3_kb, T)}",
+    cpu += [f"L2 {cache_text(details.l2_kb, T)}", f"L3 {cache_text(details.l3_kb, T)}",
             _known(details.cpu_family, T)]
     ram = [T("about.system_ram_size", size=gib_text(details.ram_bytes, T),
              modules=_known(details.ram_modules, T)), _memory_kind(details, T)]

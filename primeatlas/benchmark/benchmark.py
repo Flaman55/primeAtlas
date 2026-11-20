@@ -562,7 +562,7 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
                           sieve_points=None, write_points=None, references=False,
                           log_y=False, hidden_lines=None, y_pins=None, filter_note="",
                           measure=sieve_measure.DEFAULT, x_view=None, y_views=None,
-                          point_views=None):
+                          point_views=None, machines=None):
     """Writes a standalone PDF report -- the Benchmark tab's charts plus the FULL
     run table (every kept run, every cell in full) -- to `path`, A4
     landscape. Pure function (no tkinter): the GUI layer (BenchmarkTab._export_benchmark_pdf)
@@ -577,7 +577,9 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
 
     Tables: table_columns.report_tables(), the tab's run table in four groups, each starting
     on its own page led by the floor, the run and the engine, continuing over as many pages
-    as the rows need (core/pdf_table.py), with the tab's translated column headers.
+    as the rows need (core/pdf_table.py), with the tab's translated column headers. A run's
+    computer cell links to its computer in the "Computers" section after them
+    (computer_pdf.py), built from `machines` (machines_file.load(), None for none).
 
     references: also draw reference_points.py's series on the sieve n/s chart -- PARI/GP
     iterates in memory and writes nothing, so it compares with the sieve phase -- with a
@@ -678,14 +680,18 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     # --- the logical tables, each from a new page; a value a run lacks is a dash ---
     # The columns are keyed by their translated headers, which TableLayout prints.
     from . import table_columns   # table_columns reads benchmark_sieve_count() from here
+    from . import computer_pdf, computer_table
     headers = {c: _pdf_ascii_fold(t(table_columns.header_key(c)))
                for c in table_columns.EXPORT_COLUMNS}
+    machine_ids = computer_table.computers_in(rows)
     rows = [{headers[c]: table_columns.shown(row, c, t) for c in table_columns.EXPORT_COLUMNS}
-            for row in rows]
+            | {_COMPUTER_DEST: _computer_dest(row)} for row in rows]
     keys = [headers[c] for c in table_columns.KEY_COLUMNS]
+    links = {headers["machine"]: lambda row: row[_COMPUTER_DEST]}
     for title_key, columns in table_columns.report_tables():
         title = t(title_key)
-        layout = TableLayout([headers[c] for c in columns], rows, content_width, 6.5, keys)
+        layout = TableLayout([headers[c] for c in columns], rows, content_width, 6.5, keys,
+                             links=links)
         first = [_pdf_text_op(content_left, content_top - 12, 12, "Helvetica-Bold",
                               _pdf_ascii_fold(title))]
         offset = len(pages)
@@ -694,4 +700,16 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
             lambda page, part, parts, title=title, offset=offset:
             t("bench.pdf_table_continued", title=title, page=offset + page)
             + (t("pdf.columns_part", part=part, parts=parts) if parts > 1 else ""))
+    pages += computer_pdf.computer_pages(machine_ids, machines or {}, t, content_left,
+                                         content_width, content_top, content_bottom)
     _write_pdf(path, pages, page_size=(page_w, page_h))
+
+
+# The key of a PDF table row holding its computer cell's link target (not a column).
+_COMPUTER_DEST = "__computer_dest__"
+
+
+def _computer_dest(row):
+    from .computer_table import anchor
+    machine_id = str(row.get("machine_id") or "").strip()
+    return anchor(machine_id) if machine_id else None

@@ -9,21 +9,23 @@ that width and choosing floors compares them floor by floor. Values come from li
 they read like the chart lines ("v6.0", "15 thr", "2x24 thr", write "8", width "10^11"), the
 floor as its exponent ("28"); "" is a run from before that column. The run purpose
 (benchmark_log_schema.row_purpose(): a benchmark run that only measured, or a storage run) is
-shown translated (value_label()). No tkinter here.
+shown translated (value_label()). The computer is computer_names.filter_label(): the CPU, the
+RAM and the machine_id's start, so a RAM change on one computer is a value of its own. No
+tkinter here.
 """
 import re
 
 import benchmark_log_schema as schema
 
-from . import line_names
+from . import computer_names, line_names
 
-DIMENSIONS = ("purpose", "floor", "engine", "threads", "write_threads", "width")
+DIMENSIONS = ("purpose", "floor", "engine", "threads", "write_threads", "width", "computer")
 PURPOSE_LABEL_KEYS = {schema.RUN_PURPOSE_BENCHMARK: "bench.purpose_benchmark",
                       schema.RUN_PURPOSE_STORAGE: "bench.purpose_storage"}
 DIMENSION_KEYS = {"purpose": "bench.filter_dim_purpose", "floor": "bench.filter_dim_floor",
                   "engine": "bench.filter_dim_engine", "threads": "bench.filter_dim_threads",
                   "write_threads": "bench.filter_dim_write_threads",
-                  "width": "bench.filter_dim_width"}
+                  "width": "bench.filter_dim_width", "computer": "bench.filter_dim_computer"}
 
 _VALUE = {
     "purpose": schema.row_purpose,
@@ -32,6 +34,7 @@ _VALUE = {
     "threads": line_names.sieve_threads_label,
     "write_threads": line_names.write_threads_label,
     "width": lambda row: line_names.width_label(row.get("numbers_processed")),
+    "computer": computer_names.filter_label,
 }
 
 

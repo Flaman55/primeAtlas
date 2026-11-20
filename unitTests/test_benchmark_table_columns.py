@@ -19,7 +19,8 @@ B. Values: a pipeline row (session time and speed win over the instance's), a na
    old hybrid row with its exact count; raw for the CSV, shown for the tables (grouped
    thousands, 10^n numbers, translated purpose and status, a dash when missing); the sieve
    speed equals the sieve chart's value and the run speed the whole-run chart's. The run
-   group ends with the machine id and the CPU load before and during the run (shown with %;
+   group ends with the computer (the machine id's first 6 characters without its entry,
+   test_benchmark_computers.py) and the CPU load before and during the run (shown with %;
    a dash in rows from before those columns).
    A pt1 run with the verification after it (proof_seconds, part of its times): the run speed
    with it, the speed without it (the chart's P line), the speed it costs (without less
@@ -175,10 +176,10 @@ def part_b():
     check(tc.shown(pipe, "numbers", t) == "10^10", "shown numbers as 10^n")
     check(tc.shown(pipe, "purpose", t) == t("bench.purpose_storage"), "purpose translated")
     check(tc.shown(pipe, "status", t) == t("bench.run_status_completed"), "status translated")
-    check(tc.raw(pipe, "machine") == "3f9a0c1d2e4b" and tc.raw(pipe, "cpu_before") == "4.2"
+    check(tc.raw(pipe, "machine") == "3f9a0c" and tc.raw(pipe, "cpu_before") == "4.2"
           and tc.raw(pipe, "cpu_during") == "97.5", "machine and CPU load raw")
     check(tc.shown(pipe, "cpu_before", t) == "4.2%" and tc.shown(pipe, "cpu_during", t) == "97.5%"
-          and tc.shown(pipe, "machine", t) == "3f9a0c1d2e4b", "CPU load shown as a percentage")
+          and tc.shown(pipe, "machine", t) == "3f9a0c", "CPU load shown as a percentage")
     check(tc.GROUPS[1][1][-3:] == ("machine", "cpu_before", "cpu_during"),
           "the machine and CPU load close the run group")
     check(float(tc.raw(pipe, "sieve_nps")) == round(benchmark.line_value("sieve")(pipe)),

@@ -8,10 +8,13 @@ together are wider than the page, the table is split into column bands; every ba
 starts with the key columns (e.g. the run timestamp and floor), so a row of one band is
 found again in the next. The bands of one row chunk are printed on consecutive pages.
 
+A column may link its cells: links={column: dest(row)} puts a pdf_writer.Link over every
+cell whose dest(row) names a destination (None: no link).
+
 Text is set in the fixed-width Courier / Courier-Bold, so widths are exact
 (CHAR_WIDTH x font size per character). Pure logic, no tkinter.
 """
-from .pdf_writer import _pdf_ascii_fold, _pdf_line_op, _pdf_rect_op, _pdf_text_op
+from .pdf_writer import Link, _pdf_ascii_fold, _pdf_line_op, _pdf_rect_op, _pdf_text_op
 
 CHAR_WIDTH = 0.6   # Courier's advance width per character, in units of the font size
 CELL_PAD = 2       # points left free on each side of a cell's text
@@ -53,8 +56,9 @@ class TableLayout:
     headers: {name: [header line, ...]}; header_h: the header row height of the tallest
     band header, shared by every band so every band of a row chunk ends at the same y."""
 
-    def __init__(self, fieldnames, rows, content_width, font_size, key_columns=()):
+    def __init__(self, fieldnames, rows, content_width, font_size, key_columns=(), links=None):
         self.font_size = font_size
+        self.links = links or {}
         self.row_h = round(font_size * 1.85)
         self.line_h = font_size + 1.5
         char_w = CHAR_WIDTH * font_size
@@ -113,6 +117,9 @@ class TableLayout:
             for name in band:
                 ops.append(_pdf_text_op(x + CELL_PAD, y - self.row_h + 3, self.font_size,
                                         "Courier", cell_text(row.get(name))))
+                dest = self.links[name](row) if name in self.links else None
+                if dest:
+                    ops.append(Link((x, y - self.row_h, self.widths[name], self.row_h), dest))
                 x += self.widths[name]
             y -= self.row_h
         return ops

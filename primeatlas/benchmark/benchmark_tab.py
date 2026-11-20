@@ -47,7 +47,7 @@ from .chart_series import (
     pin_bound, plain_series, point_label, run_key, series_xs, toggle_keys, visible_series,
     y_scale,
 )
-from . import chart_points, chart_view
+from . import chart_points, chart_view, computer_names
 from .benchmark_chart_windows import BenchmarkChartWindows
 from .benchmark_export import BenchmarkExport
 from .benchmark_filter import BenchmarkFilter
@@ -56,6 +56,7 @@ from .benchmark_points import BenchmarkPoints
 from .benchmark_table_copy import BenchmarkTableCopy
 from .benchmark_table_layout import BenchmarkTableLayout
 from .benchmark_view_state import BenchmarkViewState
+from .computer_cell import ComputerCell
 from .benchmark_ram_chart import BenchmarkRamChart
 from .chart_hover import _bind_chart_hover, _nearest_point
 from .chart_zoom_controls import BenchmarkChartZoom
@@ -525,6 +526,9 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self.benchmark_tree.bind("<<TreeviewSelect>>", self._on_benchmark_tree_select)
         self._bind_tree_points()
         self._bind_table_copy()
+        self.computer_cell = ComputerCell(self.benchmark_tree, self.T, self._get_portal_folder,
+                                          lambda item: self._tree_item_rows.get(item))
+        self._machines = {}
 
         self._benchmark_growth_points = []
         self._benchmark_fair_spw_points = []  # loop_seconds_per_window, second chart line
@@ -695,6 +699,8 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self._benchmark_fieldnames = fieldnames  # FULL list -- PDF export/growth chart
                                                    # still use every column, unaffected
                                                    # by what the tree itself displays
+        self._machines = self.computer_cell.load()
+        computer_names.annotate(rows, self._machines)
         self._benchmark_rows = rows
         self._prune_filter()
 

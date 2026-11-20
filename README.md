@@ -1471,10 +1471,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   pdf_table.py                  the paginated data table of both PDF reports: column
                               widths from the longest value, headers wrapped at "_",
                               column bands repeating the key columns when the table is
-                              wider than the page
+                              wider than the page; cells of a column may link to a
+                              named destination
   pdf_writer.py                 a minimal, dependency-free PDF writer (text, lines,
-                              filled rects, basic pagination) shared by the Benchmark
-                              tab's export and the Constellations Records table's export
+                              filled rects, basic pagination, links to named
+                              destinations) shared by the Benchmark tab's export and
+                              the Constellations Records table's export
   progress_bar_owner.py         claim_progress_bar()/owns_progress_bar()/
                               release_progress_bar() -- arbitrates writes to the one
                               shared totals_progress bar across every tab/coordinator
@@ -2377,7 +2379,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               mixed-width note; unitTests/test_benchmark_chart_series.py)
   chart_filter.py               which runs the charts compare: a run's value per
                               dimension (run purpose, floor, engine build, threads,
-                              write threads, width), the values in the log, the
+                              write threads, width, computer), the values in the log, the
                               selection, its summary -- pure, no tkinter
   chart_points.py               which runs become a chart's points: one per line and
                               x, chosen last / min / max / selected, or every run;
@@ -2396,11 +2398,25 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               sieve n/s, run n/s, run n/s without the verification
                               after a pt1 run and the n/s it costs, time, s/window,
                               numbers, windows;
-                              purpose, status, threads; phases; results), each a
+                              purpose, status, threads, computer, CPU load; phases;
+                              results), each a
                               raw value for the CSV export and a shown one for the
                               tab's tree and the HTML and PDF tables; the four
                               report groups; the floor summary -- pure, no tkinter
                               (unitTests/test_benchmark_table_columns.py)
+  computer_names.py             a run's computer from benchmark_machines.json: the
+                              entry valid at its run time (annotate()), the table cell
+                              "Ryzen 9 5900X (3f9a0c)", the filter value with the RAM
+                              -- pure, no tkinter
+                              (unitTests/test_benchmark_computers.py)
+  computer_table.py             a computer's entries as a table (a column per entry, a
+                              row per field), its heading and anchor, the computers
+                              CSV -- pure, no tkinter
+  computer_pdf.py               the "Computers" section of the PDF report, a table per
+                              computer under its named destination -- pure, no tkinter
+  computer_cell.py              ComputerCell: the hand cursor over a run's computer cell
+                              and the click that opens ComputerWindow
+  computer_window.py            ComputerWindow: one computer's entries, read-only
   sieve_measure.py              which time the sieve chart measures: engine sieve
                               phase, sieve with startup overhead
                               (sieve_wall_seconds) or the overhead alone; metrics,

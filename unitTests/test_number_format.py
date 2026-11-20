@@ -261,7 +261,7 @@ def _test_views(nf, dyn):
 MACHINE_FORMAT = {
     "benchmark/chart_svg.py": 15,                   # SVG coordinates and attributes
     "benchmark/proof_rows.py": 4,                   # CSV row fields read back with float()
-    "core/pdf_writer.py": 33,                       # PDF content-stream operators
+    "core/pdf_writer.py": 38,                       # PDF operators, link rects, destinations
     "generation/run_guard.py": 1,                   # stop-request file content
     "research/research_pi_approx_tab.py": 4,        # CSV export
     "visualization/rings/line/line_mode.py": 7,     # print() lines, the tab console log
