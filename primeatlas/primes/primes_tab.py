@@ -47,7 +47,9 @@ from ..core.storage import (
     digit_count_floor, disk_footprint, format_big_int, format_bytes, format_duration,
     list_floors, list_source_filenames, read_source_file_headers,
 )
-from ..core.widgets import RevealFrame, StripedTreeview, add_page_nav_row, clamp_pane_min_width
+from ..core import responsive
+from ..core.widgets import (FitLabel, FlowRow, RevealFrame, StripedTreeview, add_page_nav_group,
+                            add_page_nav_row, clamp_pane_min_width)
 
 _BASE_DISPLAY_COLUMNS = ("count", "cumulative", "files", "size", "timer")
 _CELL_PAD = 16  # px around a cell's text (ttk Treeview cell padding + a margin)
@@ -212,33 +214,25 @@ class PrimesTab(BaseTab):
         paned.pack(fill="both", expand=True, padx=6, pady=4)
 
         # Weight 0: window resizes go entirely to the detail pane, so the tree pane keeps
-        # the content width _fit_tree_pane() gives it.
+        # the width _tree_pane_width() gives it.
         tree_frame = ttk.Frame(paned)
         paned.add(tree_frame, weight=0)
 
-        # Floor pagination -- ABOVE the tree, same Prev/label/Next/goto layout
-        # as the file-preview pane on the right (see btn_row below). A floor can hold
+        # Floor pagination -- ABOVE the tree. A floor can hold
         # thousands of source windows -- listing+rendering them all on one expand would
         # freeze the GUI, so expanding a floor only lists filenames
         # (cheap) and loads ONE page's worth of headers; these controls act on whichever
         # floor was most recently opened/clicked (self._active_floor_node) -- multiple
         # floors can stay expanded at once, each remembering its own page independently.
-        floor_nav = ttk.Frame(tree_frame)
-        floor_nav.pack(fill="x", pady=(0, 4))
-        self.floor_prev_btn = ttk.Button(
-            floor_nav, text=T("common.prev_page"), command=self._prev_floor_page, state="disabled")
-        self.floor_prev_btn.pack(side="left")
+        # A FlowRow of the app-wide page-nav groups, laid out for the tree pane's width
+        # (_floor_nav_width()), so the Page:/entry/Go group wraps under Prev/Next/count.
+        self._detail_min_width = 0
+        self.floor_nav = FlowRow(tree_frame, width=self._floor_nav_width)
+        self.floor_nav.frame.pack(fill="x", pady=(0, 4))
         self.floor_page_label = tk.StringVar(value="")
-        ttk.Label(floor_nav, textvariable=self.floor_page_label, width=16, anchor="center").pack(side="left")
-        self.floor_next_btn = ttk.Button(
-            floor_nav, text=T("common.next_page"), command=self._next_floor_page, state="disabled")
-        self.floor_next_btn.pack(side="left")
-        ttk.Label(floor_nav, text=T("common.page_prefix")).pack(side="left", padx=(10, 0))
-        self.floor_goto_entry = ttk.Entry(floor_nav, width=6)
-        number_field.attach(self.floor_goto_entry, self.T, "field_tip.goto_page", minimum=1)
-        self.floor_goto_entry.pack(side="left", padx=(4, 0))
-        self.floor_goto_entry.bind("<Return>", lambda _e: self._goto_floor_page())
-        ttk.Button(floor_nav, text=T("common.goto"), command=self._goto_floor_page).pack(side="left", padx=(4, 0))
+        self.floor_prev_btn, self.floor_next_btn, self.floor_goto_entry = add_page_nav_group(
+            self.floor_nav, T, self.floor_page_label, self._prev_floor_page,
+            self._next_floor_page, on_goto=self._goto_floor_page)
 
         # Page subtotal (instant -- sums the headers this page already had to read to
         # display the file list, no extra I/O) alongside the floor's OVERALL total,
@@ -246,8 +240,9 @@ class PrimesTab(BaseTab):
         # asynchronously once the background totals worker finishes (see
         # update_floor_row()) -- shows "computing..." until then.
         self.floor_subtotal_label = tk.StringVar(value="")
-        ttk.Label(floor_nav, textvariable=self.floor_subtotal_label, anchor="w").pack(
-            side="left", padx=(14, 0))
+        self.floor_nav.add(FitLabel(self.floor_nav.frame, textvariable=self.floor_subtotal_label,
+                                    anchor="w"), padx_left=14)
+        self.floor_subtotal_label.trace_add("write", lambda *_a: self.floor_nav.relayout())
 
         # 4 value columns: count/files/generated/timer. "files" is always a file count,
         # "generated" always a per-file UTC timestamp (blank on floor rows -- no single
@@ -287,18 +282,23 @@ class PrimesTab(BaseTab):
             self.tree.column(column, width=60, minwidth=20, anchor=anchor, stretch=False)
         self.tree.configure(displaycolumns=_BASE_DISPLAY_COLUMNS)
         self._tree_vsb = vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
-        # Shown only while the window is too narrow for the content (the detail pane
-        # keeps its minimum width, see clamp_pane_min_width() below).
+        # Its room is always reserved (packed for good), so needing it never changes the
+        # tree's height; enabled only while the window is too narrow for the content (the
+        # detail pane keeps its minimum width, see clamp_pane_min_width() below).
         self._tree_hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
+        self._tree_hsb.state(["disabled"])
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=self._on_tree_xscroll)
+        self._tree_hsb.pack(side="bottom", fill="x")
         vsb.pack(side="right", fill="y")
         self.tree.pack(side="left", fill="both", expand=True)
 
-        # The sash is pinned to the content width (see _fit_tree_pane()); <ButtonRelease-1>
-        # on the panedwindow itself only fires on the sash.
+        # The sash is pinned to _tree_pane_width(), set by the layout coordinator whenever
+        # the window's or the content's width changes; <ButtonRelease-1> on the
+        # panedwindow itself only fires on the sash.
         self._tree_paned = paned
         paned.bind("<ButtonRelease-1>", self._on_sash_released, add="+")
-        paned.bind("<Configure>", lambda _e: self._fit_tree_pane(), add="+")
+        self._tree_pane_layout = responsive.coordinator(paned).add(
+            paned, self._layout_tree_pane, key=self._tree_pane_width)
 
         self.tree.bind("<<TreeviewOpen>>", self._on_tree_open)
         self.tree.bind("<<TreeviewClose>>", self._on_tree_close)
@@ -348,7 +348,8 @@ class PrimesTab(BaseTab):
         # own preview pane -- see clamp_pane_min_width()'s own docstring for why a
         # ttk::panedwindow needs this done by hand.
         self.update_idletasks()
-        clamp_pane_min_width(paned, detail_frame, preview_nav_row.winfo_reqwidth() + 12)
+        self._detail_min_width = preview_nav_row.winfo_reqwidth() + 12
+        clamp_pane_min_width(paned, detail_frame, self._detail_min_width)
 
         preview_frame = ttk.Frame(self._preview_area)
         preview_frame.pack(fill="both", expand=True, padx=6, pady=6)
@@ -576,32 +577,49 @@ class PrimesTab(BaseTab):
         return (sum(int(self.tree.column(c, "width")) for c in columns)
                 + self._tree_vsb.winfo_reqwidth() + 4)
 
+    def _tree_pane_width(self):
+        """The tree pane's width: the wider of the tree's content and the widest floor-nav
+        group, so neither is cut; never the nav's wrapped height."""
+        groups = [item for item, _gap in self.floor_nav._items[:2]]
+        return max([self._tree_content_width()] + [g.winfo_reqwidth() for g in groups])
+
+    def _floor_nav_width(self):
+        """The width the floor nav wraps to: the tree pane's, or less while the window is
+        too narrow for it (the detail pane keeps its minimum width)."""
+        width = self._tree_pane_width()
+        room = self._tree_paned.winfo_width() - self._detail_min_width
+        return min(width, room) if self._tree_paned.winfo_width() > 1 and room > 0 else width
+
     def _fit_tree_pane(self):
-        """Moves the sash to the tree's content width. Deferred to an idle turn: a
-        sashpos() issued mid-geometry-pass is reported but not applied on screen (see
-        clamp_pane_min_width())."""
+        """Asks the layout coordinator to set the tree pane again (after the columns
+        changed)."""
+        self._tree_pane_layout.request()
+
+    def _layout_tree_pane(self, _width):
+        """Coordinator layout of the panedwindow: the sash to _tree_pane_width(), then the
+        floor nav (deeper, the next round) for that width."""
         self._tree_paned.after_idle(self._set_tree_sash)
+        self.floor_nav.relayout()
 
     def _on_sash_released(self, _event):
-        """A sash drag in either direction snaps back to the content width."""
-        self._fit_tree_pane()
+        """A sash drag in either direction snaps back to the pane width. Deferred to an
+        idle turn: a sashpos() issued mid-geometry-pass is reported but not applied on
+        screen (see clamp_pane_min_width())."""
+        self._tree_paned.after_idle(self._set_tree_sash)
 
     def _set_tree_sash(self):
         try:
             if self._tree_paned.winfo_ismapped():
-                self._tree_paned.sashpos(0, self._tree_content_width())
+                self._tree_paned.sashpos(0, self._tree_pane_width())
         except tk.TclError:
             pass
 
     def _on_tree_xscroll(self, first, last):
-        """xscrollcommand: updates the horizontal scrollbar and shows it only while part
+        """xscrollcommand: updates the horizontal scrollbar and enables it only while part
         of the content is cut off."""
         self._tree_hsb.set(first, last)
         needed = float(first) > 0.0 or float(last) < 1.0
-        if needed and not self._tree_hsb.winfo_manager():
-            self._tree_hsb.pack(side="bottom", fill="x", before=self.tree)
-        elif not needed and self._tree_hsb.winfo_manager():
-            self._tree_hsb.pack_forget()
+        self._tree_hsb.state(["!disabled"] if needed else ["disabled"])
 
     def _populate_floor_node(self, node):
         if node in self._floor_state:

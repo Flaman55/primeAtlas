@@ -1365,6 +1365,26 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               Benchmark); the popup stays inside the app window;
                               below= and delay_ms= for a tip hung on an entry
                               (unitTests/test_info_tip.py)
+  elided_choice.py              ElidedRadiobutton -- a FlowRow radio whose name, when
+                              wider than the whole row, is shortened with "…" and gets
+                              an "i" marker; hovering shows the full name (the
+                              Generation tab's Quick-gen mode row)
+                              (unitTests/test_elided_choice.py,
+                              unitTests/test_quick_mode_row.py)
+  responsive.py                 the layout coordinator: elements whose arrangement
+                              depends on their width (FlowRow, the Prime numbers tree
+                              pane) are laid out top-down, outer before inner, once
+                              per width or content change and never from their own
+                              height; a width change waits DEBOUNCE_MS, a pass runs at
+                              most MAX_ROUNDS rounds of ever deeper elements and logs
+                              a loop instead of hanging; width_class() names the
+                              window's width band; apply_min_width() keeps the app
+                              window at least MIN_WINDOW_WIDTH (1280 px) wide, the
+                              narrowest width checked with nothing cut
+                              (unitTests/test_responsive.py;
+                              every tab fits 1280x720 in Polish and English at font
+                              100 % and 125 %, and 1920/1280/1000/800 px and back:
+                              unitTests/test_small_screen_layout.py)
   number_text.py                read_number -- the reader of every number field: a
                               whole number in any common notation (grouping of any
                               country, powers, superscripts, scientific, pasted
@@ -1412,8 +1432,15 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               entry_for(), merge() for backups; atomic writes, a
                               broken file is never overwritten
                               (unitTests/test_machines_file.py, test_machines_backup.py)
-  widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
-                              application-specific state; disable_notebook_wheel()
+  widgets.py                    small generic tkinter helpers with no
+                              application-specific state; FlowRow is the app's one
+                              wrapping row: items wrap whole onto the next line where
+                              the row runs out of width, laid out by responsive.py
+                              (page navs, the Quick-gen mode row); FitLabel, a FlowRow
+                              label that wraps to the row; keep_sash_share() keeps a
+                              panedwindow's first pane at its share of the width
+                              across resizes (Constellations > Storage);
+                              disable_notebook_wheel()
                               keeps the mouse wheel from switching notebook tabs
                               app-wide; HeightGrip is the app's one
                               height control -- a drag handle under a terminal, list or

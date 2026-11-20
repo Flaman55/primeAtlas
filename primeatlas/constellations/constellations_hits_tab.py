@@ -46,7 +46,8 @@ from .constellations import (
     group_constellation_hits_by_k, list_constellation_hits, read_hit_pattern_page,
     hit_pattern_is_paged, hit_pattern_page_count,
 )
-from ..core.widgets import HeightGrip, RevealFrame, StripedTreeview, add_page_nav_row, clamp_pane_min_width
+from ..core.widgets import (HeightGrip, RevealFrame, StripedTreeview, add_page_nav_row,
+                            clamp_pane_min_width, keep_sash_share)
 
 
 class ConstellationsHitsTab(BaseTab):
@@ -224,6 +225,9 @@ class ConstellationsHitsTab(BaseTab):
             max(btn_row_frame.winfo_reqwidth(), file_page_row_frame.winfo_reqwidth())
             + 10 + self.hits_export_btn.winfo_reqwidth() + 12)
         clamp_pane_min_width(paned, detail_frame, preview_nav_min_width)
+        # The tree keeps a third of the width (the panes' 1:2 weights) across resizes, so a
+        # window made narrow and wide again shows the same split; a sash drag sets it.
+        keep_sash_share(paned, 1 / 3, preview_nav_min_width)
 
         hits_preview_frame = ttk.Frame(self._hits_preview_area)
         hits_preview_frame.pack(fill="both", expand=True, padx=6, pady=6)

@@ -15,7 +15,8 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 | Theme in use | `theme_dynamic.py` (`THEME`, set by `app_dynamic` at startup, read by `benchmark/line_colors.py`) |
 | Look | `theme.py` (palettes), `app_icon.py`, `assets/` |
 | Storage reads | `storage.py` (floor listing, totals cache, `LOW_FLOOR_CUTOFF`) |
-| Widgets | `widgets.py` (HeightGrip, ScrollPad, ScrollablePage, FlowRow), `wrapped_heading.py` (WrappedHeading, a Treeview heading row whose headings wrap to two lines; `heading_wrap.py` the pure wrapping and width fit), `info_tip.py` (InfoTip, the "i" marker with a hover text kept inside the app window), `number_text.py` (`read_number`, the reader of a whole number in any notation, no tkinter), `number_field.py` (`attach`, the number field: red, "Could be" popup, hover tip of its purpose, range and accepted forms), `wrapped_check.py` (a Checkbutton whose text wraps at its parent's width), `threads_field.py` (ThreadsField, the one thread-count control: a Spinbox over a form variable it does not own, its words shown with their count, "Max (8)", the list 1..WSL's CPU count, a larger number turned into Max or the count; `threads_choice.py` its text rules, no tkinter), `base_tab.py` (`BaseTab`) |
+| Layout | `responsive.py`: the layout coordinator, one per Tk root (`coordinator(widget)`). An element is registered with `add(widget, layout, width=None, key=None)`; a pass lays requested elements out in rounds, outer before inner, each at most once, and only when its width or `key()` (content sizes) changed since its last layout. A request made during a round joins the next round, which takes only elements deeper than the shallowest of the round before; past `MAX_ROUNDS`, or for a refused request, the coordinator logs the widget and stops, and the app keeps running. A width change of an element's widget waits `DEBOUNCE_MS`; being shown (`<Map>`) or `Item.request()` runs at the next idle turn; a hidden element waits until shown. `width_class()` names the window width band (`WIDE_MIN` 1600, `MEDIUM_MIN` 1280, arbitrary). `apply_min_width()` (called by `app/app_window.py`) keeps the app window at least `MIN_WINDOW_WIDTH` wide (the screen's width when narrower): the narrowest width at which `test_small_screen_layout` finds nothing cut, 1280 px while the tabs are not laid out for narrower windows |
+| Widgets | `widgets.py` (HeightGrip, ScrollPad, ScrollablePage, FlowRow: a row whose items wrap whole, an item starting a line at the left edge, laid out by `responsive.py` for its frame's width or a given `width()`; FitLabel, a FlowRow label that wraps to the row; `keep_sash_share`, a two-pane panedwindow whose first pane keeps its share of the width across resizes, set by a sash drag), `wrapped_heading.py` (WrappedHeading, a Treeview heading row whose headings wrap to two lines; `heading_wrap.py` the pure wrapping and width fit), `info_tip.py` (InfoTip, the "i" marker with a hover text kept inside the app window), `number_text.py` (`read_number`, the reader of a whole number in any notation, no tkinter), `number_field.py` (`attach`, the number field: red, "Could be" popup, hover tip of its purpose, range and accepted forms), `wrapped_check.py` (a Checkbutton whose text wraps at its parent's width), `elided_choice.py` (ElidedRadiobutton, a FlowRow radio shortened with "…" and an "i" marker with the full name when wider than the row), `threads_field.py` (ThreadsField, the one thread-count control: a Spinbox over a form variable it does not own, its words shown with their count, "Max (8)", the list 1..WSL's CPU count, a larger number turned into Max or the count; `threads_choice.py` its text rules, no tkinter), `base_tab.py` (`BaseTab`) |
 | Background work | `totals_search_coordinator.py` (floor totals and prime/constellation search workers), `background.py` |
 | Shared progress bar | `progress_bar_owner.py`: one owner at a time writes the bottom bar (`claim_progress_bar`); the busy animation is its own `.after()` loop (`pump_indeterminate`), and every switch to a real fraction goes through `show_fraction`, which stops that loop first so no animation tick moves the value |
 | Other | `version.py` (version from CHANGELOG.md: release + merge count, commit label), `pdf_writer.py` (dependency-free PDF), `windows_hardware.py` (`read_windows_info`, `windows_ram`: Windows OS, CPU, cores, threads, RAM total and free, no admin; `this_machine_id()`: the first 12 hex digits of the SHA-256 of the MachineGuid, so benchmark rows tell computers apart without naming one), `cpu_load.py` (`read_system_counters()`: whole-Windows idle and total CPU ticks from `GetSystemTimes`; `CpuSampler`, started once by the app on a daemon thread, one sample a second, 30 s kept; `busy_before_launch()`: the busy share over the last 5 s) |
@@ -61,7 +62,7 @@ Theme, language, font scale and ScrollPad width live in `AppSettings`; texts in 
 `test_ui_settings`, `test_theme_readability`, `test_scroll_pad`, `test_scrollable_page`, `test_tree_scroll_to_top`,
 `test_settings_scroll`, `test_ui_state`, `test_ui_state_app`, `test_storage`, `test_search_worker`, `test_window_centering`, `test_pdf_table`,
 `test_number_text`, `test_number_field`, `test_number_field_coverage`, `test_number_fields_app`,
-`test_info_tip`, `test_system_info` (B), `test_cpu_load` (A-C, F), `test_hardware_details`, `test_machines_file`.
+`test_info_tip`, `test_responsive`, `test_elided_choice`, `test_small_screen_layout`, `test_system_info` (B), `test_cpu_load` (A-C, F), `test_hardware_details`, `test_machines_file`.
 
 ## Number fields
 
@@ -108,7 +109,9 @@ live fields.
 
 ## Known gaps
 
-None.
+- Below 1280 px (1000 and 800 px) static texts with a fixed wraplength and rows of fields are
+  cut in most tabs (listed by `test_small_screen_layout` as known gaps); the window cannot be
+  made narrower than 1280 px until they wrap to the width.
 
 ## Computers of the benchmark rows
 

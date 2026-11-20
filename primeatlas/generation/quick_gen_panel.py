@@ -11,10 +11,12 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from ..core import number_field, number_format
+from ..core.elided_choice import ElidedRadiobutton
 from ..core.info_tip import InfoTip
 from ..core.number_text import number_value
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from ..core.ui_state import remember
+from ..core.widgets import FlowRow
 from . import engine_options, width_advisor
 from .quick_number import _eval_quick_number
 from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows,
@@ -179,8 +181,8 @@ class QuickGenPanel:
                   wraplength=900, justify="left").pack(
             anchor="w", padx=8, pady=(6, 4))
 
-        mode_row = ttk.Frame(parent)
-        mode_row.pack(fill="x", padx=8, pady=(0, 2))
+        mode_row = FlowRow(parent)
+        mode_row.frame.pack(fill="x", padx=8, pady=(0, 2))
         quick_modes = [
             ("floor", self.T("quick.mode_floor")),
             ("range", self.T("quick.mode_range")),
@@ -190,9 +192,14 @@ class QuickGenPanel:
             ("cudasieve", self.T("quick.mode_cudasieve")),
             ("pseudosquares", self.T("quick.mode_pseudosquares")),
         ]
+        # A FlowRow: the seven names do not fit one line on a small screen (1280 px).
+        mode_row.items = []
         for value, label in quick_modes:
-            ttk.Radiobutton(mode_row, text=label, value=value, variable=self.quick_mode_var,
-                             command=self._on_quick_mode_changed).pack(side="left", padx=(0, 16))
+            item = ElidedRadiobutton(mode_row.frame, label, value=value,
+                                     variable=self.quick_mode_var,
+                                     command=self._on_quick_mode_changed)
+            mode_row.add(item, padx_left=16 if mode_row.items else 0)
+            mode_row.items.append(item)
 
         # All three mode sub-frames share the same grid cell (row 0, col 0) and are
         # switched with .tkraise() -- keeps whichever fields aren't relevant to the
@@ -238,7 +245,7 @@ class QuickGenPanel:
         ttk.Label(btn_row, textvariable=self.quick_status_var).pack(side="left", padx=(12, 0))
 
         panel = {"mode_frames": mode_frames, "floor_entry": floor_entry,
-                 "generate_btn": generate_btn}
+                 "generate_btn": generate_btn, "mode_row": mode_row}
         self._quick_panels.append(panel)
         self._sync_quick_panel(panel)  # show the right sub-frame + state for this copy
         return panel

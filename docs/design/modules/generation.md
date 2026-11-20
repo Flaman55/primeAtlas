@@ -66,6 +66,10 @@ InfoTip anchored on the checkbox).
 | Settings | `generation_settings.py` (form defaults and persistence), `generation_console.py` (`GenerationConsole`) |
 | Offers | `generation_offer_coordinator.py` ("generate the missing fragment" for other tabs) |
 
+The Quick-gen mode radios are a `FlowRow` of `ElidedRadiobutton`s (`core/`): they wrap whole
+onto further lines on a narrow window, and a name wider than the whole row is shortened with
+"…" and an "i" marker holding the full name; the embedded and the detached panel share the mode.
+
 ## Contract
 
 | In | Out |

@@ -12,58 +12,81 @@ import tkinter.font as tkfont
 import weakref
 from tkinter import ttk
 
-from . import number_field
+from . import number_field, responsive
 from .app_settings import SCROLL_PAD_WIDTH_DEFAULT, clamp_scroll_pad_width
 
 
 class FlowRow:
-    """A button-row container that wraps its children onto additional lines instead of
-    running them off the edge of the window. A plain ttk.Frame with every child
-    .pack(side="left")'d onto ONE line has this failure mode: on a narrow window (or a
-    narrow detail pane after the split-view divider is dragged), the rightmost controls
-    simply run past the frame's right edge and become invisible/unreachable, with no way
-    to get to them short of resizing the whole window (e.g. the Prime numbers and
-    Constellations tabs' preview-navigation rows: Prev / page label / Next / page-goto
-    entry).
+    """A row that wraps its items onto more lines instead of running them off the edge of
+    the window (e.g. the Prime numbers floor nav, the Constellations page navs, the
+    Quick-gen mode radios). Items are added with .add(widget, padx_left=...) instead of
+    being packed; the row places them itself with place(). padx_left separates an item from
+    the one before it on the same line; an item that starts a line sits at the row's left
+    edge. The row's height is that of its lines. .frame is what the caller packs or grids.
 
-    Children are added via .add(widget, padx_left=...) instead of widget.pack(...); this
-    class lays them out itself using place() (which, unlike pack/grid, doesn't force a
-    single line or a fixed grid) and re-flows on every <Configure> of its own frame --
-    same 'safe to call again on resize' pattern used by the Benchmark tab's own growth-
-    chart canvas binding (see primeatlas/benchmark/benchmark_tab.py's _draw_growth_chart). .frame
-    is what the caller packs/grids into its own parent, exactly like a plain ttk.Frame
-    would be."""
+    The row is an element of the layout coordinator (core/responsive.py): it is laid out
+    for its frame's width -- or for `width()`, when given, for a row whose container gets
+    its width from rules of its own (the Prime numbers tree pane) -- whenever that width or
+    an item's size changes, never from its own height. relayout() asks for a layout after
+    an item's text changed. An item with a fit_width(width) method (e.g.
+    elided_choice.ElidedRadiobutton, a label that wraps) is handed the row's width before it
+    is measured, so it can shorten or wrap itself to fit; an item with content_size() is
+    measured by it instead of its requested size (a frame's requested size follows its
+    children only at the next idle turn)."""
 
     ROW_GAP = 4
 
-    def __init__(self, parent):
+    def __init__(self, parent, width=None):
         self.frame = ttk.Frame(parent)
         self._items = []  # [(widget, padx_left)], in add() order
-        self.frame.bind("<Configure>", self._reflow)
+        self.layout_item = responsive.coordinator(self.frame).add(
+            self.frame, self._place, width=width, key=self._sizes)
 
     def add(self, widget, padx_left=0):
         self._items.append((widget, padx_left))
+        self.relayout()
         return widget
 
-    def _reflow(self, event):
-        width = event.width
-        if width <= 1 or not self._items:
-            return
+    def relayout(self):
+        self.layout_item.request()
+
+    @staticmethod
+    def _size(widget):
+        content_size = getattr(widget, "content_size", None)
+        if content_size is not None:
+            return content_size()
+        return widget.winfo_reqwidth(), widget.winfo_reqheight()
+
+    def _sizes(self):
+        return tuple(self._size(w) for w, _gap in self._items)
+
+    def _place(self, width):
         x = 0
         y = 0
         row_height = 0
         for widget, padx_left in self._items:
-            widget.update_idletasks()
-            w = widget.winfo_reqwidth()
-            h = widget.winfo_reqheight()
+            fit_width = getattr(widget, "fit_width", None)
+            if fit_width is not None:
+                fit_width(width)
+            w, h = self._size(widget)
             if x > 0 and x + padx_left + w > width:
                 x = 0
                 y += row_height + self.ROW_GAP
                 row_height = 0
-            widget.place(x=x + padx_left, y=y, width=w, height=h)
-            x += padx_left + w
+            gap = padx_left if x > 0 else 0
+            widget.place(x=x + gap, y=y, width=w, height=h)
+            x += gap + w
             row_height = max(row_height, h)
-        self.frame.configure(height=y + row_height)
+        self.frame.configure(height=max(1, y + row_height))
+
+
+class FitLabel(ttk.Label):
+    """A FlowRow item label that wraps its text to the row's width instead of running past
+    it (fit_width(), see FlowRow)."""
+
+    def fit_width(self, width):
+        if str(self.cget("wraplength")) != str(width):
+            self.configure(wraplength=width)
 
 
 def add_page_nav_group(flow_row, T, page_label_var, on_prev, on_next, on_goto=None,
@@ -212,6 +235,40 @@ def clamp_pane_min_width(paned, pane_widget, min_width):
 
     pane_widget.bind("<Configure>", _enforce, add="+")
     pane_widget.after_idle(_enforce)
+
+
+def keep_sash_share(paned, share, min_second_width):
+    """Keeps the first pane of the two-pane horizontal `paned` at `share` of its width, the
+    second pane never narrower than `min_second_width`, so a resize narrow and back gives
+    the starting layout back (ttk weights alone spread each change and lose the start
+    once the minimum clamps). A sash drag sets the share from where it is released. Laid
+    out by the coordinator (responsive.py) on a width change of `paned`; the sashpos()
+    calls run at an idle turn, see clamp_pane_min_width()."""
+    state = {"share": share}
+
+    def sash_for(width):
+        return max(0, min(round(state["share"] * width), width - min_second_width))
+
+    def set_sash(width):
+        try:
+            paned.sashpos(0, sash_for(width))
+        except tk.TclError:
+            pass
+
+    def layout(width):
+        paned.after_idle(set_sash, width)
+
+    def released(_event):
+        def take():
+            width = paned.winfo_width()
+            if width > 1:
+                position = min(paned.sashpos(0), width - min_second_width)
+                state["share"] = max(0, position) / width
+                set_sash(width)
+        paned.after_idle(take)
+
+    paned.bind("<ButtonRelease-1>", released, add="+")
+    return responsive.coordinator(paned).add(paned, layout, key=lambda: state["share"])
 
 
 class HeightGrip:
