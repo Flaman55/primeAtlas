@@ -207,6 +207,18 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   przywracaniu, więc żaden wpis nie ginie; uszkodzony plik nigdy nie jest nadpisywany, Atlas
   zachowuje jego kopię i o tym informuje.
 
+### +13 — About: typed hardware values in the CPU and RAM details lines
+
+- English: About → This computer shows the values typed for this computer inside the
+  hardware lines instead of a separate "Typed in" line: architecture, release year and turbo
+  in the CPU details, CL and XMP/EXPO in the installed RAM line. The CPU details now stand
+  right under the CPU line and the RAM details right under the RAM line. A value not typed is
+  simply left out.
+- Polski: O programie → Ten komputer pokazuje wartości wpisane dla tego komputera w liniach
+  sprzętu zamiast osobnej linii „Wpisane”: architekturę, rok premiery i turbo w szczegółach
+  CPU, CL i XMP/EXPO w linii zainstalowanego RAM-u. Szczegóły CPU stoją teraz zaraz pod linią
+  procesora, a szczegóły RAM-u zaraz pod linią RAM. Wartość niewpisana jest po prostu pomijana.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

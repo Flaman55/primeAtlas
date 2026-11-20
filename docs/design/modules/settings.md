@@ -48,8 +48,10 @@ on the Refresh glyph; the copy glyph copies the shown lines. The WSL RAM limit i
 share of Windows RAM, with its source: `memory=` when set, else the WSL default (half the Windows RAM).
 A value that cannot be read shows as "unknown"; WSL that does not answer shows as not reachable.
 The read also takes the CPU/RAM details (`core.hardware_details`) into `core.hardware_dynamic`
-and shows a CPU line (base clock, L2/L3, family) and a RAM line (size, modules, type-speed), then
-the values typed for this computer from `benchmark_machines.json` ("not typed" for an empty one).
+and shows a CPU details line under the CPU line and a RAM details line under the RAM line,
+completed by the values typed for this computer in `benchmark_machines.json`: architecture,
+release year, base clock, turbo, L2/L3, family; size, modules, type-speed, CL, XMP/EXPO. A value
+not typed is left out; typed values without known details still show both lines.
 
 Fill in details (`machine_prompt.MachinePrompt.open_details()`, one window at a time) records
 this computer's entry when the file has none and opens `MachineDetailsWindow`: architecture (text),

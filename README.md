@@ -2241,7 +2241,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   system_info_text.py         "This computer" lines: Windows, WSL and the WSL RAM
                               limit as a share of Windows RAM with its source
                               (.wslconfig memory= or the WSL default), the CPU/RAM
-                              details and the values typed for this computer
+                              details completed by the values typed for this computer
   machine_prompt.py           MachinePrompt -- this computer's entry on the GUI side:
                               opens the details window, asks once per entry after the
                               Benchmark rows load, reports a broken file
