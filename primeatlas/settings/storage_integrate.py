@@ -40,6 +40,7 @@ from ..core.storage import (
 )
 from .delete_manager import FloorWiper
 from . import floor_meta
+from ..core import machines_file
 
 
 def list_external_floors(external_path):
@@ -281,10 +282,13 @@ def integrate_floor(destination_path, external_path, base_exponent,
         destination_path,
         floor_meta.benchmark_purpose_rows(floor_meta.read_benchmark_log_rows(external_path),
                                           base_exponent))
+    # The computers those rows name (a broken file on either side changes nothing).
+    result_machines = machines_file.merge_file_into(destination_path, external_path)
 
     if bumped_file_count > 0:
         dest_cache = load_totals_cache(destination_path)
         bump_floor_total(dest_cache, base_exponent, bumped_count, bumped_file_count, bumped_bytes)
         save_totals_cache(destination_path, dest_cache)
 
-    return {"copied_windows": copied_windows, "copied_hits": copied_hits, "cancelled": cancelled}
+    return {"copied_windows": copied_windows, "copied_hits": copied_hits, "cancelled": cancelled,
+            "machines": result_machines}

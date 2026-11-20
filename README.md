@@ -1399,6 +1399,19 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   cpu_dynamic.py                WSL_CPUS -- the CPU count WSL reports, read once at
                               startup in the background and refreshed by each launch
                               and the About tab's read; tells every ThreadsField
+  hardware_details.py           CPU/RAM details by one hidden PowerShell Get-CimInstance
+                              call, no admin: CPU model, maker, family, cores,
+                              threads, base clock, L2/L3; RAM size, modules, type,
+                              configured MT/s; xmp_hint() (speed above JEDEC); no
+                              serial numbers (unitTests/test_hardware_details.py)
+  hardware_dynamic.py           DETAILS -- those details, read once at startup in the
+                              background, refreshed by the About tab's read
+  machines_file.py              benchmark_machines.json at the storage root: per
+                              machine_id a history of entries (since, auto details,
+                              typed values, asked); record(), set_manual(),
+                              entry_for(), merge() for backups; atomic writes, a
+                              broken file is never overwritten
+                              (unitTests/test_machines_file.py, test_machines_backup.py)
   widgets.py                    small generic tkinter helpers (e.g. FlowRow) with no
                               application-specific state; disable_notebook_wheel()
                               keeps the mouse wheel from switching notebook tabs
@@ -2219,14 +2232,23 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               description, author with e-mail/GitHub/license links,
                               related projects, "This computer" (read in the
                               background when the tab is first shown, Refresh and copy
-                              glyphs, the WSL RAM limit row), and NOTICE.md read-only
+                              glyphs, the WSL RAM limit row, Fill in details), and
+                              NOTICE.md read-only
   system_info.py              the hardware probe: Windows (core/windows_hardware.py),
                               one wsl.exe call for distro, kernel, nproc, MemTotal and
                               MemAvailable, and [wsl2] memory=/processors= of
                               %UserProfile%\.wslconfig; unreadable values are None
   system_info_text.py         "This computer" lines: Windows, WSL and the WSL RAM
                               limit as a share of Windows RAM with its source
-                              (.wslconfig memory= or the WSL default)
+                              (.wslconfig memory= or the WSL default), the CPU/RAM
+                              details and the values typed for this computer
+  machine_prompt.py           MachinePrompt -- this computer's entry on the GUI side:
+                              opens the details window, asks once per entry after the
+                              Benchmark rows load, reports a broken file
+                              (unitTests/test_machine_details.py)
+  machine_details_window.py   MachineDetailsWindow -- the values Windows cannot read
+                              (architecture, release year, turbo, RAM CL, XMP/EXPO)
+                              with a how-to and a JEDEC hint; Save / Cancel
   wslconfig_edit.py           changes the WSL RAM limit: proposed limit (Windows RAM
                               minus max(3 GiB, 25 %)), range from WSL's default (half
                               the RAM) to the RAM, [wsl2] memory= set with the rest

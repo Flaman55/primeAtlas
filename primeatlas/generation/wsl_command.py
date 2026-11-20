@@ -2,7 +2,9 @@
 wsl_command.py -- the Windows-to-WSL launch layer every Generation run goes through:
 Windows-to-WSL path translation, per-run log/exit file allocation under .generation_logs/,
 the `wsl.exe -e bash -c "... > log 2>&1; echo $? > exit"` wrapper with its environment
-prefix, and the console-less Popen keyword arguments.
+prefix, and the console-less Popen keyword arguments. Each launch also records this computer
+in the storage's benchmark_machines.json (core.machines_file), so the run's benchmark row can be
+read with the hardware it ran on.
 
 Every WSL-launching function takes an explicit `portal_folder` argument: the storage path
 can change at runtime (PortalBrowserApp's _set_portal_folder rebinds its own module
@@ -16,7 +18,7 @@ import time
 
 import run_load
 
-from ..core import cpu_load, windows_hardware
+from ..core import cpu_load, hardware_dynamic, machines_file, windows_hardware
 
 
 _WINDOWS_DRIVE_PATH_RE = re.compile(r'^([A-Za-z]):[\\/](.*)$')
@@ -65,8 +67,18 @@ def launch_context():
     return windows_hardware.this_machine_id(), cpu_load.busy_before_launch()
 
 
+def record_machine(portal_folder, machine_id):
+    """Records this computer's known details (core.hardware_dynamic) in the storage's
+    benchmark_machines.json. Never stops a launch: no details yet, a broken file (left as it
+    is; the app reports it when the Benchmark rows load) or a write error records nothing."""
+    try:
+        machines_file.record(portal_folder, machine_id, hardware_dynamic.DETAILS)
+    except (machines_file.MachinesFileCorrupt, OSError):
+        pass
+
+
 def _run_load_env(windows_log_path, run_context):
-    machine_id, before = launch_context() if run_context is None else run_context
+    machine_id, before = run_context
     env = [(run_load.LOAD_FILE_ENV, windows_path_to_wsl(run_load_path(windows_log_path)))]
     if machine_id:
         env.append((run_load.MACHINE_ID_ENV, machine_id))
@@ -108,6 +120,8 @@ def build_wsl_logged_command(argv, windows_log_path, windows_exit_path, portal_f
     run_context: (machine id, busy share before the launch), launch_context() when None. The
     command names both when known and always the run's load file (run_load.py), which the
     engines copy into their benchmark_log.csv row."""
+    run_context = launch_context() if run_context is None else run_context
+    record_machine(portal_folder, run_context[0])
     log_wsl = windows_path_to_wsl(windows_log_path)
     exit_wsl = windows_path_to_wsl(windows_exit_path)
     inner = " ".join(shlex.quote(str(t)) for t in argv)

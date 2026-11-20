@@ -11,8 +11,9 @@ harmless, and the test's timing no longer depends on the size of the real storag
 
 The free-RAM probe of the Generation tab (time_simulation_controls) returns None and the CPU
 probe (wsl_resources.estimate_wsl_available_cpu_count, read at startup and at a launch with
-workers Max) FAKE_WSL_CPUS, so no test starts wsl.exe; a test that needs another reading
-replaces them after this. AppSettings.save() is
+workers Max) FAKE_WSL_CPUS, so no test starts wsl.exe; the CPU/RAM details read
+(core.hardware_details.read_hardware_details) knows nothing, so no test starts PowerShell; a
+test that needs another reading replaces them after this. AppSettings.save() is
 replaced by a no-op, so the redirected storage_path and any setting
 a test changes never reach primeatlas/locales/app_settings.json. A test that counts
 saves replaces save() again after this. The remembered-fields store
@@ -61,6 +62,8 @@ def isolate_app(portal=None, prefix="primeatlas_test_portal_"):
     time_simulation_controls.estimate_free_ram_bytes = lambda **_k: None
     from primeatlas.generation import wsl_resources
     wsl_resources.estimate_wsl_available_cpu_count = lambda *_a, **_k: FAKE_WSL_CPUS
+    from primeatlas.core import hardware_details
+    hardware_details.read_hardware_details = lambda *_a, **_k: hardware_details.HardwareDetails()
     from primeatlas.core import number_format, number_format_dynamic
     number_format_dynamic.STYLE = number_format.DEFAULT_STYLE
     app_dynamic.APP_SETTINGS.save = lambda: None

@@ -53,6 +53,7 @@ import window_sharding
 
 from .manifest import FloorSnapshot, ConstellationSnapshot, _save_json_atomic, _load_json_best_effort
 from . import floor_meta
+from ..core import machines_file
 from floor_meta_store import row_key
 
 # Used ONLY to pick a shard for a window being restored onto the live side (see
@@ -390,6 +391,10 @@ def copy_floor_increment(storage_path, destination_root, base_exponent,
         floor_meta.merge_rows_into_floor_meta(
             destination_root, base_exponent, live_meta["benchmark_rows"])
     _backup_benchmark_rows(storage_path, destination_root, base_exponent)
+    # The computers of the benchmark rows, at the backup root: a union like the rows; a
+    # broken backup copy is kept aside and rewritten from the live file.
+    result_machines = machines_file.merge_file_into(destination_root, storage_path,
+                                                    replace_broken_target=True)
 
     existing_meta = load_full_backup_meta(destination_root, base_exponent)
     if copied_windows or copied_hits or existing_meta is None:
@@ -404,7 +409,8 @@ def copy_floor_increment(storage_path, destination_root, base_exponent,
         }
         _save_json_atomic(_meta_path(destination_root, base_exponent), new_meta)
 
-    return {"copied_windows": copied_windows, "copied_hits": copied_hits, "cancelled": cancelled}
+    return {"copied_windows": copied_windows, "copied_hits": copied_hits, "cancelled": cancelled,
+            "machines": result_machines}
 
 
 def plan_floor_restore(storage_path, destination_root, base_exponent):
@@ -516,9 +522,11 @@ def restore_floor_from_full_backup(storage_path, destination_root, base_exponent
             storage_path, base_exponent, backup_meta["benchmark_rows"])
     floor_meta.merge_rows_into_benchmark_log(
         storage_path, load_backup_benchmark_rows(destination_root, base_exponent))
+    # A broken live file is never overwritten (kept as it is, a copy aside).
+    result_machines = machines_file.merge_file_into(storage_path, destination_root)
 
     return {"restored_windows": restored_windows, "restored_hits": restored_hits,
-            "cancelled": cancelled}
+            "cancelled": cancelled, "machines": result_machines}
 
 
 def delete_full_backup_floor(destination_root, base_exponent):

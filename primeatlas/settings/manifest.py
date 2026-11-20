@@ -29,6 +29,7 @@ import storage_kinds
 import window_sharding
 
 from . import floor_meta
+from ..core import machines_file
 
 _FLOOR_DIR_RE = re.compile(r"^10p(\d+)$")
 _SOURCE_WINDOW_RE = re.compile(r"^PRIME_WINDOW_10p\d+_off_(\d+)(M)?\.bin$")
@@ -227,14 +228,18 @@ class BackupManifest:
     """Full snapshot: every floor's FloorSnapshot + ConstellationSnapshot, plus a copy of
     benchmark_log.csv's raw text (small -- a few hundred rows even after months of use --
     safe to embed directly in the manifest JSON rather than as a separate file to keep
-    track of)."""
+    track of), and the computers those rows name (machines: benchmark_machines.json's
+    {machine_id: [entry]}, None when the storage had no readable file or the backup is older
+    than the field)."""
 
-    def __init__(self, timestamp_utc, storage_path, floors, constellations, benchmark_csv_text):
+    def __init__(self, timestamp_utc, storage_path, floors, constellations, benchmark_csv_text,
+                 machines=None):
         self.timestamp_utc = timestamp_utc
         self.storage_path = storage_path
         self.floors = {p.base_exponent: p for p in floors}
         self.constellations = {c.base_exponent: c for c in constellations}
         self.benchmark_csv_text = benchmark_csv_text
+        self.machines = machines
 
     @property
     def name(self):
@@ -247,6 +252,7 @@ class BackupManifest:
             "floors": [p.to_dict() for p in self.floors.values()],
             "constellations": [c.to_dict() for c in self.constellations.values()],
             "benchmark_csv_text": self.benchmark_csv_text,
+            "machines": self.machines,
         }
 
     @classmethod
@@ -256,6 +262,7 @@ class BackupManifest:
             [FloorSnapshot.from_dict(p) for p in data.get("floors", [])],
             [ConstellationSnapshot.from_dict(c) for c in data.get("constellations", [])],
             data.get("benchmark_csv_text", ""),
+            data.get("machines"),
         )
 
     @classmethod
@@ -285,7 +292,11 @@ class BackupManifest:
                     csv_text = f.read()
             except OSError:
                 csv_text = ""
-        return cls(timestamp, storage_path, floors, constellations, csv_text)
+        try:
+            machines = machines_file.load(storage_path) or None
+        except (machines_file.MachinesFileCorrupt, OSError):
+            machines = None
+        return cls(timestamp, storage_path, floors, constellations, csv_text, machines)
 
     def restore_floor_metadata(self, storage_path):
         """Writes back floor_meta.json rows (merged, not overwritten -- see
