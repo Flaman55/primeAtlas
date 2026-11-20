@@ -7,9 +7,9 @@ a PDF report.
 
 | Part | Files |
 |---|---|
-| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window), `benchmark_line_colors.py` (a legend entry's color menu), `benchmark_view_state.py` (the view kept across restarts, `view_store.py`; the axis toggles), `benchmark_table_copy.py` (Ctrl+C on the run table), `benchmark_table_layout.py` (the table's heading row and column widths) |
+| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window), `benchmark_line_colors.py` (a legend entry's color menu), `benchmark_view_state.py` (the view kept across restarts, `view_store.py`; the axis toggles), `benchmark_table_copy.py` (Ctrl+C on the run table), `benchmark_table_layout.py` (the table's heading row and column widths), `computer_cell.py` (the computer cell as a link) and `computer_window.py` (the Computer window) |
 | Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_chart.js` (the interactive HTML), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
-| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (the dash of a missing value), `table_columns.py` (the run table's columns), `table_copy.py` (the table's selection as clipboard text), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `line_colors.py` (each engine's line color), `chart_pdf.py`, `reference_points.py` |
+| Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (the dash of a missing value), `table_columns.py` (the run table's columns), `table_copy.py` (the table's selection as clipboard text), `computer_names.py` (a run's computer: entry, cell, filter value), `computer_table.py` (a computer's entries as a table and as CSV), `computer_pdf.py` (the PDF's Computers section), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `line_colors.py` (each engine's line color), `chart_pdf.py`, `reference_points.py` |
 
 ## Contract
 
@@ -63,7 +63,7 @@ whole-run chart's value; numbers / `total_seconds` for a row without it), run n/
 verification after a pt1 run (the P line's value) and the speed it costs (that speed less run
 n/s; blank for other rows), time (session, else the
 run's), s/window (session, else the run's), numbers (`10^10`), windows (`1000 (0-999)`); purpose,
-status (blank = completed), threads (`2x24 thr, write 4`), computer (`machine_id`), CPU before and
+status (blank = completed), threads (`2x24 thr, write 4`), computer (below), CPU before and
 CPU during (`cpu_busy_before_pct`, `cpu_busy_during_pct`, shown with `%`); the phases (sieve, sieve with startup,
 write, write MB/s, verify: `proof_seconds` when the row has one, else `verify_seconds`, peak
 RAM); the results (primes, pi(L), L). A log column that
@@ -165,6 +165,9 @@ kept, further clicks add or remove values, removing the last one or clicking All
 its value is selected in every filtered dimension; the kept runs are then reduced to one point
 per line and x (see Points), so one width compares every engine on that width. The floor dimension
 lists the floors of the log ("28"), so floors 27-29 alone compare on the width axis.
+The computer dimension's values are `computer_names.filter_label()`: the CPU, the RAM and the
+machine_id's start (`Ryzen 9 5900X · 64.0 GiB DDR4-3600 (3f9a0c)`), so a RAM change on one
+computer is a value of its own; the id alone for an id without an entry.
 The choices scroll (a `ScrollablePage`) once they do not fit the window's height; Clear and
 Close stay under them at any height, and the window opens within the screen.
 Changes apply at once;
@@ -194,7 +197,23 @@ run table's four tables (`table_columns.report_tables()`), every cell escaped; t
 `<div class="primeatlas-benchmark">` whose style rules are all scoped to that class; like the PDF,
 the HTML names the filter under the title, the sieve measure over the sieve charts and the floors of
 mixed widths over a page's charts (`report_mixed_note()`). CSV writes the kept runs in the run
-table's columns (`table_columns.EXPORT_COLUMNS`).
+table's columns (`table_columns.EXPORT_COLUMNS`) and, beside them, `<name>_computers.csv`: one
+line per entry of each computer of those runs (`computer_table.computers_csv()`).
+
+Computer: on reload the tab reads the storage's `benchmark_machines.json` (`core/machines_file.py`;
+a missing or broken file reads as no entries) and `computer_names.annotate()` gives every row the
+entry valid at its run time (`_computer_entry`, not a log column). The run table's computer cell is
+the short CPU name and the id's first 6 characters (`Ryzen 9 5900X (3f9a0c)`), the id alone
+without an entry or a CPU name, blank without `machine_id`; the CSV writes the same text. The hand
+cursor marks the cell of a run with a `machine_id`; a click opens the Computer window
+(`computer_cell.py`, `computer_window.py`, read-only, the file read at the click): a column per
+entry of the history headed by its `since`, a row per field, or a line saying the file has no data
+of that id. One window at a time; another computer's cell shows that one instead. The HTML page and
+snippet make the cell a link to a "Computers" section after the tables, a table per computer of
+the kept runs under its anchor (`computer_table.anchor()`); the PDF does the same with link
+annotations to named destinations (`pdf_writer.Link`, `pdf_writer.Anchor`, `computer_pdf.py`), a
+computer that does not fit the rest of a page starting the next one. The time model still matches
+runs by `machine_id` (`generation/time_model.py`).
 
 The HTML page and snippet are interactive (`report_html.py`, `report_chart.js`, ADR 0007, 0008). They
 carry the runs the tab's filter keeps (All everywhere exports the whole log): per run its floor and
@@ -230,12 +249,13 @@ None of its own.
 `test_benchmark_actual_range`,
 `test_benchmark_run_status`, `test_benchmark_main_compatibility`, `test_benchmark_log_schema`,
 `test_benchmark_line_names`, `test_benchmark_auto_reload`, `test_benchmark_filter`,
+`test_benchmark_computers`,
 `test_benchmark_sieve_measure`, `test_benchmark_proof_rows`, `test_orchestrator_verify_after_run`; `test_orchestrator_sieve_wall`
 (prime-sieve).
 
 ## Known gaps
 
-- `benchmark_tab.py` has 848 lines; a fourth chart needs the three redraw methods folded into
+- `benchmark_tab.py` has 888 lines; a fourth chart needs the three redraw methods folded into
   one chart table first.
 - The chart layout exists twice, `chart_pdf.chart_ops()` and its port in `report_chart.js`; the
   parity test in `test_benchmark_report_html` holds them together (ADR 0007).

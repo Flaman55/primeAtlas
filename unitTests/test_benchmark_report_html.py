@@ -30,7 +30,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation"
 
 from primeatlas.benchmark import chart_filter, chart_view, report_export, report_html  # noqa: E402
 from primeatlas.benchmark.benchmark import benchmark_series, report_chart_pages  # noqa: E402
-from primeatlas.benchmark import chart_points, chart_series  # noqa: E402
+from primeatlas.benchmark import chart_points, chart_series, table_columns  # noqa: E402
 from primeatlas.benchmark.chart_svg import chart_svg  # noqa: E402
 from primeatlas.core.i18n import Translator  # noqa: E402
 
@@ -174,9 +174,8 @@ class DataTests(unittest.TestCase):
         visible = re.findall(r'<tr data-run="(\d+)">', page)
         hidden = re.findall(r'<tr data-run="(\d+)" hidden>', page)
         self.assertEqual(hidden, [], "no dropped run hidden in the tables")
-        self.assertEqual(len(visible), len(kept) * page.count("<h2>"))
+        self.assertEqual(len(visible), len(kept) * len(table_columns.report_tables()))
         self.assertTrue(all(kept[int(i)]["engine"] == "v6" for i in visible))
-        self.assertTrue(page.count("<h2>"))
         whole = report_export.render("html", FIELDNAMES, rows, translator=Translator("en"),
                                      **OPTIONS)
         whole_data = json.loads(re.search(r'class="pa-data">(.*?)</script>', whole, re.S).group(1))

@@ -10,11 +10,13 @@ sieve charts and, over a page's charts, the floors where they set points of diff
 widths. The charts are chart_svg.chart_svg() drawings, the same layout as the PDF's; the
 tables are the tab's run table (table_columns.report_tables()) in its four groups, each led
 by the floor, the run and the engine, with the tab's headers, every cell in full and
-HTML-escaped.
+HTML-escaped. A run's computer cell links to its computer in the "Computers" section after
+the tables (computer_table.py: a table per computer of the kept runs, from `machines`).
 
   - csv: the kept runs in the run table's columns (table_columns.EXPORT_COLUMNS: the floor,
     the run, then the tab's columns), column keys as the header and raw values (an empty
     cell for a value the run lacks); benchmark_log.csv itself keeps every logged column;
+    export() also writes <name>_computers.csv beside it (computer_table.computers_csv());
   - svg: every report chart stacked in one SVG image;
   - html: a UTF-8 page with a title, the charts inline and the tables;
   - snippet: the page's content as one <div class="primeatlas-benchmark">, with a style
@@ -30,10 +32,12 @@ runs.
 """
 import csv
 import datetime
+import os
 from html import escape
 
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
-from . import chart_filter, chart_points, report_html, sieve_measure, table_columns
+from . import (chart_filter, chart_points, computer_table, report_html, sieve_measure,
+               table_columns)
 from .benchmark import (report_chart_pages, report_chart_series,
                         report_mixed_note, report_references)
 from .chart_series import axis_pins
@@ -109,6 +113,34 @@ def _svg_report(charts):
     return "".join(parts)
 
 
+def _cell_html(row, column, t):
+    text = escape(table_columns.shown(row, column, t))
+    machine_id = str(row.get("machine_id") or "").strip()
+    if column == "machine" and machine_id:
+        return f'<a href="#{computer_table.anchor(machine_id)}">{text}</a>'
+    return text
+
+
+def _computers_html(rows, machines, t):
+    """The Computers section: a table per computer of `rows`, under its anchor."""
+    parts = [f"<h2>{escape(t('computer.section_title'))}</h2>"]
+    for machine_id in computer_table.computers_in(rows):
+        history = machines.get(machine_id) or []
+        parts.append(f'<h3 id="{computer_table.anchor(machine_id)}">'
+                     f"{escape(computer_table.heading(machine_id, history, t))}</h3>")
+        shown = computer_table.table(history, t)
+        if shown is None:
+            parts.append(f"<p>{escape(t('computer.no_data'))}</p>")
+            continue
+        headers, body = shown
+        parts.append("<table><thead><tr>" + "".join(f"<th>{escape(h)}</th>" for h in headers)
+                     + "</tr></thead><tbody>"
+                     + "".join("<tr>" + "".join(f"<td>{escape(v)}</td>" for v in line)
+                               + "</tr>" for line in body)
+                     + "</tbody></table>")
+    return "".join(parts)
+
+
 def _tables_html(fieldnames, rows, t):
     """The tables of `rows` (data-run: a row's index in `rows`, so the page's script hides the
     runs its filter drops); a value a run lacks is table_cells.MISSING."""
@@ -120,13 +152,14 @@ def _tables_html(fieldnames, rows, t):
                      + "</tr></thead><tbody>")
         for i, row in enumerate(rows):
             parts.append(f'<tr data-run="{i}">'
-                         + "".join(f"<td>{escape(table_columns.shown(row, c, t))}</td>"
+                         + "".join(f"<td>{_cell_html(row, c, t)}</td>"
                                    for c in columns) + "</tr>")
         parts.append("</tbody></table>")
     return "".join(parts)
 
 
-def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_options):
+def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_options,
+             machines):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     kept = chart_filter.apply(rows, selection)
     floors = len({row.get("base_exponent") for row in kept})
@@ -149,19 +182,21 @@ def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_opti
             f"<h1>{escape(t('bench.pdf_title'))}</h1>"
             f'<p class="pa-subtitle">{escape(subtitle)}</p><div class="pa-controls"></div>'
             + charts
-            + f'<div class="tables">{_tables_html(fieldnames, kept, t)}</div>'
+            + f'<div class="tables">{_tables_html(fieldnames, kept, t)}'
+            + f"{_computers_html(kept, machines, t)}</div>"
             + report_html.data_script(data) + report_html.chart_script() + "</div>")
 
 
 def render(kind, fieldnames, rows, translator=None, sieve_points=None, references=False,
            log_y=False, hidden_lines=None, y_pins=None, filter_note="",
            measure=sieve_measure.DEFAULT, selection=None, x_view=None, y_views=None,
-           zoom_levels=None, point_views=None):
+           zoom_levels=None, point_views=None, machines=None):
     """The report in `kind` (one of KINDS) as text. rows: the log's rows; selection: the
     tab's filter (chart_filter.apply()), None for every run; x_view/y_views: the tab's zoom
     (chart_view.py), None for the whole charts; zoom_levels: their notch levels for the
     interactive page (report_html.report_data()); point_views: the tab's x axis and point
-    choices (benchmark.render_benchmark_pdf())."""
+    choices (benchmark.render_benchmark_pdf()); machines: machines_file.load() for the
+    Computers section, None for none."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     selection = selection or {}
     kept = chart_filter.apply(rows, selection)
@@ -188,7 +223,7 @@ def render(kind, fieldnames, rows, translator=None, sieve_points=None, reference
                        dict(references=references, measure=measure, log_y=log_y,
                             hidden_lines=hidden_lines, y_pins=y_pins, x_view=x_view,
                             y_views=y_views, zoom_levels=zoom_levels, point_views=point_views,
-                            measure_note=sieve_note))
+                            measure_note=sieve_note), machines or {})
     if kind == "snippet":
         return content + "\n"
     if kind == "html":
@@ -198,8 +233,22 @@ def render(kind, fieldnames, rows, translator=None, sieve_points=None, reference
     raise ValueError(f"unknown report kind {kind!r}")
 
 
+def computers_path(path):
+    stem, extension = os.path.splitext(path)
+    return f"{stem}_computers{extension or '.csv'}"
+
+
 def export(kind, path, fieldnames, rows, **options):
-    """Writes the report in `kind` to `path` (UTF-8); options: see render()."""
+    """Writes the report in `kind` to `path` (UTF-8), for csv also the computers of the kept
+    runs to computers_path(); returns the written paths. options: see render()."""
     text = render(kind, fieldnames, rows, **options)
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(text)
+    if kind != "csv":
+        return [path]
+    kept = chart_filter.apply(rows, options.get("selection") or {})
+    second = computers_path(path)
+    with open(second, "w", encoding="utf-8", newline="") as f:
+        f.write(computer_table.computers_csv(computer_table.computers_in(kept),
+                                             options.get("machines") or {}))
+    return [path, second]

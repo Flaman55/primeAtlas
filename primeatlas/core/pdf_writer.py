@@ -19,11 +19,21 @@ Courier, Courier-Bold), so no font embedding is needed. WinAnsiEncoding (the def
 for these fonts) doesn't cover Polish diacritics -- static labels drawn via these helpers
 stick to plain ASCII; see _pdf_ascii_fold()'s own docstring for how callers handle that.
 
+A page's list may also hold Link and Anchor items besides operator strings: an Anchor names a
+place on its page (a named destination), a Link makes a rectangle of its page jump to the
+Anchor of that name (a link annotation). A Link whose name no page anchors is left out.
+
 Pure logic, no tkinter dependency -- exercisable without a display, same as every
 non-GUI module in this package (the tkinter code lives in the tab, section and widget
 modules).
 """
 import math
+from collections import namedtuple
+
+# rect: (x, y, width, height) in points; dest: the name of an Anchor.
+Link = namedtuple("Link", "rect dest")
+# y: the top of the anchored place on its page, in points.
+Anchor = namedtuple("Anchor", "name y")
 
 
 def _pdf_escape(s):
@@ -34,7 +44,7 @@ _PDF_ASCII_FOLD_MAP = str.maketrans({
     "ą": "a", "Ą": "A", "ć": "c", "Ć": "C", "ę": "e", "Ę": "E",
     "ł": "l", "Ł": "L", "ń": "n", "Ń": "N", "ó": "o", "Ó": "O",
     "ś": "s", "Ś": "S", "ź": "z", "Ź": "Z", "ż": "z", "Ż": "Z",
-    "\u2014": "-", "\u2013": "-",
+    "\u2014": "-", "\u2013": "-", "\u00b7": "-",
 })
 
 
@@ -118,20 +128,36 @@ def _write_pdf(path, pages, page_size=(841.89, 595.28)):
 
     pages_id = alloc(None)  # backfilled below, once every page object id is known
     page_ids = []
+    anchored = {item.name for ops in pages for item in ops if isinstance(item, Anchor)}
+    dests = {}
     for ops in pages:
+        links = [item for item in ops if isinstance(item, Link) and item.dest in anchored]
+        annots = ""
+        if links:
+            ids = [alloc(f"<< /Type /Annot /Subtype /Link /Rect [{x:.2f} {y:.2f} {x + w:.2f} "
+                         f"{y + h:.2f}] /Border [0 0 0] /Dest /{link.dest} >>".encode("ascii"))
+                   for link in links for x, y, w, h in [link.rect]]
+            annots = " /Annots [" + " ".join(f"{oid} 0 R" for oid in ids) + "]"
+        anchors = [item for item in ops if isinstance(item, Anchor)]
+        ops = [item for item in ops if isinstance(item, str)]
         content = "\n".join(ops).encode("ascii", errors="replace")
         content_id = alloc(
             f"<< /Length {len(content)} >>\nstream\n".encode("ascii") + content + b"\nendstream")
         font_res = " ".join(f"/{name} {oid} 0 R" for name, oid in font_ids.items())
         page_id = alloc(
             (f"<< /Type /Page /Parent {pages_id} 0 R /MediaBox [0 0 {width:.2f} {height:.2f}] "
-             f"/Resources << /Font << {font_res} >> >> /Contents {content_id} 0 R >>"
+             f"/Resources << /Font << {font_res} >> >> /Contents {content_id} 0 R{annots} >>"
              ).encode("ascii"))
         page_ids.append(page_id)
+        for anchor in anchors:
+            dests.setdefault(anchor.name, f"[{page_id} 0 R /XYZ 0 {anchor.y:.2f} null]")
 
     kids = " ".join(f"{pid} 0 R" for pid in page_ids)
     objects[pages_id] = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>".encode("ascii")
-    catalog_id = alloc(f"<< /Type /Catalog /Pages {pages_id} 0 R >>".encode("ascii"))
+    named = ""
+    if dests:
+        named = " /Dests << " + " ".join(f"/{n} {d}" for n, d in dests.items()) + " >>"
+    catalog_id = alloc(f"<< /Type /Catalog /Pages {pages_id} 0 R{named} >>".encode("ascii"))
 
     buf = bytearray(b"%PDF-1.4\n")
     offsets = {}

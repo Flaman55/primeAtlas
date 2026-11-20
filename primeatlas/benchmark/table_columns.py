@@ -14,8 +14,8 @@ else time / windows), the numbers covered (line_names.width_label()), the window
 (0-999)": windows_written, or the range's count for a run that writes none); then what
 kind of run it was: purpose (row_purpose(): storage or benchmark), status (blank = completed),
 threads (line_names.threads_label(): instances, sieve and write threads), the computer
-(machine_id) and how busy its whole CPU was before and during the run (run_load.py, in %);
-then the phases:
+(computer_names.cell_label(): the CPU and the machine_id's start) and how busy its whole
+CPU was before and during the run (run_load.py, in %); then the phases:
 sieve, sieve with startup, write, write MB/s, verify (the verification after a pt1 run when
 the row has one, else verify_seconds), peak RAM; last the results: primes, pi(L), L.
 
@@ -36,7 +36,7 @@ import math
 import benchmark_log_schema as schema
 
 from ..core import number_format
-from . import line_names, proof_rows, table_cells
+from . import computer_names, line_names, proof_rows, table_cells
 from .benchmark import benchmark_sieve_count
 
 FLOOR, RUN, ENGINE = "floor", "run", "engine"
@@ -61,7 +61,7 @@ EXPORT_COLUMNS = KEY_COLUMNS + TREE_COLUMNS[1:]
 _COPIED = {"sieve_seconds": "sieve_seconds", "sieve_wall_seconds": "sieve_wall_seconds",
            "write_seconds": "write_seconds", "ram_mb": "max_child_rss_mb",
            "primes": "total_primes", "pi_l": "sieving_primes_count", "l_final": "l_final",
-           RUN: "run_timestamp_utc", FLOOR: "base_exponent", "machine": "machine_id",
+           RUN: "run_timestamp_utc", FLOOR: "base_exponent",
            "cpu_before": "cpu_busy_before_pct", "cpu_during": "cpu_busy_during_pct"}
 
 
@@ -198,6 +198,7 @@ _RAW = {
     "purpose": schema.row_purpose,
     "status": _status,
     "threads": line_names.threads_label,
+    "machine": computer_names.cell_label,
     "write_mbps": lambda row: _plain_number(write_mbps(row), 1),
 }
 

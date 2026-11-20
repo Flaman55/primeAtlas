@@ -55,8 +55,10 @@ class BenchmarkExport:
             filetypes=[filetype, (T("common.all_files"), "*.*")]) or None
 
     def _report_saved(self, title, path):
-        self.status.set(self.T("bench.status_saved", path=path))
-        messagebox.showinfo(title, self.T("bench.saved_dialog", path=path))
+        """path: the written file, or the list of written files."""
+        paths = [path] if isinstance(path, str) else list(path)
+        self.status.set(self.T("bench.status_saved", path=", ".join(paths)))
+        messagebox.showinfo(title, self.T("bench.saved_dialog", path="\n".join(paths)))
 
     def _export_benchmark_pdf(self):
         T = self.T
@@ -76,7 +78,8 @@ class BenchmarkExport:
         del options["zoom_levels"]   # the notch levels matter to the interactive page only
         render_benchmark_pdf(path, self._benchmark_growth_points, self._benchmark_fieldnames,
                              self._filtered_rows(), points2=self._benchmark_fair_spw_points,
-                             write_points=self._benchmark_write_mbps_points, **options)
+                             write_points=self._benchmark_write_mbps_points,
+                             machines=self._machines, **options)
 
     def _export_report(self, kind):
         """Writes the report as `kind` (report_export.KINDS) to a path the user picks."""
@@ -86,9 +89,10 @@ class BenchmarkExport:
         if not path:
             return
         try:
-            report_export.export(kind, path, self._benchmark_fieldnames, self._benchmark_rows,
-                                 selection=self._filter_selection, **self._view_options())
+            written = report_export.export(kind, path, self._benchmark_fieldnames,
+                                           self._benchmark_rows, selection=self._filter_selection,
+                                           machines=self._machines, **self._view_options())
         except Exception as exc:
             messagebox.showerror(title, T("bench.save_error", error=exc))
             return
-        self._report_saved(title, path)
+        self._report_saved(title, written)
