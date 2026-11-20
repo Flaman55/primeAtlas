@@ -52,7 +52,8 @@ class SingleTabsSectionMixin:
             self._scroll_body("benchmark_tab"), get_portal_folder=lambda: _dyn.PORTAL_FOLDER,
             status_var=self.status, translator=_dyn.TRANSLATOR,
             update_nav_controls=update_nav_controls,
-            theme_palette=self._palette)
+            theme_palette=self._palette,
+            on_rows_loaded=self.machine_prompt.after_rows)
         self.benchmark_tab_widget.pack(fill="both", expand=True)
 
     def _build_about_tab(self):
@@ -64,5 +65,6 @@ class SingleTabsSectionMixin:
             gen_tab = getattr(self, "generation_tab_widget", None)
             return running_jobs(gen_tab) if gen_tab is not None else []
         self.about_tab_widget = AboutTab(self._scroll_body("about_tab"), repo_root=_dyn.REPO_DIR,
-                                         translator=_dyn.TRANSLATOR, running_jobs=gen_jobs)
+                                         translator=_dyn.TRANSLATOR, running_jobs=gen_jobs,
+                                         machine_prompt=self.machine_prompt)
         self.about_tab_widget.pack(fill="both", expand=True)

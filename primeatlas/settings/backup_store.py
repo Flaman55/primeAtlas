@@ -10,6 +10,7 @@ import os
 import json
 
 from . import floor_meta
+from ..core import machines_file
 from .manifest import BackupManifest
 
 BACKUPS_SUBDIR = "_backups"
@@ -112,6 +113,16 @@ class BackupStore:
             f.write(manifest.benchmark_csv_text)
         os.replace(tmp_path, csv_path)
         return floor_meta.merge_rows_into_benchmark_log(self.storage_path, current)
+
+    def restore_machines(self, manifest):
+        """Merges the backup's computers into the storage's benchmark_machines.json, never
+        dropping an entry: "merged", "unchanged" (nothing new, or a backup without them) or
+        "broken" (the storage file is broken: left as it is, a copy aside)."""
+        try:
+            return machines_file.merge_into_storage(self.storage_path, manifest.machines)
+        except machines_file.MachinesFileCorrupt:
+            machines_file.preserve_corrupt(self.storage_path)
+            return "broken"
 
     def restore_floor_metadata(self, manifest):
         """Thin wrapper around BackupManifest.restore_floor_metadata() -- see that

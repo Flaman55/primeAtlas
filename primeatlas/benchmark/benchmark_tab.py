@@ -367,8 +367,11 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
                    BenchmarkViewState, BenchmarkTableCopy, BenchmarkTableLayout,
                    BaseTab):
     def __init__(self, parent, get_portal_folder, status_var, translator, update_nav_controls,
-                 theme_palette):
+                 theme_palette, on_rows_loaded=None):
         """
+        on_rows_loaded(rows): called with the log's rows after every reload (the app's
+        about.machine_prompt.MachinePrompt.after_rows).
+
         theme_palette: the CURRENT theme's color dict (primeatlas.core.theme.palette_for()'s
         return value, e.g. {"fg": ..., "tree_group_bg": ..., "tree_stat_bg": ..., ...}),
         passed in explicitly rather than read from a bare global -- same dependency-
@@ -383,6 +386,7 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self.status = status_var
         self._update_nav_controls = update_nav_controls
         self._theme_palette = theme_palette
+        self._on_rows_loaded = on_rows_loaded
         self._init_points()
         self._init_filter()
         self._init_chart_windows()
@@ -709,6 +713,8 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
             self.benchmark_tree.heading(col, text=self.T(table_columns.header_key(col)))
             self.benchmark_tree.column(col, anchor="center", stretch=False)
         self._rebuild_benchmark_tree()
+        if self._on_rows_loaded is not None:
+            self._on_rows_loaded(rows)
 
     def _rebuild_benchmark_tree(self):
         """Lists the runs the Filter window keeps (_filtered_rows()), grouped per floor; a

@@ -16,7 +16,7 @@ language, and NOTICE.md.
 | Updates and restart | `app_update.py`, `app_restart.py` |
 | First-run setup | `env_setup.py`, `env_setup_wizard.py` |
 | Component versions | `prime_sieve/env_versions.py` (WSL-side probe), `env_versions_view.py` (report text and warnings) |
-| About | `primeatlas/about/about_tab.py`, `system_info.py` (hardware probe), `system_info_text.py` (its lines), `wslconfig_edit.py` (changes `.wslconfig` memory=), `wsl_limit_row.py` (its row) |
+| About | `primeatlas/about/about_tab.py`, `system_info.py` (hardware probe), `system_info_text.py` (its lines), `wslconfig_edit.py` (changes `.wslconfig` memory=), `wsl_limit_row.py` (its row), `machine_prompt.py` + `machine_details_window.py` (the values typed for this computer) |
 
 ## Contract
 
@@ -47,6 +47,20 @@ first time the About page is selected (reading starts WSL, so the app launch nev
 on the Refresh glyph; the copy glyph copies the shown lines. The WSL RAM limit is WSL's MemTotal as a
 share of Windows RAM, with its source: `memory=` when set, else the WSL default (half the Windows RAM).
 A value that cannot be read shows as "unknown"; WSL that does not answer shows as not reachable.
+The read also takes the CPU/RAM details (`core.hardware_details`) into `core.hardware_dynamic`
+and shows a CPU line (base clock, L2/L3, family) and a RAM line (size, modules, type-speed), then
+the values typed for this computer from `benchmark_machines.json` ("not typed" for an empty one).
+
+Fill in details (`machine_prompt.MachinePrompt.open_details()`, one window at a time) records
+this computer's entry when the file has none and opens `MachineDetailsWindow`: architecture (text),
+release year (1970..2100), turbo MHz (100..10000) and RAM CL (1..100) as number fields, XMP/EXPO
+as blank/on/off with a hint when the configured speed is above JEDEC; a how-to names the maker's
+page, CPU-Z and Task Manager, and BIOS/UEFI only as an option for advanced users. Save stores
+the values (blank = None) and marks the entry asked; Cancel stores nothing. After every Benchmark
+reload `MachinePrompt.after_rows()` asks once per entry (Yes/No) when a row of this computer is
+there and the entry was not asked yet; both answers mark it asked, Yes opens the window. No entry
+and no details read yet: a message instead of the window. A broken file is never changed: a copy
+of it is kept and an error names it (once per session after a reload).
 
 Changing the WSL RAM limit (About → This computer, `wsl_limit_row.WslLimitRow` over
 `wslconfig_edit.py`): a whole-GB field (from WSL's own default, half the Windows RAM, up to the
@@ -94,7 +108,7 @@ present.
 
 `test_app_update`, `test_app_update_locks`, `test_app_restart`, `test_env_setup`, `test_delete_manager`,
 `test_delete_benchmarks`,
-`test_full_backup_hit_paging`, `test_storage_integrate`, `test_benchmark_rows_safety`, `test_dp_settings`,
+`test_full_backup_hit_paging`, `test_storage_integrate`, `test_benchmark_rows_safety`, `test_machines_backup`, `test_machine_details`, `test_dp_settings`,
 `test_primecount_settings_integration`, `test_env_versions`, `test_pseudosquares_settings`,
 `test_about_tab`, `test_system_info`, `test_wslconfig_edit`.
 

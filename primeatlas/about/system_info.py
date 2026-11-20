@@ -1,6 +1,6 @@
 """
 system_info.py -- what the About tab reads about the computer Atlas runs on: Windows
-(core.windows_hardware), WSL as the sieve sees it (distro, kernel, CPUs, MemTotal,
+(core.windows_hardware) with its CPU/RAM details (core.hardware_details), WSL as the sieve sees it (distro, kernel, CPUs, MemTotal,
 MemAvailable) and the [wsl2] limits of %UserProfile%\\.wslconfig.
 
 Every probe is best effort and needs no admin rights: a value that cannot be read is
@@ -12,6 +12,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 
+from primeatlas.core import hardware_details
 from primeatlas.core.windows_hardware import WindowsInfo, read_windows_info
 
 WSL_PROBE_TIMEOUT_S = 20
@@ -48,6 +49,7 @@ class SystemInfo:
     windows: WindowsInfo
     wsl: WslInfo  # None when WSL cannot be reached
     wslconfig: WslConfig
+    details: hardware_details.HardwareDetails = None  # None when not read
 
 
 def parse_size(text):
@@ -126,4 +128,6 @@ def read_wsl_info(timeout=WSL_PROBE_TIMEOUT_S):
 
 def read_system_info():
     """Everything at once; slow (starts WSL when it is not running), run it in the background."""
-    return SystemInfo(read_windows_info(), read_wsl_info(), read_wslconfig())
+    # Looked up at call time, so a test can replace the read.
+    return SystemInfo(read_windows_info(), read_wsl_info(), read_wslconfig(),
+                      hardware_details.read_hardware_details())

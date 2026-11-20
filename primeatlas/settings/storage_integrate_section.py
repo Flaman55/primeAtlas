@@ -17,7 +17,7 @@ from tkinter import ttk, messagebox, filedialog
 from ..core.widgets import HeightGrip
 from ..generation.generation_console import GenerationConsole
 from . import storage_integrate as si
-from ..core import background, number_format
+from ..core import background, machines_file, number_format
 
 
 class StorageIntegrateSection:
@@ -195,6 +195,9 @@ class StorageIntegrateSection:
             text = self.T("settings.storage_integrate_floor_done",
                            base_exponent=base_exponent,
                            windows=result["copied_windows"], hits=result["copied_hits"])
+            if result.get("machines") == "broken":
+                text += self.T("settings.machines_file_broken",
+                                      name=machines_file.FILE_NAME)
         self._storage_integrate_log(text + "\n")
 
     def _on_storage_integrate_job_finished(self, cancelled):

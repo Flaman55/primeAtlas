@@ -20,7 +20,7 @@ from tkinter import ttk, messagebox, filedialog
 from ..core.widgets import HeightGrip
 from ..generation.generation_console import GenerationConsole
 from . import full_backup as fb
-from ..core import background
+from ..core import background, machines_file
 
 
 class FullBackupSection:
@@ -269,6 +269,8 @@ class FullBackupSection:
             text = self.T("settings.full_backup_restore_floor_done",
                            base_exponent=base_exponent,
                            windows=result["restored_windows"], hits=result["restored_hits"])
+        if result and result.get("machines") == "broken":
+            text += self.T("settings.machines_file_broken", name=machines_file.FILE_NAME)
         self._full_backup_log(text + "\n")
 
     def _on_full_backup_job_finished(self, mode, cancelled):

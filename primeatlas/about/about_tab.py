@@ -5,9 +5,11 @@ Shows the app name with version_label() (release, merges since it and the checke
 commit) with a copy glyph that puts that version line on the clipboard, a short
 description, what the visualizations show, the author with e-mail and
 GitHub links, the license, the related projects, a "This computer" frame (Windows and WSL
-hardware with the WSL RAM limit, read in the background the first time the tab is shown and
-again on its Refresh glyph, with a copy glyph, and a row that changes the limit:
-wsl_limit_row.WslLimitRow, told which Generation jobs run by `running_jobs`), then two
+hardware with the WSL RAM limit, the CPU/RAM details and the values typed for this computer,
+read in the background the first time the tab is shown and again on its Refresh glyph, with
+a copy glyph, a row that changes the limit: wsl_limit_row.WslLimitRow, told which Generation
+jobs run by `running_jobs`, and a "Fill in details..." button opening `machine_prompt`'s
+window for the values Windows cannot read), then two
 read-only boxes: the CHANGELOG.md entries since the last release (newest first, in the UI
 language) with a link to the full file, and NOTICE.md (third-party components).
 
@@ -25,7 +27,7 @@ from tkinter.scrolledtext import ScrolledText
 from primeatlas.about import system_info
 from primeatlas.about.system_info_text import system_info_lines
 from primeatlas.about.wsl_limit_row import WslLimitRow
-from primeatlas.core import cpu_dynamic
+from primeatlas.core import cpu_dynamic, hardware_dynamic
 from primeatlas.core.background import run_in_background
 from primeatlas.core.base_tab import BaseTab
 from primeatlas.core.info_tip import InfoTip
@@ -41,10 +43,15 @@ REFRESH_GLYPH = "⟳"  # clockwise open circle arrow
 
 
 class AboutTab(BaseTab):
-    def __init__(self, parent, repo_root, translator, running_jobs=lambda: []):
+    def __init__(self, parent, repo_root, translator, running_jobs=lambda: [],
+                 machine_prompt=None):
         super().__init__(parent, translator)
         self._repo_root = repo_root
         self._running_jobs = running_jobs
+        self._machine_prompt = machine_prompt
+        self._system_info = None
+        if machine_prompt is not None:
+            machine_prompt.add_listener(self._after_machine_window)
         self.links = {}
         self._system_read = False
         self._build_widgets()
@@ -148,6 +155,10 @@ class AboutTab(BaseTab):
         self.wsl_limit = WslLimitRow(frame, T, running_jobs=lambda: self._running_jobs(),
                                      on_saved=self._read_system)
         self.wsl_limit.grid(row=1, column=0, columnspan=2, sticky="w", padx=4, pady=(0, 4))
+        self.machine_button = ttk.Button(frame, text=T("machine.button"),
+                                         command=self._open_machine_details)
+        if self._machine_prompt is not None:
+            self.machine_button.grid(row=2, column=0, sticky="w", padx=4, pady=(0, 4))
 
     def _read_system_once(self, notebook):
         page = notebook.select()
@@ -156,6 +167,25 @@ class AboutTab(BaseTab):
             self._system_read = True
             self._read_system()
 
+    def _show_system_lines(self):
+        """The last read's lines with this computer's typed values as they are now."""
+        T = self.T
+        if self._system_info is None:
+            self.system_text.configure(text=T("about.system_unknown"))
+            return
+        machine = (self._machine_prompt.current_entry()
+                   if self._machine_prompt is not None else None)
+        self.system_text.configure(
+            text="\n".join(system_info_lines(self._system_info, T, machine)))
+
+    def _open_machine_details(self):
+        self._machine_prompt.open_details()
+
+    def _after_machine_window(self):
+        """Saved values show at once, without reading the hardware again."""
+        if self.system_text.winfo_exists() and self._system_info is not None:
+            self._show_system_lines()
+
     def _read_system(self):
         T = self.T
         self.system_text.configure(text=T("about.system_reading"))
@@ -163,10 +193,10 @@ class AboutTab(BaseTab):
         def done(info, error):
             if not self.system_text.winfo_exists():
                 return
-            text = (T("about.system_unknown") if error is not None
-                    else "\n".join(system_info_lines(info, T)))
-            self.system_text.configure(text=text)
+            self._system_info = info if error is None else None
+            self._show_system_lines()
             if error is None:
+                hardware_dynamic.set_details(info.details)
                 self.wsl_limit.show(info)
                 if info.wsl is not None:
                     cpu_dynamic.set_wsl_cpus(info.wsl.cpus)

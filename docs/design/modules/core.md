@@ -8,6 +8,7 @@ app-wide widgets and the background coordinators for floor totals and search. GU
 | Part | Files |
 |---|---|
 | Settings and texts | `app_settings.py` (`AppSettings`), `i18n.py` (`Translator`), `locales/strings_en.json`, `locales/strings_pl.json` |
+| Computers | `hardware_details.py` (`read_hardware_details()`: one hidden PowerShell `Get-CimInstance` call, no admin: CPU model, maker, family text, cores, threads, base clock, L2/L3; RAM installed size, module count, type from SMBIOSMemoryType, the slowest configured speed; never serial or part numbers; `xmp_hint()`: the JEDEC maximum of the type when the configured speed is above it), `hardware_dynamic.py` (`DETAILS`, read once at startup in the background, refreshed by the About tab's read; a read with nothing known keeps known details), `machines_file.py` (`benchmark_machines.json`, see below) |
 | CPU count | `cpu_dynamic.py` (`WSL_CPUS`: the CPU count WSL reports, read once at startup in the background and refreshed by each launch's probe and the About tab's read; a failed probe keeps a known count; `set_wsl_cpus()` tells every ThreadsField) |
 | Remembered fields | `ui_state.py` (`remember()`), `ui_state_store.py` (`UiStateStore`, no tkinter), `ui_state_dynamic.py` (the app's store, `STORE`) |
 | Number format | `number_format.py` (`whole`, `decimal`: numbers shown to a person in the notation of the UI language or the one picked in Settings > General; `resolve`, `apply_saved`), `number_format_dynamic.py` (`STYLE`, set by `app_dynamic` and the renderer at startup) |
@@ -60,7 +61,7 @@ Theme, language, font scale and ScrollPad width live in `AppSettings`; texts in 
 `test_ui_settings`, `test_theme_readability`, `test_scroll_pad`, `test_scrollable_page`, `test_tree_scroll_to_top`,
 `test_settings_scroll`, `test_ui_state`, `test_ui_state_app`, `test_storage`, `test_search_worker`, `test_window_centering`, `test_pdf_table`,
 `test_number_text`, `test_number_field`, `test_number_field_coverage`, `test_number_fields_app`,
-`test_info_tip`, `test_system_info` (B), `test_cpu_load` (A-C, F).
+`test_info_tip`, `test_system_info` (B), `test_cpu_load` (A-C, F), `test_hardware_details`, `test_machines_file`.
 
 ## Number fields
 
@@ -108,3 +109,17 @@ live fields.
 ## Known gaps
 
 None.
+
+## Computers of the benchmark rows
+
+`machines_file.py` keeps `benchmark_machines.json` at the storage root: per `machine_id` a history
+of entries. An entry has `since` (in the log's `run_timestamp_utc` format, so the two compare as
+text), `auto` (the known `HardwareDetails`), `manual` (architecture, year, turbo_mhz, cl, xmp,
+typed by the person, None when not typed), `edited_at` and `asked`. Every GUI launch
+(`wsl_command.build_wsl_logged_command()`) records this computer: the first entry, a known value
+known only now fills the current one, a known value that changed (RAM swapped) starts a new entry
+carrying the typed values and asking again. `entry_for()` gives a run the entry recorded by its
+time (a run older than every entry gets the first). Writes are atomic; a file that is not this
+shape raises `MachinesFileCorrupt`, is never overwritten, and `preserve_corrupt()` keeps a copy
+next to it. `merge()` is the union of two files (the same machine and `since`: the later
+`edited_at` wins); backups, restores and storage integration use it, so no entry is lost.

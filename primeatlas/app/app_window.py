@@ -23,7 +23,9 @@ from primeatlas.app.settings_wiring import SettingsWiringMixin
 from primeatlas.app.single_tabs_section import SingleTabsSectionMixin
 from primeatlas.app.visualization_section import VisualizationSectionMixin
 from primeatlas.constellations.constellations_tree_coordinator import ConstellationsTreeCoordinator
-from primeatlas.core import cpu_dynamic, cpu_load, ui_state_dynamic
+from primeatlas.about.machine_prompt import MachinePrompt
+from primeatlas.core import (cpu_dynamic, cpu_load, hardware_details, hardware_dynamic,
+                             ui_state_dynamic)
 from primeatlas.core.background import run_in_background
 from primeatlas.core.app_icon import apply_tk_icon
 from primeatlas.core.totals_search_coordinator import TotalsSearchCoordinator
@@ -43,6 +45,9 @@ class PortalBrowserApp(ThemeMixin, PrimesSectionMixin, ConstellationsSectionMixi
         super().__init__()
         # The CPU load before a launch, named in every run's benchmark row (run_load.py).
         cpu_load.start_sampling()
+        # This computer's entry of benchmark_machines.json (the About tab and the Benchmark
+        # tab's question after its rows load).
+        self.machine_prompt = MachinePrompt(self, _dyn.T, lambda: _dyn.PORTAL_FOLDER)
         ui_state_dynamic.STORE.attach(self)
         apply_tk_icon(self)
         disable_notebook_wheel(self)
@@ -275,6 +280,11 @@ class PortalBrowserApp(ThemeMixin, PrimesSectionMixin, ConstellationsSectionMixi
         run_in_background(
             self, lambda _report: wsl_resources.estimate_wsl_available_cpu_count(),
             on_done=lambda count, _error: cpu_dynamic.set_wsl_cpus(count))
+        # The CPU/RAM details, once, for the benchmark rows' computers (core.hardware_dynamic);
+        # the About tab's read refreshes them. Looked up at call time, so a test can replace it.
+        run_in_background(
+            self, lambda _report: hardware_details.read_hardware_details(),
+            on_done=lambda details, _error: hardware_dynamic.set_details(details))
 
         # App self-update auto-check -- deferred several seconds past
         # startup (not run inline here) so a `git fetch` against GitHub -- a real

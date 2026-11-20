@@ -28,7 +28,7 @@ from .restore_job import (
     RestoreJob, restore_checkpoint_path, delete_extra_files,
     STATUS_RUNNING, STATUS_PAUSED,
 )
-from ..core import background
+from ..core import background, machines_file
 
 
 class RestoreSection:
@@ -201,6 +201,9 @@ class RestoreSection:
         # docstring for why this is safe to run now, before any window regeneration below.
         store.restore_floor_metadata(manifest)
         self._restore_log(self.T("settings.restore_metadata_restored", name=self._selected_backup_name))
+        if store.restore_machines(manifest) == "broken":
+            self._restore_log(self.T("settings.machines_file_broken",
+                                     name=machines_file.FILE_NAME))
         portal_folder = self.wsl["get_portal_folder"]()
         checkpoint_path = restore_checkpoint_path(portal_folder, self._selected_backup_name)
         job = RestoreJob.from_diff(self._selected_backup_name, self._diff_cache, checkpoint_path)

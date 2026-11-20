@@ -22,6 +22,13 @@ C. primeatlas/about/system_info_text.py: system_info_lines(info, T) names the OS
    unreachable WSL gives one line saying so and no limit line; unknown values read
    "unknown", never 0 or a made-up number. The computer's id (the machine_id of its
    benchmark rows) is shown too; the live probe reads windows_hardware.this_machine_id().
+D. system_info_lines(info, T, machine) with SystemInfo.details (core.hardware_details) adds
+   a CPU line (base clock in MHz, L2 and L3 in MB, the family text) and a RAM line (installed
+   size, module count, type-speed such as "DDR4-3600"); unknown parts read "unknown"; no
+   details (None or nothing known) adds neither line. With this computer's entry of
+   benchmark_machines.json (machine) a line lists the typed values (architecture, year,
+   turbo MHz, CL, XMP/EXPO on/off), "not typed" for each empty one; no entry: no such line.
+   SystemInfo built with three fields has details None.
 
 Usage:
     python unitTests/test_system_info.py
@@ -160,10 +167,57 @@ def _test_text():
               f"[{lang}] no share of an unknown Windows RAM ({unknown})")
 
 
+def _test_details_text():
+    print("\n--- D. details and typed values ---")
+    from primeatlas.about import system_info as si
+    from primeatlas.about.system_info_text import system_info_lines
+    from primeatlas.core import number_format
+    from primeatlas.core.hardware_details import HardwareDetails
+    from primeatlas.core.i18n import Translator
+    windows = si.WindowsInfo(os_name="W", cpu_model="Test CPU", cores=12, threads=24,
+                             ram_total=64 * GIB, ram_free=40 * GIB, machine_id="3f9a0c1d2e4b")
+    cfg = si.WslConfig(None, None, None)
+    details = HardwareDetails(cpu_name="Test CPU", cores=12, threads=24, base_mhz=3701,
+                              l2_kb=6144, l3_kb=65536,
+                              cpu_family="AMD64 Family 25 Model 33 Stepping 2",
+                              ram_bytes=64 * GIB, ram_type="DDR4", ram_mts=3600, ram_modules=4)
+    manual = {"architecture": "Zen 3", "year": 2020, "turbo_mhz": 4800, "cl": 16, "xmp": True}
+    entry = {"manual": manual}
+    check(si.SystemInfo(windows, None, cfg).details is None, "three fields: details None")
+    for lang in ("en", "pl"):
+        T = Translator(lang)
+        plain = system_info_lines(si.SystemInfo(windows, None, cfg), T)
+        lines = system_info_lines(si.SystemInfo(windows, None, cfg, details), T, entry)
+        text = "\n".join(lines)
+        check(len(lines) == len(plain) + 3, f"[{lang}] three more lines ({len(lines)})")
+        for needle in (number_format.whole(3701), "6 MB", "64 MB",
+                       "AMD64 Family 25 Model 33 Stepping 2", "64.0 GiB", "4", "DDR4-3600",
+                       "Zen 3", "2020", number_format.whole(4800), "16", T("machine.xmp_on")):
+            check(needle in text, f"[{lang}] shows {needle!r}")
+        check(not any(k in text for k in ("about.", "machine.", "{", "}")),
+              f"[{lang}] no raw keys ({text!r})")
+        empty = system_info_lines(si.SystemInfo(windows, None, cfg, details),
+                                  T, {"manual": {k: None for k in manual}})
+        check(empty[-1].count(T("about.system_not_typed")) == 5,
+              f"[{lang}] empty typed values read 'not typed' ({empty[-1]!r})")
+        off = system_info_lines(si.SystemInfo(windows, None, cfg, details), T,
+                                {"manual": dict(manual, xmp=False)})
+        check(T("machine.xmp_off") in off[-1], f"[{lang}] XMP off ({off[-1]!r})")
+        partial = system_info_lines(si.SystemInfo(windows, None, cfg, HardwareDetails(
+            cpu_name="Test CPU", ram_bytes=16 * GIB)), T)
+        ptext = "\n".join(partial[len(plain):])
+        check(len(partial) == len(plain) + 2 and T("about.system_unknown") in ptext
+              and "16.0 GiB" in ptext, f"[{lang}] unknown parts read unknown ({ptext!r})")
+        for none in (None, HardwareDetails()):
+            check(system_info_lines(si.SystemInfo(windows, None, cfg, none), T) == plain,
+                  f"[{lang}] details {none!r}: no extra line")
+
+
 def main():
     _test_parsers()
     _test_live_windows()
     _test_text()
+    _test_details_text()
 
 
 if __name__ == "__main__":

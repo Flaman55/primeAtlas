@@ -183,6 +183,30 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   przebiegach, a Użyj wybiera ten silnik w formularzu Generacji. Przebieg, którego wskazany
   silnik nie umie oszacować, zostaje w tabeli bez czasu.
 
+### +12 — Computers of the benchmark rows: hardware details and typed values
+
+- English: Atlas now records the computer every run comes from in benchmark_machines.json in
+  the storage folder: the CPU (model, cores, threads, base clock, L2/L3, family) and the RAM
+  (size, modules, type, speed) read from Windows without admin rights, and the values Windows
+  cannot give, typed in About → This computer → Fill in details: architecture, release year,
+  turbo clock, RAM CL and XMP/EXPO, with a how-to of where to find them (BIOS/UEFI only as an
+  option for advanced users) and a hint when the RAM runs above its JEDEC speed. After the
+  first benchmark results from a computer Atlas asks once whether to fill them in. A hardware
+  change starts a new entry, so older results keep the hardware they ran on. The file goes
+  into backups and storage integration and is merged on restore, so no entry is lost; a
+  damaged file is never overwritten, a copy is kept and Atlas says so.
+- Polski: Atlas zapisuje teraz w benchmark_machines.json w folderze zapisu komputer, z którego
+  pochodzi każdy przebieg: procesor (model, rdzenie, wątki, zegar bazowy, L2/L3, rodzina) i RAM
+  (rozmiar, moduły, typ, szybkość) odczytane z Windows bez uprawnień administratora, oraz
+  wartości, których Windows nie poda, wpisywane w O programie → Ten komputer → Uzupełnij dane:
+  architektura, rok premiery, zegar turbo, CL pamięci i XMP/EXPO, z instrukcją, gdzie je
+  znaleźć (BIOS/UEFI tylko jako opcja dla zaawansowanych) i podpowiedzią, gdy RAM pracuje
+  szybciej niż JEDEC. Po pierwszych wynikach benchmarku z danego komputera Atlas raz pyta, czy
+  je uzupełnić. Zmiana sprzętu zaczyna nowy wpis, więc starsze wyniki zachowują sprzęt, na
+  którym powstały. Plik trafia do kopii zapasowych i integracji magazynu i jest scalany przy
+  przywracaniu, więc żaden wpis nie ginie; uszkodzony plik nigdy nie jest nadpisywany, Atlas
+  zachowuje jego kopię i o tym informuje.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage
