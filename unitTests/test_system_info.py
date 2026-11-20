@@ -181,36 +181,61 @@ def _test_details_text():
                               l2_kb=6144, l3_kb=65536,
                               cpu_family="AMD64 Family 25 Model 33 Stepping 2",
                               ram_bytes=64 * GIB, ram_type="DDR4", ram_mts=3600, ram_modules=4)
-    manual = {"architecture": "Zen 3", "year": 2020, "turbo_mhz": 4800, "cl": 16, "xmp": True}
-    entry = {"manual": manual}
+    manual = {"architecture": "Zen 3", "year": 2020, "turbo_mhz": 4800, "cl": 18, "xmp": True}
+    blank = {k: None for k in manual}
     check(si.SystemInfo(windows, None, cfg).details is None, "three fields: details None")
     for lang in ("en", "pl"):
         T = Translator(lang)
         plain = system_info_lines(si.SystemInfo(windows, None, cfg), T)
-        lines = system_info_lines(si.SystemInfo(windows, None, cfg, details), T, entry)
+        cpu_at = next(i for i, line in enumerate(plain) if "Test CPU" in line)
+        ram_at = next(i for i, line in enumerate(plain) if "40.0 GiB" in line)
+        lines = system_info_lines(si.SystemInfo(windows, None, cfg, details), T,
+                                  {"manual": manual})
         text = "\n".join(lines)
-        check(len(lines) == len(plain) + 3, f"[{lang}] three more lines ({len(lines)})")
-        for needle in (number_format.whole(3701), "6 MB", "64 MB",
-                       "AMD64 Family 25 Model 33 Stepping 2", "64.0 GiB", "4", "DDR4-3600",
-                       "Zen 3", "2020", number_format.whole(4800), "16", T("machine.xmp_on")):
-            check(needle in text, f"[{lang}] shows {needle!r}")
+        check(len(lines) == len(plain) + 2, f"[{lang}] two more lines, no typed line ({len(lines)})")
+        cpu_line, ram_line = lines[cpu_at + 1], lines[ram_at + 2]
+        check(lines[cpu_at] == plain[cpu_at] and lines[ram_at + 1] == plain[ram_at],
+              f"[{lang}] CPU details right under CPU, RAM details right under RAM")
+        for needle in ("Zen 3", "2020", number_format.whole(3701), number_format.whole(4800),
+                       "6 MB", "64 MB", "AMD64 Family 25 Model 33 Stepping 2"):
+            check(needle in cpu_line, f"[{lang}] CPU details show {needle!r} ({cpu_line!r})")
+        check(cpu_line.index("Zen 3") < cpu_line.index("2020")
+              < cpu_line.index(number_format.whole(3701))
+              < cpu_line.index(number_format.whole(4800)) < cpu_line.index("6 MB"),
+              f"[{lang}] order: architecture, year, base, turbo, caches ({cpu_line!r})")
+        for needle in ("64.0 GiB", "4", "DDR4-3600", "CL 18", T("machine.xmp_on")):
+            check(needle in ram_line, f"[{lang}] RAM details show {needle!r} ({ram_line!r})")
+        check(ram_line.index("DDR4-3600") < ram_line.index("CL 18")
+              < ram_line.index(T("machine.xmp_on")),
+              f"[{lang}] order: type-speed, CL, XMP ({ram_line!r})")
         check(not any(k in text for k in ("about.", "machine.", "{", "}")),
               f"[{lang}] no raw keys ({text!r})")
-        empty = system_info_lines(si.SystemInfo(windows, None, cfg, details),
-                                  T, {"manual": {k: None for k in manual}})
-        check(empty[-1].count(T("about.system_not_typed")) == 5,
-              f"[{lang}] empty typed values read 'not typed' ({empty[-1]!r})")
+        bare = system_info_lines(si.SystemInfo(windows, None, cfg, details), T)
+        for machine in ({"manual": blank}, {"manual": {}}, {}):
+            empty = system_info_lines(si.SystemInfo(windows, None, cfg, details), T, machine)
+            check(empty == bare, f"[{lang}] nothing typed {machine!r}: same as no entry")
+        check("Zen 3" not in "\n".join(bare) and ", ," not in "\n".join(bare)
+              and "  " not in "\n".join(bare), f"[{lang}] no empty gaps without typed values")
         off = system_info_lines(si.SystemInfo(windows, None, cfg, details), T,
-                                {"manual": dict(manual, xmp=False)})
-        check(T("machine.xmp_off") in off[-1], f"[{lang}] XMP off ({off[-1]!r})")
+                                {"manual": dict(blank, xmp=False)})
+        check(T("machine.xmp_off") in off[ram_at + 2], f"[{lang}] XMP off ({off[ram_at + 2]!r})")
+        only_cl = system_info_lines(si.SystemInfo(windows, None, cfg, details), T,
+                                    {"manual": dict(blank, cl=16)})
+        check(only_cl[cpu_at + 1] == bare[cpu_at + 1] and "CL 16" in only_cl[ram_at + 2]
+              and "XMP" not in only_cl[ram_at + 2], f"[{lang}] only CL typed ({only_cl!r})")
         partial = system_info_lines(si.SystemInfo(windows, None, cfg, HardwareDetails(
             cpu_name="Test CPU", ram_bytes=16 * GIB)), T)
-        ptext = "\n".join(partial[len(plain):])
+        ptext = partial[cpu_at + 1] + "\n" + partial[ram_at + 2]
         check(len(partial) == len(plain) + 2 and T("about.system_unknown") in ptext
               and "16.0 GiB" in ptext, f"[{lang}] unknown parts read unknown ({ptext!r})")
         for none in (None, HardwareDetails()):
             check(system_info_lines(si.SystemInfo(windows, None, cfg, none), T) == plain,
                   f"[{lang}] details {none!r}: no extra line")
+            typed = system_info_lines(si.SystemInfo(windows, None, cfg, none), T,
+                                      {"manual": manual})
+            check(len(typed) == len(plain) + 2 and "Zen 3" in typed[cpu_at + 1]
+                  and "CL 18" in typed[ram_at + 2],
+                  f"[{lang}] details {none!r} but typed values: both lines ({typed!r})")
 
 
 def main():

@@ -2,11 +2,14 @@
 system_info_text.py -- the About tab's "This computer" lines from a system_info.SystemInfo:
 Windows (OS, CPU, RAM, the computer's id in benchmark rows), WSL (distro, kernel, what it sees) and the WSL RAM limit as a share
 of the Windows RAM with where it comes from (.wslconfig memory= or the WSL default);
-with the CPU/RAM details (SystemInfo.details) a CPU line and a RAM line, and with this
-computer's entry of benchmark_machines.json the values typed in its window ("not typed" for
-an empty one). A value that could not be read shows as "unknown".
+a CPU details line right under the CPU line and a RAM details line right under the RAM line,
+from the CPU/RAM details (SystemInfo.details) completed by the values typed for this computer
+in benchmark_machines.json (architecture, release year and turbo in the CPU line, CL and
+XMP/EXPO in the RAM line; a value not typed is left out). A value that could not be read
+shows as "unknown".
 """
 from ..core import number_format
+from ..core.hardware_details import HardwareDetails
 
 GIB = 1024 ** 3
 
@@ -33,36 +36,48 @@ def _memory_kind(details, T):
     return details.ram_type or T("about.system_unknown")
 
 
-def details_lines(details, T):
-    """The CPU and RAM lines of hardware_details.HardwareDetails; none when nothing is known."""
-    if details is None or not any(vars(details).values()):
-        return []
-    base = (f"{number_format.whole(details.base_mhz)} MHz" if details.base_mhz
-            else T("about.system_unknown"))
-    return [T("about.system_cpu_details", base=base, l2=_cache(details.l2_kb, T),
-              l3=_cache(details.l3_kb, T), family=_known(details.cpu_family, T)),
-            T("about.system_ram_details", size=gib_text(details.ram_bytes, T),
-              modules=_known(details.ram_modules, T), kind=_memory_kind(details, T))]
+def _mhz(value, T):
+    return f"{number_format.whole(value)} MHz" if value else T("about.system_unknown")
 
 
-def typed_line(manual, T):
-    """The values typed in the machine window (machines_file.MANUAL_FIELDS)."""
-    def shown(value, text=str):
-        return T("about.system_not_typed") if value is None else text(value)
-    return T("about.system_typed", architecture=shown(manual.get("architecture")),
-             year=shown(manual.get("year")),
-             turbo=shown(manual.get("turbo_mhz"), lambda v: f"{number_format.whole(v)} MHz"),
-             cl=shown(manual.get("cl")),
-             xmp=shown(manual.get("xmp"),
-                       lambda v: T("machine.xmp_on") if v else T("machine.xmp_off")))
+def details_lines(details, manual, T):
+    """The CPU details line and the RAM details line of hardware_details.HardwareDetails
+    completed by the typed values `manual` (machines_file.MANUAL_FIELDS, None = not typed);
+    none when nothing is known or typed."""
+    if details is None:
+        details = HardwareDetails()
+    if not any(vars(details).values()) and all(v is None for v in manual.values()):
+        return None
+    cpu = []
+    if manual.get("architecture") is not None:
+        cpu.append(str(manual["architecture"]))
+    if manual.get("year") is not None:
+        cpu.append(T("about.system_released", year=manual["year"]))
+    cpu.append(T("about.system_base", base=_mhz(details.base_mhz, T)))
+    if manual.get("turbo_mhz") is not None:
+        cpu.append(T("about.system_turbo", turbo=_mhz(manual["turbo_mhz"], T)))
+    cpu += [f"L2 {_cache(details.l2_kb, T)}", f"L3 {_cache(details.l3_kb, T)}",
+            _known(details.cpu_family, T)]
+    ram = [T("about.system_ram_size", size=gib_text(details.ram_bytes, T),
+             modules=_known(details.ram_modules, T)), _memory_kind(details, T)]
+    if manual.get("cl") is not None:
+        ram.append(f"CL {manual['cl']}")
+    if manual.get("xmp") is not None:
+        ram.append(T("about.system_xmp",
+                     xmp=T("machine.xmp_on") if manual["xmp"] else T("machine.xmp_off")))
+    return (T("about.system_cpu_details", parts=", ".join(cpu)),
+            T("about.system_ram_details", parts=", ".join(ram)))
 
 
 def system_info_lines(info, T, machine=None):
-    """The lines of `info`, then its CPU/RAM details and the typed values of `machine` (this
-    computer's entry of benchmark_machines.json, None for none)."""
-    lines = _windows_wsl_lines(info, T) + details_lines(info.details, T)
-    if machine is not None:
-        lines.append(typed_line(machine.get("manual") or {}, T))
+    """The lines of `info` with its CPU/RAM details completed by the typed values of
+    `machine` (this computer's entry of benchmark_machines.json, None for none)."""
+    lines = _windows_wsl_lines(info, T)
+    extra = details_lines(info.details, (machine or {}).get("manual") or {}, T)
+    if extra is not None:
+        cpu_line, ram_line = extra
+        lines.insert(2, cpu_line)
+        lines.insert(4, ram_line)
     return lines
 
 
