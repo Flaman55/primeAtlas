@@ -37,6 +37,7 @@ from .goldbach_paging import GOLDBACH_CASCADE_ROW_CAP, GOLDBACH_DECOMPOSE_ROW_CA
 from .goldbach_viz_section import GoldbachVizSection
 from .goldbach_decompose_section import GoldbachDecomposeSection
 from .goldbach_worker_section import GoldbachWorkerSection
+from ..core.wrap_label import WrapLabel
 
 GOLDBACH_LEAN_REPO_URL = (
     "https://github.com/Flaman55/RelMathApps/tree/main/number_theory/"
@@ -178,12 +179,12 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
             command=self._on_goldbach_visualize)
         self.goldbach_visualize_button.pack(side="left", padx=(8, 0))
 
-        ttk.Label(self, text=T("research_goldbach.viz_hint"),
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(self, text=T("research_goldbach.viz_hint"),
+                  style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 4))
 
-        ttk.Label(self, text=T("research_goldbach.hint"),
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(self, text=T("research_goldbach.hint"),
+                  style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 8))
 
         lean_link = ttk.Label(
@@ -193,8 +194,8 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
         lean_link.bind("<Button-1>", self._on_goldbach_open_lean_repo)
 
         self.goldbach_summary_var = tk.StringVar(value="")
-        ttk.Label(self, textvariable=self.goldbach_summary_var,
-                  wraplength=760, justify="left").pack(anchor="w", padx=6, pady=(0, 8))
+        WrapLabel(self, textvariable=self.goldbach_summary_var).pack(
+            anchor="w", padx=6, pady=(0, 8))
 
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))

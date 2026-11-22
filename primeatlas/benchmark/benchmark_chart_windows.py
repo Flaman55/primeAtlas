@@ -12,8 +12,9 @@ drops its canvas.
 import tkinter as tk
 from tkinter import ttk
 
+from ..core.wrap_label import WrapLabel
+
 WINDOW_GEOMETRY = "1100x600"
-HINT_WRAP_PX = 860
 CHART_HINTS = {"run": "bench.chart_hint", "sieve": "bench.chart2_hint", "ram": "bench.chart3_hint"}
 
 
@@ -30,8 +31,7 @@ class BenchmarkChartWindows:
         header.pack(fill="x")
         ttk.Button(header, text=self.T("bench.chart_open_window"),
                    command=lambda: self._open_chart_window(chart)).pack(side="right")
-        ttk.Label(header, text=self._chart_hint(chart), wraplength=HINT_WRAP_PX,
-                  justify="left").pack(side="left", anchor="w")
+        WrapLabel(header, text=self._chart_hint(chart)).pack(side="left", anchor="w")
         return frame
 
     def _chart_hint(self, chart):

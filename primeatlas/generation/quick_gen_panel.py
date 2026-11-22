@@ -16,7 +16,7 @@ from ..core.info_tip import InfoTip
 from ..core.number_text import number_value
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from ..core.ui_state import remember
-from ..core.widgets import FlowRow
+from ..core.widgets import FlowRow, flow_group
 from . import engine_options, width_advisor
 from .quick_number import _eval_quick_number
 from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows,
@@ -24,6 +24,7 @@ from .window_planning import (QUICK_GEN_MAX_WINDOW_WIDTH, count_existing_windows
                               PRIMESIEVE_MAX_WIDTH_MULT, CUDASIEVE_MIN_PRINTABLE_TOP,
                               CUDASIEVE_MAX_WIDTH_MULT, QUICK_FLOOR_MAX, UINT64_FLOOR_MAX)
 from .wsl_resources import estimate_free_ram_bytes
+from ..core.wrap_label import WrapLabel
 
 QUICK_ITERATIONS_MAX = 100     # Explore iterations: 100 x 10 bln = 1 trillion numbers per click
 # Hybrid filter prime count: a UI safety bound, not an engine limit -- an accidental
@@ -177,8 +178,7 @@ class QuickGenPanel:
         readonly toggle (_on_quick_floor_start_changed), and the Generate/Stop label
         flip (_on_run_loop/_on_loop_finished) all loop over self._quick_panels instead
         of touching one fixed widget reference."""
-        ttk.Label(parent, text=self.T("quick.intro"), style="Hint.TLabel",
-                  wraplength=900, justify="left").pack(
+        WrapLabel(parent, text=self.T("quick.intro"), style="Hint.TLabel").pack(
             anchor="w", padx=8, pady=(6, 4))
 
         mode_row = FlowRow(parent)
@@ -207,6 +207,8 @@ class QuickGenPanel:
         # reflowing the rest of the panel's layout when the mode changes.
         fields_container = ttk.Frame(parent)
         fields_container.pack(fill="x", padx=8, pady=(2, 4))
+        # The mode frames take its width, so their field rows wrap in a narrow window.
+        fields_container.columnconfigure(0, weight=1)
         mode_frames = {}
         floor_entry = self._build_quick_mode_floor(fields_container, mode_frames)
         self._build_quick_mode_range(fields_container, mode_frames)
@@ -216,8 +218,8 @@ class QuickGenPanel:
         self._build_quick_mode_cudasieve(fields_container, mode_frames)
         self._build_quick_mode_pseudosquares(fields_container, mode_frames)
 
-        ttk.Label(parent, textvariable=self.quick_hint_var, style="Hint.TLabel",
-                  wraplength=900, justify="left").pack(anchor="w", padx=8, pady=(0, 4))
+        WrapLabel(parent, textvariable=self.quick_hint_var, style="Hint.TLabel").pack(
+            anchor="w", padx=8, pady=(0, 4))
         self._build_engine_advice_view(parent)
         self._refresh_engine_advice()
 
@@ -287,12 +289,15 @@ class QuickGenPanel:
         # Quick-gen mode. Nesting it here is what keeps the two rows shown/hidden
         # together.
         outer = ttk.Frame(container)
-        outer.grid(row=0, column=0, sticky="w")
-        frame = ttk.Frame(outer)
-        frame.grid(row=0, column=0, sticky="w")
+        outer.grid(row=0, column=0, sticky="ew")
+        outer.columnconfigure(0, weight=1)
+        row = FlowRow(outer)
+        row.frame.grid(row=0, column=0, sticky="ew")
+        frame = flow_group(row)
         ttk.Label(frame, text=self.T("quick.field_floor")).pack(side="left")
         floor_entry = _floor_spinbox(frame, self.quick_floor_var, 10, self.T)
-        floor_entry.pack(side="left", padx=(6, 20))
+        floor_entry.pack(side="left", padx=(6, 0))
+        frame = flow_group(row, 20)
         ttk.Label(frame, text=self.T("quick.field_width")).pack(side="left")
         width_spinbox = ttk.Spinbox(
             frame, from_=1, to=self._quick_width_cap(), textvariable=self.quick_floor_width_var,
@@ -303,7 +308,8 @@ class QuickGenPanel:
         ttk.Button(frame, text=self.T("quick.auto_button"),
                    command=lambda: self._on_quick_auto_width_clicked(
                        self.quick_floor_width_var,
-                       self._quick_floor_of(self.quick_floor_var))).pack(side="left", padx=(0, 20))
+                       self._quick_floor_of(self.quick_floor_var))).pack(side="left")
+        frame = flow_group(row, 20)
         ttk.Label(frame, text=self.T("quick.field_start")).pack(side="left")
         number_field.attach(ttk.Entry(frame, textvariable=self.quick_floor_start_var, width=20), self.T,
                             "field_tip.quick_start").entry.pack(
@@ -374,25 +380,27 @@ class QuickGenPanel:
             panel["floor_entry"].configure(state=new_state)
 
     def _build_quick_mode_range(self, container, mode_frames):
-        frame = ttk.Frame(container)
-        frame.grid(row=0, column=0, sticky="w")
+        row = FlowRow(container)
+        row.frame.grid(row=0, column=0, sticky="ew")
+        frame = flow_group(row)
         ttk.Label(frame, text=self.T("quick.field_from")).pack(side="left")
         number_field.attach(ttk.Entry(frame, textvariable=self.quick_from_var, width=20), self.T,
                             "field_tip.quick_from").entry.pack(
-            side="left", padx=(6, 20))
+            side="left", padx=(6, 0))
+        frame = flow_group(row, 20)
         ttk.Label(frame, text=self.T("quick.field_to")).pack(side="left")
         number_field.attach(ttk.Entry(frame, textvariable=self.quick_to_var, width=20), self.T,
                             "field_tip.quick_to").entry.pack(
-            side="left", padx=(6, 20))
+            side="left", padx=(6, 0))
         # Range mode has no window-COUNT field to fill in (From/To are literal
         # numbers, not a window multiplier) -- Auto here reports the recommendation
         # via a dialog instead (width_var=None, see _on_quick_auto_width_clicked),
         # for the person to factor into their own From/To choice.
-        ttk.Button(frame, text=self.T("quick.auto_button"),
-                   command=lambda: self._on_quick_auto_width_clicked(
-                       None, self._quick_floor_of(self.quick_from_var, is_number=True))).pack(
-            side="left")
-        mode_frames["range"] = frame
+        row.add(ttk.Button(row.frame, text=self.T("quick.auto_button"),
+                           command=lambda: self._on_quick_auto_width_clicked(
+                               None, self._quick_floor_of(self.quick_from_var, is_number=True))),
+                padx_left=20)
+        mode_frames["range"] = row.frame
 
     def _build_quick_mode_explore(self, container, mode_frames):
         """Exploration maps directly onto orchestrator_loop_v2's own
@@ -432,20 +440,23 @@ class QuickGenPanel:
         personally visited yet can still have one, e.g. from a search or Goldbach
         direct-range write)."""
         outer = ttk.Frame(container)
-        outer.grid(row=0, column=0, sticky="w")
-        frame = ttk.Frame(outer)
-        frame.grid(row=0, column=0, sticky="w")
+        outer.grid(row=0, column=0, sticky="ew")
+        outer.columnconfigure(0, weight=1)
+        row = FlowRow(outer)
+        row.frame.grid(row=0, column=0, sticky="ew")
+        frame = flow_group(row)
         ttk.Label(frame, text=self.T("quick.field_floor")).pack(side="left")
         _floor_spinbox(frame, self.quick_explore_floor_var, 10, self.T).pack(
             side="left", padx=(6, 4))
         ttk.Button(frame, text=self.T("quick.explore_auto_floor_button"),
-                   command=self._on_explore_auto_floor_clicked).pack(
-            side="left", padx=(0, 20))
+                   command=self._on_explore_auto_floor_clicked).pack(side="left")
+        frame = flow_group(row, 20)
         ttk.Label(frame, text=self.T("quick.field_iterations")).pack(side="left")
         iterations = ttk.Spinbox(frame, from_=1, to=QUICK_ITERATIONS_MAX,
                                  textvariable=self.quick_iterations_var, width=6)
         number_field.attach(iterations, self.T, "field_tip.quick_iterations", minimum=1, maximum=QUICK_ITERATIONS_MAX)
-        iterations.pack(side="left", padx=(6, 20))
+        iterations.pack(side="left", padx=(6, 0))
+        frame = flow_group(row, 20)
         ttk.Label(frame, text=self.T("quick.field_width")).pack(side="left")
         width_spinbox = ttk.Spinbox(
             frame, from_=1, to=self._quick_width_cap(), textvariable=self.quick_explore_width_var,
@@ -478,14 +489,29 @@ class QuickGenPanel:
         this panel defining a different continuation policy.
         """
         wrapper = ttk.Frame(container)
-        wrapper.grid(row=0, column=0, sticky="w")
-        frame = ttk.Frame(wrapper)
-        frame.pack(anchor="w")
+        wrapper.grid(row=0, column=0, sticky="ew")
+        row = FlowRow(wrapper)
+        row.frame.pack(fill="x")
+        frame = flow_group(row)
         ttk.Label(frame, text=self.T("quick.hybrid_field_target")).pack(side="left")
         ttk.Combobox(frame, state="readonly", width=15, textvariable=self.quick_hybrid_target_var,
                      values=("n", self.T("quick.hybrid_target_continue_floor"),
                              self.T("quick.hybrid_target_fill_gap"),
                              self.T("quick.hybrid_target_exact_window"))).pack(side="left", padx=(6, 12))
+        frame = flow_group(row)
+        ttk.Label(frame, text="MAIN <=").pack(side="left")
+        number_field.attach(ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8), self.T,
+                            "field_tip.quick_hybrid_main_cap").entry.pack(side="left", padx=(6, 12))
+        frame = flow_group(row)
+        ttk.Label(frame, text=self.T("quick.field_filter_prime_count")).pack(side="left")
+        filter_count = ttk.Spinbox(frame, from_=1, to=HYBRID_FILTER_PRIME_COUNT_MAX,
+                                   textvariable=self.quick_hybrid_filter_prime_count_var,
+                                   width=9)
+        number_field.attach(filter_count, self.T, "field_tip.quick_hybrid_filter_count", minimum=1,
+                            maximum=HYBRID_FILTER_PRIME_COUNT_MAX)
+        filter_count.pack(side="left", padx=(6, 12))
+        # The intent's own fields, shown by _sync_hybrid_target_fields().
+        frame = flow_group(row)
         value_group = ttk.Frame(frame)
         ttk.Label(value_group, text=self.T("quick.hybrid_field_n_or_index")).pack(side="left")
         number_field.attach(ttk.Entry(value_group, textvariable=self.quick_hybrid_value_var, width=20), self.T,
@@ -493,19 +519,9 @@ class QuickGenPanel:
         floor_group = ttk.Frame(frame)
         ttk.Label(floor_group, text=self.T("quick.field_floor")).pack(side="left")
         _floor_spinbox(floor_group, self.quick_hybrid_target_floor_var, 7, self.T).pack(side="left", padx=(6, 12))
-        ttk.Label(frame, text="MAIN <=").pack(side="left")
-        number_field.attach(ttk.Entry(frame, textvariable=self.quick_hybrid_main_cap_var, width=8), self.T,
-                            "field_tip.quick_hybrid_main_cap").entry.pack(side="left", padx=(6, 12))
-        ttk.Label(frame, text=self.T("quick.field_filter_prime_count")).pack(side="left")
-        filter_count = ttk.Spinbox(frame, from_=1, to=HYBRID_FILTER_PRIME_COUNT_MAX,
-                                   textvariable=self.quick_hybrid_filter_prime_count_var,
-                                   width=9)
-        number_field.attach(filter_count, self.T, "field_tip.quick_hybrid_filter_count", minimum=1,
-                            maximum=HYBRID_FILTER_PRIME_COUNT_MAX)
-        filter_count.pack(side="left", padx=(6, 0))
-        ttk.Label(wrapper, textvariable=self.quick_hybrid_range_var, wraplength=950).pack(fill="x")
+        WrapLabel(wrapper, textvariable=self.quick_hybrid_range_var).pack(fill="x")
         self._schedule_hybrid_preview()
-        self._hybrid_target_groups.append((value_group, floor_group))
+        self._hybrid_target_groups.append((value_group, floor_group, row))
         self._sync_hybrid_target_fields()
         mode_frames["hybrid"] = wrapper
 
@@ -516,7 +532,7 @@ class QuickGenPanel:
         show_floor = target in (self.T("quick.hybrid_target_continue_floor"),
                                  self.T("quick.hybrid_target_fill_gap"),
                                  self.T("quick.hybrid_target_exact_window"))
-        for value_group, floor_group in self._hybrid_target_groups:
+        for value_group, floor_group, row in self._hybrid_target_groups:
             if show_value:
                 value_group.pack(side="left")
             else:
@@ -525,6 +541,7 @@ class QuickGenPanel:
                 floor_group.pack(side="left")
             else:
                 floor_group.pack_forget()
+            row.relayout()
 
     def _build_quick_mode_primesieve(self, container, mode_frames):
         """Floor + From + Width, not a From/To pair.
@@ -555,33 +572,37 @@ class QuickGenPanel:
         between, and that should be visible to whoever clicks Generate, not just to
         whoever reads the source."""
         frame = ttk.Frame(container)
-        frame.grid(row=0, column=0, sticky="w")
-        row1 = ttk.Frame(frame)
-        row1.pack(anchor="w")
+        frame.grid(row=0, column=0, sticky="ew")
+        fields = FlowRow(frame)
+        fields.frame.pack(fill="x")
+        row1 = flow_group(fields)
         ttk.Label(row1, text=self.T("quick.field_floor")).pack(side="left")
         _floor_spinbox(row1, self.quick_primesieve_floor_var, 10, self.T, to=UINT64_FLOOR_MAX).pack(
-            side="left", padx=(6, 20))
+            side="left", padx=(6, 0))
+        row1 = flow_group(fields, 20)
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
         number_field.attach(ttk.Entry(row1, textvariable=self.quick_primesieve_from_var, width=24), self.T,
                             "field_tip.quick_from").entry.pack(
             side="left", padx=(6, 4))
         ttk.Button(row1, text=self.T("quick.auto_button"),
-                   command=self._on_primesieve_auto_from_clicked).pack(
-            side="left", padx=(0, 20))
+                   command=self._on_primesieve_auto_from_clicked).pack(side="left")
+        row1 = flow_group(fields, 20)
         ttk.Label(row1, text=self.T("quick.field_width")).pack(side="left")
         width = ttk.Spinbox(row1, from_=1, to=PRIMESIEVE_MAX_WIDTH_MULT,
                             textvariable=self.quick_primesieve_width_var, width=14)
         number_field.attach(width, self.T, "field_tip.quick_width", minimum=1,
                             maximum=PRIMESIEVE_MAX_WIDTH_MULT)
         width.pack(side="left", padx=(6, 0))
-        row2 = ttk.Frame(frame)
-        row2.pack(anchor="w", pady=(4, 0))
+        options = FlowRow(frame)
+        options.frame.pack(fill="x", pady=(4, 0))
+        row2 = flow_group(options)
         ttk.Checkbutton(row2, text=self.T("quick.field_primesieve_native"),
                         variable=self.quick_primesieve_native_var).pack(side="left")
         InfoTip(row2, lambda: self.T("quick.info_primesieve_native"
                                      if self.quick_primesieve_native_var.get()
                                      else "quick.info_primesieve_wrapper")).label.pack(
-            side="left", padx=(4, 12))
+            side="left", padx=(4, 0))
+        row2 = flow_group(options, 12)
         modes = {"print": self.T("quick.primesieve_mode_print"),
                  "count": self.T("quick.primesieve_mode_count")}
         shown = tk.StringVar(value=modes.get(self.quick_primesieve_native_mode_var.get(),
@@ -596,8 +617,8 @@ class QuickGenPanel:
             next(k for k, v in modes.items() if v == shown.get())))
         for var in (self.quick_primesieve_native_var, self.quick_mode_var):
             var.trace_add("write", lambda *_: self._sync_primesieve_native_controls())
-        ttk.Label(frame, text=self.T("quick.attribution_primesieve"), style="Hint.TLabel",
-                  font=("TkDefaultFont", 8), wraplength=860, justify="left").pack(
+        WrapLabel(frame, text=self.T("quick.attribution_primesieve"), style="Hint.TLabel",
+                  font=("TkDefaultFont", 8)).pack(
             anchor="w", pady=(4, 0))
         mode_frames["primesieve"] = frame
         self._sync_primesieve_native_controls()
@@ -690,27 +711,29 @@ class QuickGenPanel:
         project (see prime_sieve_cudasieve.py's module header, "PROCESS BOUNDARY, NOT
         LINKING")."""
         frame = ttk.Frame(container)
-        frame.grid(row=0, column=0, sticky="w")
-        row1 = ttk.Frame(frame)
-        row1.pack(anchor="w")
+        frame.grid(row=0, column=0, sticky="ew")
+        fields = FlowRow(frame)
+        fields.frame.pack(fill="x")
+        row1 = flow_group(fields)
         ttk.Label(row1, text=self.T("quick.field_floor")).pack(side="left")
         _floor_spinbox(row1, self.quick_cudasieve_floor_var, 10, self.T, to=UINT64_FLOOR_MAX).pack(
-            side="left", padx=(6, 20))
+            side="left", padx=(6, 0))
+        row1 = flow_group(fields, 20)
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
         number_field.attach(ttk.Entry(row1, textvariable=self.quick_cudasieve_from_var, width=24), self.T,
                             "field_tip.quick_from").entry.pack(
             side="left", padx=(6, 4))
         ttk.Button(row1, text=self.T("quick.auto_button"),
-                   command=self._on_cudasieve_auto_from_clicked).pack(
-            side="left", padx=(0, 20))
+                   command=self._on_cudasieve_auto_from_clicked).pack(side="left")
+        row1 = flow_group(fields, 20)
         ttk.Label(row1, text=self.T("quick.field_width")).pack(side="left")
         width = ttk.Spinbox(row1, from_=1, to=CUDASIEVE_MAX_WIDTH_MULT,
                             textvariable=self.quick_cudasieve_width_var, width=14)
         number_field.attach(width, self.T, "field_tip.quick_width", minimum=1,
                             maximum=CUDASIEVE_MAX_WIDTH_MULT)
         width.pack(side="left", padx=(6, 0))
-        ttk.Label(frame, text=self.T("quick.attribution_cudasieve"), style="Hint.TLabel",
-                  font=("TkDefaultFont", 8), wraplength=860, justify="left").pack(
+        WrapLabel(frame, text=self.T("quick.attribution_cudasieve"), style="Hint.TLabel",
+                  font=("TkDefaultFont", 8)).pack(
             anchor="w", pady=(4, 0))
         mode_frames["cudasieve"] = frame
 
@@ -913,7 +936,7 @@ class QuickGenPanel:
         mode = self.quick_mode_var.get()
         for name, frame in panel["mode_frames"].items():
             if name == mode:
-                frame.grid(row=0, column=0, sticky="w")
+                frame.grid(row=0, column=0, sticky="ew")
             else:
                 frame.grid_remove()
 

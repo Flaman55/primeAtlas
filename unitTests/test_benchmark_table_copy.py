@@ -317,7 +317,7 @@ class TabTests(unittest.TestCase):
             self.assertEqual(tip.text(), T("bench.copy_tip"))
             for widget in (label, tip.label):
                 self.assertTrue(widget.winfo_ismapped(), widget)
-                self.assertEqual(widget.master, tab.benchmark_prev_btn.master,
+                self.assertEqual(widget.master.master, tab.benchmark_prev_btn.master.master,
                                  "in the row above the table")
             for key in ("bench.copy_hint", "bench.copy_tip"):
                 for lang in ("en", "pl"):

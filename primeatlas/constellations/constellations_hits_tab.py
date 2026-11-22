@@ -48,6 +48,7 @@ from .constellations import (
 )
 from ..core.widgets import (HeightGrip, RevealFrame, StripedTreeview, add_page_nav_row,
                             clamp_pane_min_width, keep_sash_share)
+from ..core.wrap_label import WrapLabel
 
 
 class ConstellationsHitsTab(BaseTab):
@@ -142,8 +143,8 @@ class ConstellationsHitsTab(BaseTab):
         paned.add(detail_frame, weight=2)
 
         self.hits_detail_text = tk.StringVar(value=T("const.detail_hint"))
-        ttk.Label(detail_frame, textvariable=self.hits_detail_text, justify="left",
-                  anchor="nw", wraplength=560).pack(fill="x", padx=6, pady=6)
+        WrapLabel(detail_frame, textvariable=self.hits_detail_text, anchor="nw").pack(
+            fill="x", padx=6, pady=6)
 
         # Populated only after a search (empty during normal tree browsing): one row
         # per pattern the searched number participates in. Double-click (or Enter)
@@ -212,17 +213,15 @@ class ConstellationsHitsTab(BaseTab):
         self.hits_export_btn.pack(side="right", fill="y", padx=(10, 0))
         nav_rows_frame.pack(side="left", fill="both", expand=True)
 
-        # add_page_nav_row() (unlike the FlowRow it replaced here) never wraps onto
-        # extra lines -- so the detail pane must never be draggable narrower than both
-        # rows' own natural width, or the second row's jump group would crowd against
-        # its left cluster instead of staying flush right, or slide off the pane's own
-        # edge entirely. Measured from the actual built widgets (not a hardcoded guess)
-        # so this tracks the real font/theme/DPI rather than an assumption about them.
-        # See clamp_pane_min_width()'s own docstring for how the minimum is actually
-        # enforced (ttk::panedwindow has no minsize option).
+        # The detail pane is never narrower than the rows' widest group (a row's jump
+        # group goes under its buttons below the full row's width) beside the Export
+        # button, so nothing in it is cut. Measured from the actual built widgets so
+        # this tracks the real font/theme/DPI. See clamp_pane_min_width()'s own
+        # docstring for how the minimum is actually enforced (ttk::panedwindow has no
+        # minsize option).
         self.update_idletasks()
         preview_nav_min_width = (
-            max(btn_row_frame.winfo_reqwidth(), file_page_row_frame.winfo_reqwidth())
+            max(btn_row_frame.min_width(), file_page_row_frame.min_width())
             + 10 + self.hits_export_btn.winfo_reqwidth() + 12)
         clamp_pane_min_width(paned, detail_frame, preview_nav_min_width)
         # The tree keeps a third of the width (the panes' 1:2 weights) across resizes, so a

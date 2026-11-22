@@ -18,6 +18,7 @@ from ..core.widgets import HeightGrip
 from ..generation.generation_console import GenerationConsole
 from . import storage_integrate as si
 from ..core import background, machines_file, number_format
+from ..core.wrap_label import WrapLabel
 
 
 class StorageIntegrateSection:
@@ -229,9 +230,9 @@ class StorageIntegrateSection:
         self._storage_integrate_plan."""
         frame = ttk.Labelframe(outer, text=self.T("settings.storage_integrate_frame"))
         frame.pack(fill="both", expand=True, pady=(0, 8))
-        ttk.Label(
+        WrapLabel(
             frame, text=self.T("settings.storage_integrate_hint"),
-            style="Hint.TLabel", wraplength=760, justify="left").pack(
+            style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
 
         source_row = ttk.Frame(frame)
@@ -239,8 +240,9 @@ class StorageIntegrateSection:
         ttk.Label(source_row, text=self.T("settings.storage_integrate_source_label")).pack(
             side="left")
         self.storage_integrate_source_var = tk.StringVar(value="")
+        # It fills the row and shrinks in a narrow window instead of pushing the buttons out.
         # not a number field: a folder path
-        ttk.Entry(source_row, textvariable=self.storage_integrate_source_var, width=48).pack(
+        ttk.Entry(source_row, textvariable=self.storage_integrate_source_var, width=16).pack(
             side="left", padx=(6, 6), fill="x", expand=True)
         ttk.Button(source_row, text=self.T("settings.full_backup_browse_button"),
                    command=self._on_browse_storage_integrate_source).pack(side="left")

@@ -21,6 +21,8 @@ from .generation_settings import (
     _KTUPLE_STRATEGY_KEYS, generation_key, remember_generation_field, save_generation_settings)
 from .window_planning import recommended_digit_sweep_n_locations
 from .wsl_command import generation_log_paths, build_wsl_logged_command
+from ..core.widgets import FlowRow
+from ..core.wrap_label import WrapLabel
 
 
 class KtupleSection:
@@ -57,47 +59,53 @@ class KtupleSection:
             "<<ComboboxSelected>>", self._on_ktuple_variant_changed)
 
         self.ktuple_pattern_info_var = tk.StringVar(value="")
-        ttk.Label(ktuple_outer, textvariable=self.ktuple_pattern_info_var,
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(ktuple_outer, textvariable=self.ktuple_pattern_info_var,
+                  style="Hint.TLabel").pack(
             anchor="w", padx=8, pady=(0, 4))
 
-        ktuple_form = ttk.Frame(ktuple_outer)
-        ktuple_form.pack(fill="x", padx=8, pady=(0, 4))
+        # Each label with its field (and its Auto button) wraps whole onto the next line in
+        # a narrow window.
+        ktuple_form = FlowRow(ktuple_outer)
+        ktuple_form.frame.pack(fill="x", padx=8, pady=(0, 4))
 
         self._ktuple_vars = {}
 
-        def add_ktuple_field(row, col, key, label, width=10):
-            ttk.Label(ktuple_form, text=label).grid(
-                row=row, column=col * 2, sticky="w", padx=(0, 4), pady=2)
+        def add_field_group(form, key, label, width=10):
+            group = ttk.Frame(form.frame)
+            ttk.Label(group, text=label).pack(side="left", padx=(0, 4), pady=2)
             var = tk.StringVar(value=str(ktuple_settings.get(key, "")))
-            entry = ttk.Entry(ktuple_form, textvariable=var, width=width)
+            entry = ttk.Entry(group, textvariable=var, width=width)
             number_field.attach(entry, self.T, f"field_tip.ktuple_{key}", minimum=0)
-            entry.grid(row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
+            entry.pack(side="left", pady=2)
+            form.add(group, padx_left=20)
             self._ktuple_vars[key] = var
             remember_generation_field("ktuple", key, var)
+            return group
 
-        add_ktuple_field(0, 0, "base_exponent", self.T("gen.ktuple_field_base_exponent"))
-        add_ktuple_field(0, 1, "n_locations", self.T("gen.ktuple_field_n_locations"))
+        add_field_group(ktuple_form, "base_exponent", self.T("gen.ktuple_field_base_exponent"))
+        n_locations_group = add_field_group(
+            ktuple_form, "n_locations", self.T("gen.ktuple_field_n_locations"))
         # Auto button: recommended_digit_sweep_n_locations()'s own suggestion --
         # see _on_ktuple_n_locations_auto_clicked()'s docstring for why this
         # exists (a shared n_locations field left digit_sweep's per-branch depth
         # much thinner than intended). Occupies the free grid slot right
-        # after n_locations's own entry (columns 2/3), same "Auto button right
-        # next to the field it fills" placement as the loop pipeline's own
-        # workers Auto button above.
-        ttk.Button(ktuple_form, text=self.T("quick.auto_button"), width=6,
-                   command=self._on_ktuple_n_locations_auto_clicked).grid(
-            row=0, column=4, sticky="w", padx=(0, 8), pady=2)
-        add_ktuple_field(1, 0, "window_m", self.T("gen.ktuple_field_window_m"), width=14)
+        # in n_locations's own group, same "Auto button right next to the field
+        # it fills" placement as the loop pipeline's own workers Auto button above.
+        ttk.Button(n_locations_group, text=self.T("quick.auto_button"), width=6,
+                   command=self._on_ktuple_n_locations_auto_clicked).pack(
+            side="left", padx=(4, 0), pady=2)
+        add_field_group(ktuple_form, "window_m", self.T("gen.ktuple_field_window_m"), width=14)
 
-        ttk.Label(ktuple_form, text=self.T("gen.ktuple_field_strategy")).grid(
-            row=1, column=2, sticky="w", padx=(0, 4), pady=2)
+        strategy_group = ttk.Frame(ktuple_form.frame)
+        ttk.Label(strategy_group, text=self.T("gen.ktuple_field_strategy")).pack(
+            side="left", padx=(0, 4), pady=2)
         self.ktuple_strategy_combo = ttk.Combobox(
-            ktuple_form, state="readonly", width=16,
+            strategy_group, state="readonly", width=16,
             values=[self.T("gen.ktuple_strategy_even"), self.T("gen.ktuple_strategy_concentrated"),
                     self.T("gen.ktuple_strategy_manual_list"), self.T("gen.ktuple_strategy_manual_step"),
                     self.T("gen.ktuple_strategy_digit_sweep")])
-        self.ktuple_strategy_combo.grid(row=1, column=3, sticky="w", padx=(0, 20), pady=2)
+        self.ktuple_strategy_combo.pack(side="left", pady=2)
+        ktuple_form.add(strategy_group, padx_left=20)
         _saved_strategy = ktuple_settings.get("strategy", "concentrated")
         self.ktuple_strategy_combo.current(
             _KTUPLE_STRATEGY_KEYS.index(_saved_strategy)
@@ -112,7 +120,7 @@ class KtupleSection:
         # every non-manual_list strategy now behaves -- see the checkpoint/step
         # design, which avoids every Run re-scanning the same locations with
         # nothing persisted in between.
-        add_ktuple_field(2, 0, "step", self.T("gen.ktuple_field_step"), width=14)
+        add_field_group(ktuple_form, "step", self.T("gen.ktuple_field_step"), width=14)
 
         ktuple_advanced_row = ttk.Frame(ktuple_outer)
         ktuple_advanced_row.pack(fill="x", padx=8)
@@ -126,25 +134,16 @@ class KtupleSection:
         self._ktuple_advanced_content = ktuple_advanced_content
         # NOT packed here -- starts collapsed, see _on_toggle_ktuple_advanced().
 
-        ktuple_advanced_form = ttk.Frame(ktuple_advanced_content)
-        ktuple_advanced_form.pack(fill="x")
+        ktuple_advanced_form = FlowRow(ktuple_advanced_content)
+        ktuple_advanced_form.frame.pack(fill="x")
 
-        def add_ktuple_advanced_field(row, col, key, label, width=10):
-            ttk.Label(ktuple_advanced_form, text=label).grid(
-                row=row, column=col * 2, sticky="w", padx=(0, 4), pady=2)
-            var = tk.StringVar(value=str(ktuple_settings.get(key, "")))
-            entry = ttk.Entry(ktuple_advanced_form, textvariable=var, width=width)
-            number_field.attach(entry, self.T, f"field_tip.ktuple_{key}", minimum=0)
-            entry.grid(row=row, column=col * 2 + 1, sticky="w", padx=(0, 20), pady=2)
-            self._ktuple_vars[key] = var
-            remember_generation_field("ktuple", key, var)
-
-        add_ktuple_advanced_field(
-            0, 0, "fragment_width", self.T("gen.ktuple_field_fragment_width"), width=18)
-        add_ktuple_advanced_field(
-            0, 1, "fragment_start", self.T("gen.ktuple_field_fragment_start"), width=18)
-        add_ktuple_advanced_field(1, 0, "deep_prime_limit", self.T("gen.ktuple_field_deep_prime_limit"))
-        add_ktuple_advanced_field(1, 1, "mr_rounds", self.T("gen.ktuple_field_mr_rounds"))
+        add_field_group(ktuple_advanced_form, "fragment_width",
+                        self.T("gen.ktuple_field_fragment_width"), width=18)
+        add_field_group(ktuple_advanced_form, "fragment_start",
+                        self.T("gen.ktuple_field_fragment_start"), width=18)
+        add_field_group(ktuple_advanced_form, "deep_prime_limit",
+                        self.T("gen.ktuple_field_deep_prime_limit"))
+        add_field_group(ktuple_advanced_form, "mr_rounds", self.T("gen.ktuple_field_mr_rounds"))
         # pass_counter: strategy=digit_sweep only -- the starting pass number (only
         # used the first time, before any checkpoint exists -- default 0). Each pass
         # sweeps the whole floor
@@ -154,13 +153,16 @@ class KtupleSection:
         # ktuple_locations_v2_2.py's digit_sweep_locations() PATH VARIETY note). Kept in
         # Advanced alongside the other rarely-touched fields since the default
         # is already the intended starting value.
-        add_ktuple_advanced_field(2, 0, "pass_counter", self.T("gen.ktuple_field_pass_counter"))
-        ttk.Label(ktuple_advanced_form, text=self.T("gen.ktuple_field_manual_offsets")).grid(
-            row=3, column=0, sticky="w", padx=(0, 4), pady=2)
+        add_field_group(ktuple_advanced_form, "pass_counter",
+                        self.T("gen.ktuple_field_pass_counter"))
+        offsets_group = ttk.Frame(ktuple_advanced_form.frame)
+        ttk.Label(offsets_group, text=self.T("gen.ktuple_field_manual_offsets")).pack(
+            side="left", padx=(0, 4), pady=2)
         _manual_offsets_var = tk.StringVar(value=str(ktuple_settings.get("manual_offsets", "")))
         # not a number field: a list of offsets
-        ttk.Entry(ktuple_advanced_form, textvariable=_manual_offsets_var, width=50).grid(
-            row=3, column=1, columnspan=3, sticky="w", padx=(0, 20), pady=2)
+        ttk.Entry(offsets_group, textvariable=_manual_offsets_var, width=50).pack(
+            side="left", pady=2)
+        ktuple_advanced_form.add(offsets_group, padx_left=20)
         self._ktuple_vars["manual_offsets"] = _manual_offsets_var
         remember_generation_field("ktuple", "manual_offsets", _manual_offsets_var)
 

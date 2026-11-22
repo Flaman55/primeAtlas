@@ -43,6 +43,7 @@ from .polynomials_window import (
     check_polynomial_range, check_polynomial_range_from_source, MAX_SIEVE_BOUND,
 )
 from .research_polynomials import read_is_prime_from_storage, MissingStorageRangeError
+from ..core.wrap_label import WrapLabel
 
 POLYNOMIALS_ROW_CAP = 200
 """Rows per page in the results Treeview -- same "verdict/counts always
@@ -168,13 +169,12 @@ class ResearchPolynomialsTab(BaseTab):
             command=self._on_poly_export_csv, state="disabled")
         self.poly_export_button.pack(side="left", padx=(16, 0))
 
-        ttk.Label(self, text=T("research_polynomials.hint"),
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(self, text=T("research_polynomials.hint"),
+                  style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 8))
 
         self.poly_summary_var = tk.StringVar(value="")
-        ttk.Label(self, textvariable=self.poly_summary_var,
-                  wraplength=760, justify="left").pack(anchor="w", padx=6, pady=(0, 8))
+        WrapLabel(self, textvariable=self.poly_summary_var).pack(anchor="w", padx=6, pady=(0, 8))
 
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))

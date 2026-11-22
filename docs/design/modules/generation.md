@@ -69,6 +69,10 @@ InfoTip anchored on the checkbox).
 The Quick-gen mode radios are a `FlowRow` of `ElidedRadiobutton`s (`core/`): they wrap whole
 onto further lines on a narrow window, and a name wider than the whole row is shortened with
 "…" and an "i" marker holding the full name; the embedded and the detached panel share the mode.
+Each mode's fields and the k-tuple form (primary and Advanced) are `FlowRow`s of
+groups (`core/widgets.flow_group`): a label with its field and its Auto button moves whole to the
+next line in a narrow window; the mode frames are stretched to the panel's width so their rows can
+wrap. Descriptions and hints are `WrapLabel`s (`core/wrap_label.py`).
 
 ## Contract
 

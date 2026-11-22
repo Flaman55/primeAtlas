@@ -26,6 +26,7 @@ from ...generation.generation_console import GenerationConsole
 from ..shared.viz_tab_base import VizTabBase
 from ...core import number_field
 from ...core.number_text import fraction_value
+from ...core.wrap_label import WrapLabel
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
@@ -156,7 +157,7 @@ class SphereTab(VizTabBase):
         self.mode_combo.current(MODES.index(saved_mode if saved_mode in MODES else MODE_RINGS))
         self.mode_combo.pack(side="left", padx=(6, 0))
 
-        ttk.Label(container, text=self._tk("intro"), wraplength=760, justify="left").pack(anchor="w", pady=(0, 10))
+        WrapLabel(container, text=self._tk("intro")).pack(anchor="w", pady=(0, 10))
 
         common_frame = ttk.LabelFrame(container, text=self._tk("section_common"))
         common_frame.pack(fill="x", pady=(0, 8))
@@ -179,7 +180,7 @@ class SphereTab(VizTabBase):
 
         fibers_frame = ttk.LabelFrame(container, text=self._tk("section_fibers"))
         fibers_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(fibers_frame, text=self._tk("fibers_intro"), wraplength=740, justify="left").pack(
+        WrapLabel(fibers_frame, text=self._tk("fibers_intro")).pack(
             anchor="w", padx=8, pady=(6, 0))
         fibers_row = ttk.Frame(fibers_frame)
         fibers_row.pack(fill="x", padx=8, pady=(6, 4))
@@ -204,8 +205,8 @@ class SphereTab(VizTabBase):
                                                 variable=self.show_rings_var)
         self.show_rings_check.pack(anchor="w", padx=8, pady=(0, 6))
 
-        ttk.Label(container, text=self._tk("controls_hint"), wraplength=760, justify="left",
-                  style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
+        WrapLabel(container, text=self._tk("controls_hint"), style="Hint.TLabel").pack(
+            anchor="w", pady=(0, 8))
 
         hud_frame = ttk.LabelFrame(container, text=self._tk("hud_panel_title"))
         hud_frame.pack(fill="x", pady=(0, 10))

@@ -4,17 +4,17 @@ iteration count, into the fields). The text comes from width_advice_text.width_t
 """
 import tkinter as tk
 from tkinter import ttk
+from ..core.wrap_label import WrapLabel
 
 
 class WidthAdviceView(ttk.Frame):
-    def __init__(self, parent, T, on_use, wraplength=560):
+    def __init__(self, parent, T, on_use):
         super().__init__(parent)
         self._on_use = on_use
         self._advice = None
         self.text_var = tk.StringVar()
         ttk.Label(self, text=T("width_advice.label")).pack(side="left", anchor="n")
-        ttk.Label(self, textvariable=self.text_var, wraplength=wraplength,
-                  justify="left").pack(side="left", padx=(6, 0))
+        WrapLabel(self, textvariable=self.text_var).pack(side="left", padx=(6, 0))
         self.use_button = ttk.Button(self, text=T("advisor.use_button"), width=6,
                                      command=self._use)
         self.use_button.pack(side="left", padx=(8, 0), anchor="n")

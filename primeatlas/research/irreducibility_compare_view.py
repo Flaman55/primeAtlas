@@ -14,7 +14,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ..core.base_tab import BaseTab
-from ..core.widgets import StripedTreeview
+from ..core.widgets import FlowRow, StripedTreeview
 from . import irreducibility_layout as layout
 from . import irreducibility_residues as res
 from .irreducibility_draw import COLOR_A, COLOR_B, COLOR_QUOT, GOLD_BG, MAX_DIALS, draw_dials
@@ -37,20 +37,24 @@ class _Side:
         self.frame = box
         row = ttk.Frame(box)
         row.pack(fill="x", padx=6, pady=(4, 2))
+        # The field takes the column's width: a long number fits a wide window, a narrow
+        # one shrinks it instead of cutting it.
         self.number_entry = entry(T, "field_tip.irreducibility_number",
-                                  row, "", "", width=34, textvariable=nums.number_var(side),
+                                  row, "", "", width=12, textvariable=nums.number_var(side),
                                   on_return=view.run_compare)
+        self.number_entry.pack_configure(fill="x", expand=True)
         self.layout_entries = {}
         for prefix, title in (("d", "blocks_row"), ("k", "quot_row")):
-            r = ttk.Frame(box)
-            r.pack(fill="x", padx=6, pady=1)
-            ttk.Label(r, text=T(f"research_irreducibility.{title}")).pack(side="left",
-                                                                         padx=(0, 6))
+            r = FlowRow(box)  # a label with its field wraps whole onto the next line
+            r.frame.pack(fill="x", padx=6, pady=1)
+            r.add(ttk.Label(r.frame, text=T(f"research_irreducibility.{title}")))
             for suffix, lab in (("s", "start_label"), ("z", "size_label"), ("c", "count_label")):
                 key = prefix + suffix
+                group = ttk.Frame(r.frame)
                 self.layout_entries[key] = entry(T, f"field_tip.irreducibility_layout_{key}",
-                    r, T(f"research_irreducibility.{lab}"), "", width=5,
+                    group, T(f"research_irreducibility.{lab}"), "", width=5,
                     textvariable=nums.layout_var(side, key), on_return=view.run_compare)
+                r.add(group, padx_left=6 if suffix == "s" else 0)
         r = ttk.Frame(box)
         r.pack(fill="x", padx=6, pady=(2, 2))
         self.fit_button = ttk.Button(r, text=T("research_irreducibility.fit"),

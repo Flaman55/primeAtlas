@@ -39,6 +39,8 @@ from ...core.number_text import plain_number
 from ...core import storage
 from ..shared.audio import INSTRUMENTS
 from ..shared.viz_tab_base import VizTabBase
+from ...core.widgets import FlowRow
+from ...core.wrap_label import WrapLabel
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
@@ -253,7 +255,7 @@ class RingsTab(VizTabBase):
         container = ttk.Frame(scroll_body)
         container.pack(fill="both", expand=True, padx=12, pady=12)
 
-        intro = ttk.Label(container, text=self.T("rings.intro"), wraplength=760, justify="left")
+        intro = WrapLabel(container, text=self.T("rings.intro"))
         intro.pack(anchor="w", pady=(0, 10))
 
         # Fields are grouped into labeled sections (Position/mode, Appearance,
@@ -377,22 +379,28 @@ class RingsTab(VizTabBase):
         # offsets from k real consecutive primes >= p0 -- see
         # pattern_offsets_from_seed's own doc-comment for why that's always
         # an admissible pattern.
-        line_mode_row = ttk.Frame(position_frame)
-        line_mode_row.pack(fill="x", padx=8, pady=(0, 8))
+        # This row and the next wrap their controls whole onto the next line in a narrow
+        # window.
+        line_mode_row = FlowRow(position_frame)
+        line_mode_row.frame.pack(fill="x", padx=8, pady=(0, 8))
         self.line_mode_var = tk.BooleanVar(value=saved_params.get("line_mode", False))
-        self._line_mode_check = ttk.Checkbutton(line_mode_row, text=self.T("rings.line_mode_label"),
-                                                  variable=self.line_mode_var)
-        self._line_mode_check.pack(side="left")
-        ttk.Label(line_mode_row, text=self.T("rings.pattern_k_label")).pack(side="left", padx=(16, 0))
-        self.pattern_k_entry = ttk.Entry(line_mode_row, width=6)
+        self._line_mode_check = ttk.Checkbutton(
+            line_mode_row.frame, text=self.T("rings.line_mode_label"), variable=self.line_mode_var)
+        line_mode_row.add(self._line_mode_check)
+        k_group = ttk.Frame(line_mode_row.frame)
+        ttk.Label(k_group, text=self.T("rings.pattern_k_label")).pack(side="left")
+        self.pattern_k_entry = ttk.Entry(k_group, width=6)
         number_field.attach(self.pattern_k_entry, self.T, "field_tip.rings_pattern_k")
         self.pattern_k_entry.insert(0, saved_params.get("pattern_k", ""))
-        self.pattern_k_entry.pack(side="left", padx=(6, 16))
-        ttk.Label(line_mode_row, text=self.T("rings.pattern_p0_label")).pack(side="left")
-        self.pattern_p0_entry = ttk.Entry(line_mode_row, width=16)
+        self.pattern_k_entry.pack(side="left", padx=(6, 0))
+        line_mode_row.add(k_group, padx_left=16)
+        p0_group = ttk.Frame(line_mode_row.frame)
+        ttk.Label(p0_group, text=self.T("rings.pattern_p0_label")).pack(side="left")
+        self.pattern_p0_entry = ttk.Entry(p0_group, width=16)
         number_field.attach(self.pattern_p0_entry, self.T, "field_tip.rings_pattern_p0")
         self.pattern_p0_entry.insert(0, saved_params.get("pattern_p0", ""))
         self.pattern_p0_entry.pack(side="left", padx=(6, 0))
+        line_mode_row.add(p0_group, padx_left=16)
 
         # Manual/Auto step-mode radio + "MATCH!" checkbox: Manual (default) always
         # takes a single wheel
@@ -402,22 +410,24 @@ class RingsTab(VizTabBase):
         # checked, or specifically the next NON-match when unchecked. See
         # renderer.py's own --pattern-step-mode/--pattern-stop-on-match
         # doc-comments.
-        pattern_step_row = ttk.Frame(position_frame)
-        pattern_step_row.pack(fill="x", padx=8, pady=(0, 8))
+        pattern_step_row = FlowRow(position_frame)
+        pattern_step_row.frame.pack(fill="x", padx=8, pady=(0, 8))
         self.pattern_step_mode_var = tk.StringVar(value=saved_params.get("pattern_step_mode", "manual"))
+        step_modes = ttk.Frame(pattern_step_row.frame)
         self._pattern_manual_radio = ttk.Radiobutton(
-            pattern_step_row, text=self.T("rings.pattern_step_manual_label"),
+            step_modes, text=self.T("rings.pattern_step_manual_label"),
             variable=self.pattern_step_mode_var, value="manual")
         self._pattern_manual_radio.pack(side="left")
         self._pattern_auto_radio = ttk.Radiobutton(
-            pattern_step_row, text=self.T("rings.pattern_step_auto_label"),
+            step_modes, text=self.T("rings.pattern_step_auto_label"),
             variable=self.pattern_step_mode_var, value="auto")
-        self._pattern_auto_radio.pack(side="left", padx=(6, 16))
+        self._pattern_auto_radio.pack(side="left", padx=(6, 0))
+        pattern_step_row.add(step_modes)
         self.pattern_stop_on_match_var = tk.BooleanVar(value=saved_params.get("pattern_stop_on_match", False))
         self._pattern_stop_on_match_check = ttk.Checkbutton(
-            pattern_step_row, text=self.T("rings.pattern_stop_on_match_label"),
+            pattern_step_row.frame, text=self.T("rings.pattern_stop_on_match_label"),
             variable=self.pattern_stop_on_match_var)
-        self._pattern_stop_on_match_check.pack(side="left")
+        pattern_step_row.add(self._pattern_stop_on_match_check, padx_left=16)
 
         # Curved axis: purely visual --
         # bends line mode's straight dot-row into a circle instead, with a
@@ -429,9 +439,9 @@ class RingsTab(VizTabBase):
         # line_axis_curved.
         self.line_axis_curved_var = tk.BooleanVar(value=saved_params.get("line_axis_curved", False))
         self._line_axis_curved_check = ttk.Checkbutton(
-            pattern_step_row, text=self.T("rings.line_axis_curved_label"),
+            pattern_step_row.frame, text=self.T("rings.line_axis_curved_label"),
             variable=self.line_axis_curved_var)
-        self._line_axis_curved_check.pack(side="left", padx=(16, 0))
+        pattern_step_row.add(self._line_axis_curved_check, padx_left=16)
 
         # --- Windows & tracking -------------------------------------------
         # These are working parameters (what the visualization

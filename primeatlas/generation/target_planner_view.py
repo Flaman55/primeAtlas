@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ..core.widgets import RevealFrame, StripedTreeview
+from ..core.wrap_label import WrapLabel
 
 COLUMNS = ("number", "floor", "from", "to", "windows", "targets", "method", "time")
 _WIDTHS = {"number": 40, "floor": 50, "from": 220, "to": 220, "windows": 80, "targets": 70,
@@ -18,7 +19,7 @@ _WIDTHS = {"number": 40, "floor": 50, "from": 220, "to": 220, "windows": 80, "ta
 
 
 class TargetPlannerView(ttk.Labelframe):
-    def __init__(self, parent, T, on_plan, on_load, on_use, on_example, wraplength=760):
+    def __init__(self, parent, T, on_plan, on_load, on_use, on_example):
         super().__init__(parent, text=T("target_planner.section_title"))
         self._T = T
         self._on_use = on_use
@@ -30,14 +31,12 @@ class TargetPlannerView(ttk.Labelframe):
 
         hint = ttk.Frame(self.body)
         hint.pack(fill="x")
-        ttk.Label(hint, text=T("target_planner.hint"), wraplength=wraplength, justify="left",
-                  style="Hint.TLabel").pack(side="left")
+        WrapLabel(hint, text=T("target_planner.hint"), style="Hint.TLabel").pack(side="left")
         self.howto_button = ttk.Button(self.body, text=T("target_planner.howto_show"),
                                        command=self._toggle_howto)
         self.howto_button.pack(anchor="w", pady=(4, 0))
         self.howto_area = RevealFrame(self.body, fill="x", pady=(4, 0))
-        self.howto_label = ttk.Label(self.howto_area, text=T("target_planner.howto"),
-                                     wraplength=wraplength, justify="left")
+        self.howto_label = WrapLabel(self.howto_area, text=T("target_planner.howto"))
         self.howto_label.pack(anchor="w")
         self._after_howto = ttk.Frame(self.body)
         self._after_howto.pack(fill="x")
@@ -59,8 +58,7 @@ class TargetPlannerView(ttk.Labelframe):
         self.plan_button.pack(side="left", padx=(8, 0))
 
         self.message_var = tk.StringVar()
-        ttk.Label(self._after_howto, textvariable=self.message_var, wraplength=wraplength,
-                  justify="left").pack(anchor="w", pady=(4, 0))
+        WrapLabel(self._after_howto, textvariable=self.message_var).pack(anchor="w", pady=(4, 0))
         self.tree = StripedTreeview(self._after_howto, columns=COLUMNS, show="headings",
                                     height=6, selectmode="browse")
         for column in COLUMNS:
@@ -70,8 +68,7 @@ class TargetPlannerView(ttk.Labelframe):
         self.tree.pack(fill="x", pady=(4, 0))
         self.tree.bind("<<TreeviewSelect>>", lambda _e: self._sync_use())
         self.summary_var = tk.StringVar()
-        ttk.Label(self._after_howto, textvariable=self.summary_var, wraplength=wraplength,
-                  justify="left").pack(anchor="w", pady=(4, 0))
+        WrapLabel(self._after_howto, textvariable=self.summary_var).pack(anchor="w", pady=(4, 0))
         self.use_button = ttk.Button(self._after_howto, text=T("target_planner.use_button"),
                                      command=self._use, state="disabled")
         self.use_button.pack(anchor="w", pady=(4, 0))

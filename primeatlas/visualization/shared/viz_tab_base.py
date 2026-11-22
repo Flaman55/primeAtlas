@@ -25,6 +25,7 @@ from ...core.base_tab import BaseTab
 from ...core.widgets import ScrollablePage
 from ...generation.quick_number import _eval_quick_number
 from .window_mode import center_tk_window
+from ...core.wrap_label import WrapLabel
 
 # Must match renderer.py's own emit_hud_state()
 # print prefix exactly -- kept as one shared constant name (renderer.py runs as a
@@ -109,8 +110,8 @@ class VizTabBase(BaseTab):
         dialog.resizable(False, False)
         body = ttk.Frame(dialog, padding=14)
         body.pack(fill="both", expand=True)
-        ttk.Label(body, text=self._tk("empty_storage_message"), wraplength=460,
-                  justify="left").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        WrapLabel(body, text=self._tk("empty_storage_message")).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
         ttk.Label(body, text=self._tk("empty_storage_from")).grid(row=1, column=0, sticky="w")
         from_entry = ttk.Entry(body, width=30)
         number_field.attach(from_entry, self.T, "field_tip.viz_generate_from")
@@ -121,11 +122,11 @@ class VizTabBase(BaseTab):
         number_field.attach(to_entry, self.T, "field_tip.viz_generate_to")
         to_entry.insert(0, default_to)
         to_entry.grid(row=2, column=1, sticky="w", padx=(6, 0), pady=2)
-        ttk.Label(body, text=self._tk("empty_storage_hint"), style="Hint.TLabel", wraplength=460,
-                  justify="left").grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        WrapLabel(body, text=self._tk("empty_storage_hint"), style="Hint.TLabel").grid(
+            row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
         error_var = tk.StringVar(value="")
-        ttk.Label(body, textvariable=error_var, foreground="#cc3333", wraplength=460,
-                  justify="left").grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        WrapLabel(body, textvariable=error_var, foreground="#cc3333").grid(
+            row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
         result = {"value": None}
 
         def on_generate():

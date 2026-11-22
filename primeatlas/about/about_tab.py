@@ -32,6 +32,7 @@ from primeatlas.core.background import run_in_background
 from primeatlas.core.base_tab import BaseTab
 from primeatlas.core.info_tip import InfoTip
 from primeatlas.core.version import read_changelog, version_label
+from primeatlas.core.wrap_label import WrapLabel
 
 AUTHOR_NAME = "Artur Flamandzki"
 AUTHOR_EMAIL = "flamandzki.artur@gmail.com"
@@ -80,10 +81,9 @@ class AboutTab(BaseTab):
         self.version_copy.configure(text=COPY_GLYPH, cursor="hand2")
         self.version_copy.bind("<Button-1>", lambda _e: self._copy_to_clipboard(version_text))
         self.version_copy.pack(side="left", padx=(6, 0))
-        wrapped = [ttk.Label(header, text=T("about.description"), justify="left")]
-        wrapped[-1].pack(anchor="w", fill="x", pady=(0, 8))
-        wrapped.append(ttk.Label(header, text=T("about.visualization"), justify="left"))
-        wrapped[-1].pack(anchor="w", fill="x", pady=(0, 12))
+        WrapLabel(header, text=T("about.description")).pack(anchor="w", fill="x", pady=(0, 8))
+        WrapLabel(header, text=T("about.visualization")).pack(anchor="w", fill="x",
+                                                               pady=(0, 12))
 
         facts = ttk.Frame(header)
         facts.pack(anchor="w", fill="x")
@@ -104,13 +104,8 @@ class AboutTab(BaseTab):
                 value_label.bind("<Button-1>", lambda _e, u=url: webbrowser.open(u))
                 self.links[link_key] = value_label
 
-        wrapped.append(ttk.Label(header, text=T("about.author_bio"), justify="left"))
-        wrapped[-1].pack(anchor="w", fill="x", pady=(12, 2))
-        wrapped.append(ttk.Label(header, text=T("about.related_projects"), justify="left"))
-        wrapped[-1].pack(anchor="w", fill="x")
-        # Paragraphs wrap at the header's current width, so they follow window resizes.
-        header.bind("<Configure>", lambda e: [w.configure(wraplength=max(e.width, 200))
-                                              for w in wrapped])
+        WrapLabel(header, text=T("about.author_bio")).pack(anchor="w", fill="x", pady=(12, 2))
+        WrapLabel(header, text=T("about.related_projects")).pack(anchor="w", fill="x")
 
         self._build_system_frame()
 

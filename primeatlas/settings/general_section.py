@@ -19,6 +19,7 @@ from ..core.theme import (BRIGHTNESS_DEFAULT, BRIGHTNESS_MAX, BRIGHTNESS_MIN, FO
 from ..core.widgets import set_scroll_pad_width
 from .restore_job import STATUS_RUNNING
 from ..core.i18n import Translator
+from ..core.wrap_label import WrapLabel
 
 
 class GeneralSection:
@@ -200,7 +201,7 @@ class GeneralSection:
             values=[label for _code, label in available], width=20)
         language_combo.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=6)
         language_combo.bind("<<ComboboxSelected>>", self._on_language_selected)
-        ttk.Label(lang_frame, text=self.T("settings.language_restart_note"),
+        WrapLabel(lang_frame, text=self.T("settings.language_restart_note"),
                   style="Hint.TLabel").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
 
         ttk.Label(lang_frame, text=self.T("settings.number_format_label")).grid(
@@ -219,7 +220,7 @@ class GeneralSection:
             values=list(self._number_format_labels_by_code.values()), width=28)
         number_format_combo.grid(row=1, column=1, sticky="w", padx=(0, 12), pady=(0, 6))
         number_format_combo.bind("<<ComboboxSelected>>", self._on_number_format_selected)
-        ttk.Label(lang_frame, text=self.T("settings.number_format_restart_note"),
+        WrapLabel(lang_frame, text=self.T("settings.number_format_restart_note"),
                   style="Hint.TLabel").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=(0, 6))
 
         # Theme picker -- same restart-required pattern as language above (see
@@ -244,7 +245,7 @@ class GeneralSection:
             values=[label for _code, label in theme_options], width=20)
         theme_combo.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=6)
         theme_combo.bind("<<ComboboxSelected>>", self._on_theme_selected)
-        ttk.Label(theme_frame, text=self.T("settings.theme_restart_note"),
+        WrapLabel(theme_frame, text=self.T("settings.theme_restart_note"),
                   style="Hint.TLabel").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
 
         ui_frame = ttk.Labelframe(outer, text=self.T("settings.ui_frame"))
@@ -261,7 +262,7 @@ class GeneralSection:
         width_spin.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=6)
         width_spin.bind("<Return>", self._on_scroll_pad_width_changed)
         width_spin.bind("<FocusOut>", self._on_scroll_pad_width_changed)
-        ttk.Label(ui_frame, text=self.T("settings.scroll_pad_width_note",
+        WrapLabel(ui_frame, text=self.T("settings.scroll_pad_width_note",
                                         min=SCROLL_PAD_WIDTH_MIN, max=SCROLL_PAD_WIDTH_MAX),
                   style="Hint.TLabel").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
 
@@ -285,7 +286,7 @@ class GeneralSection:
                                width=6)
             number_field.attach(spin, self.T, purpose, minimum=low, maximum=high)
             spin.grid(row=row, column=1, sticky="w", padx=(0, 12), pady=(0, 6))
-            ttk.Label(ui_frame, text=self.T("settings.readability_range", min=low, max=high),
+            WrapLabel(ui_frame, text=self.T("settings.readability_range", min=low, max=high),
                       style="Hint.TLabel").grid(row=row, column=2, sticky="w", padx=(0, 6), pady=(0, 6))
         self._load_readability_fields()
         readability_buttons = ttk.Frame(ui_frame)
@@ -294,15 +295,15 @@ class GeneralSection:
                    command=self._on_readability_apply).pack(side="left")
         ttk.Button(readability_buttons, text=self.T("settings.readability_reset"),
                    command=self._on_readability_reset).pack(side="left", padx=(6, 0))
-        ttk.Label(ui_frame, text=self.T("settings.readability_note"), style="Hint.TLabel",
-                  wraplength=760, justify="left").grid(
+        WrapLabel(ui_frame, text=self.T("settings.readability_note"), style="Hint.TLabel").grid(
             row=5, column=0, columnspan=3, sticky="w", padx=6, pady=(0, 6))
 
         path_frame = ttk.Labelframe(outer, text=self.T("settings.path_frame"))
         path_frame.pack(fill="x", pady=(0, 8))
         self.path_var = tk.StringVar(value=self.wsl["get_portal_folder"]())
+        # It fills the column and shrinks in a narrow window instead of pushing the buttons out.
         # not a number field: a folder path
-        ttk.Entry(path_frame, textvariable=self.path_var, width=70).grid(
+        ttk.Entry(path_frame, textvariable=self.path_var, width=16).grid(
             row=0, column=0, sticky="we", padx=6, pady=6)
         path_frame.columnconfigure(0, weight=1)
         ttk.Button(path_frame, text=self.T("settings.path_browse"),
@@ -312,5 +313,5 @@ class GeneralSection:
         ttk.Button(path_frame, text=self.T("settings.path_reset"),
                    command=self._on_reset_path).grid(row=0, column=3, padx=(4, 6))
         self.path_status_var = tk.StringVar(value=self._path_status_text())
-        ttk.Label(path_frame, textvariable=self.path_status_var, style="Hint.TLabel").grid(
+        WrapLabel(path_frame, textvariable=self.path_status_var, style="Hint.TLabel").grid(
             row=1, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 6))

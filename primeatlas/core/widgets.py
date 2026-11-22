@@ -89,6 +89,24 @@ class FitLabel(ttk.Label):
             self.configure(wraplength=width)
 
 
+def flow_group(row, padx_left=0):
+    """A frame added to FlowRow `row` as one item; the caller packs into it, side="left",
+    widgets that wrap together (a label with its field and its Auto button)."""
+    group = ttk.Frame(row.frame)
+    row.add(group, padx_left=padx_left)
+    return group
+
+
+def status_flow_row(parent, status_var):
+    """A FlowRow starting with a label of `status_var` that wraps to the row (FitLabel),
+    laid out again whenever that text changes; the caller packs .frame and adds the
+    buttons after it."""
+    row = FlowRow(parent)
+    row.add(FitLabel(row.frame, textvariable=status_var))
+    status_var.trace_add("write", lambda *_a: row.relayout())
+    return row
+
+
 def add_page_nav_group(flow_row, T, page_label_var, on_prev, on_next, on_goto=None,
                         label_width=16, group_gap=14,
                         prev_key="common.prev_page", next_key="common.next_page"):
@@ -164,22 +182,20 @@ def _build_goto_group(parent, T, on_goto):
 def add_page_nav_row(parent, T, page_label_var, on_prev, on_next, on_goto=None,
                       label_width=16, prev_key="common.prev_page",
                       next_key="common.next_page"):
-    """Builds ONE full page-nav row as a plain (non-wrapping) ttk.Frame -- Prev/Next/
-    label packed on the LEFT, an optional "Page:"/entry/Go jump group flush against
-    the RIGHT edge -- instead of FlowRow's left-to-right flow-and-wrap.
+    """Builds ONE full page-nav row -- Prev/Next/label on the LEFT, an optional
+    "Page:"/entry/Go jump group flush against the RIGHT edge -- instead of FlowRow's
+    left-to-right flow.
 
     Used where two of these rows stack on top of each other next to a shared tall
     button (Storage's hits_export_btn spanning both) and their jump groups need to
     land at the SAME right edge on both rows for a symmetric look, regardless of how
     much shorter one row's left cluster is than the other's -- FlowRow's flow model
-    can't express "flush right", and on a narrow pane it would wrap the second row's
-    jump group onto a stray third line, left-anchored under nothing in particular.
+    can't express "flush right".
 
-    Unlike FlowRow, this never reflows onto extra lines -- callers rely on their
-    container never getting narrower than both rows' combined natural width (see e.g.
-    constellations_hits_tab.py's own paneconfigure(minsize=...) call, sized from these
-    rows' own winfo_reqwidth() after construction); below that width the jump group
-    just crowds against the left cluster instead of wrapping.
+    Laid out by the coordinator (responsive.py): while the row is narrower than both
+    groups side by side, the jump group goes under the left one, at the left edge.
+    row_frame.min_width() is the wider of the two groups: the narrowest width at which
+    nothing is cut, for a pane minimum (clamp_pane_min_width()).
 
     Returns (row_frame, prev_btn, next_btn, goto_entry) -- row_frame is what the
     caller packs into its own parent; goto_entry is None when on_goto is not given."""
@@ -194,11 +210,33 @@ def add_page_nav_row(parent, T, page_label_var, on_prev, on_next, on_goto=None,
     left.pack(side="left")
 
     goto_entry = None
+    goto_frame = None
     if on_goto is not None:
         goto_frame, goto_entry = _build_goto_group(row_frame, T, on_goto)
         goto_frame.pack(side="right")
 
+    groups = [g for g in (left, goto_frame) if g is not None]
+    row_frame.min_width = lambda: max(g.winfo_reqwidth() for g in groups)
+
+    def layout(width):
+        if goto_frame is None:
+            return
+        side_by_side = width >= left.winfo_reqwidth() + goto_frame.winfo_reqwidth()
+        left.pack_configure(side="left" if side_by_side else "top", anchor="w")
+        goto_frame.pack_configure(side="right" if side_by_side else "top", anchor="w")
+
+    responsive.coordinator(row_frame).add(
+        row_frame, layout, key=lambda: tuple(g.winfo_reqwidth() for g in groups))
     return row_frame, prev_btn, next_btn, goto_entry
+
+
+def sash_gap(paned):
+    """The width the sashes of a horizontal panedwindow take: its width less its panes'
+    (0 until the panes are laid out)."""
+    panes = [paned.nametowidget(p) for p in paned.panes()]
+    if not panes or any(p.winfo_width() <= 1 for p in panes):
+        return 0
+    return max(0, paned.winfo_width() - sum(p.winfo_width() for p in panes))
 
 
 def clamp_pane_min_width(paned, pane_widget, min_width):
@@ -208,11 +246,9 @@ def clamp_pane_min_width(paned, pane_widget, min_width):
     option, not minsize (unlike the classic, unthemed tk.PanedWindow), so there is no
     built-in way to say this directly.
 
-    Used for a detail pane holding an add_page_nav_row() (see its own docstring) --
-    that row never wraps onto extra lines, so past this width its right-flush
-    "Page:"/entry/Go jump group starts sliding off the pane's own edge and out of
-    view entirely, not just crowding the left cluster. Used by the Prime numbers and
-    Constellations Storage previews.
+    Used for a detail pane holding add_page_nav_row()s, with their min_width(): below
+    it a group of the row would be cut. Used by the Prime numbers and Constellations
+    Storage previews.
 
     Whenever `pane_widget`'s own width changes (a sash drag included, since dragging
     resizes both panes), the sash is clamped back if it would make `pane_widget`
@@ -229,7 +265,7 @@ def clamp_pane_min_width(paned, pane_widget, min_width):
         total = paned.winfo_width()
         if total <= 1:
             return
-        max_allowed_sash = max(0, total - min_width)
+        max_allowed_sash = max(0, total - min_width - sash_gap(paned))
         if paned.sashpos(0) > max_allowed_sash:
             paned.after_idle(_clamp_sash, max_allowed_sash)
 
@@ -595,6 +631,14 @@ class ScrollablePage:
     def scrolls(self):
         """True while the content does not fit and the scrollbar is shown."""
         return self._shown
+
+    def steady_width(self):
+        """The canvas's width while the scrollbar and the pad are shown. Wrapped content is
+        laid out for it (core/wrap_label.py), so showing or hiding them never changes the
+        wrap: a wrap following them could settle either narrower and scrolling or wider and
+        fitting, depending on the way the window got its size."""
+        return max(1, self.frame.winfo_width() - self.scrollbar.winfo_reqwidth()
+                   - self.pad.frame.winfo_reqwidth())
 
     def scroll_to(self, widget):
         """Scrolls so `widget` (anywhere inside body) starts at the top of the view, as far

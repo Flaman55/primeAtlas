@@ -39,6 +39,7 @@ from ..core.ui_state import remember
 from ..generation.engine_argv import PRIMESIEVE_QUERY_SCRIPT
 from ..generation.quick_number import _eval_quick_number
 from ..generation.wsl_command import windows_path_to_wsl
+from ..core.wrap_label import WrapLabel
 
 
 def build_primesieve_query_argv(op, *args, script_path=None):
@@ -200,8 +201,8 @@ class PrimesieveCalcTab(BaseTab):
         result_row = ttk.Frame(container)
         result_row.pack(fill="x")
         self.primesieve_calc_result_var = tk.StringVar(value="")
-        ttk.Label(result_row, textvariable=self.primesieve_calc_result_var,
-                  font=("Consolas", 11, "bold"), wraplength=700, justify="left").pack(
+        WrapLabel(result_row, textvariable=self.primesieve_calc_result_var,
+                  font=("Consolas", 11, "bold")).pack(
             side="left", anchor="w")
         self.primesieve_calc_copy_button = ttk.Button(
             result_row, text=self.T("primesieve_calc.copy_button"),

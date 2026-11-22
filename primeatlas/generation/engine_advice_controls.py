@@ -91,10 +91,10 @@ class EngineAdviceControls:
         engine_slot, width_slot = ttk.Frame(holder), ttk.Frame(holder)
         engine_slot.pack(fill="x")
         width_slot.pack(fill="x")
-        view = EngineAdviceView(engine_slot, self.T, self._use_advised_engine, wraplength=900)
+        view = EngineAdviceView(engine_slot, self.T, self._use_advised_engine)
         self._quick_advice_views.append(view)
         self._quick_width_views.append(
-            WidthAdviceView(width_slot, self.T, self._use_width_advice, wraplength=900))
+            WidthAdviceView(width_slot, self.T, self._use_width_advice))
         return view
 
     def _start_engine_advice(self):

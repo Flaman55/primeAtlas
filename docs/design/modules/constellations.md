@@ -25,7 +25,7 @@ Reads hit files and `PAGES_META.json` written by `constellation/` and `prime_sie
 never writes them.
 
 Storage sub-tab layout: the tree pane keeps a third of the width (`core/widgets.keep_sash_share`)
-across window resizes, the detail pane never narrower than its page navs; a sash drag sets the
+across window resizes, the detail pane never narrower than its page navs' widest group (a nav's page jump group goes under its buttons while the row is too narrow, `core/widgets.add_page_nav_row`); a sash drag sets the
 share, so a window made narrow and wide again shows the same split.
 
 Density: a floor's covered spans come from its done windows (`DONE_WINDOWS.txt` /

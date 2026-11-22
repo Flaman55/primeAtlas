@@ -52,6 +52,7 @@ from ..core.base_tab import BaseTab
 from ..core.widgets import StripedTreeview
 from ..core.storage import digit_count_floor, list_floors
 from ..core.ui_state import remember
+from ..core.wrap_label import WrapLabel
 from .constellations import list_constellation_hits
 
 
@@ -137,8 +138,8 @@ class ConstellationsCalcTab(BaseTab):
         self.variant_combo.bind("<<ComboboxSelected>>", self._on_variant_changed)
 
         self.pattern_info_var = tk.StringVar(value="")
-        ttk.Label(container, textvariable=self.pattern_info_var,
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(container, textvariable=self.pattern_info_var,
+                  style="Hint.TLabel").pack(
             anchor="w", pady=(0, 8))
 
         input_row = ttk.Frame(container)

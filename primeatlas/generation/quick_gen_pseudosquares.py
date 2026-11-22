@@ -21,6 +21,7 @@ import pseudosquares_const
 from ..core import number_field, number_format
 from ..core.info_tip import InfoTip
 from ..core.threads_field import ThreadsField
+from ..core.widgets import FlowRow, flow_group
 from . import wsl_resources
 from .engine_argv import build_pseudosquares_native_argv
 from .native_plan import AUTO_WORD, MAX_WORD, parse_threads, plan
@@ -28,6 +29,7 @@ from .quick_gen_panel import _floor_spinbox
 from .quick_number import _eval_quick_number
 from .window_planning import QUICK_GEN_MAX_WINDOW_WIDTH
 from .wsl_command import build_wsl_logged_command, generation_log_paths
+from ..core.wrap_label import WrapLabel
 
 PSEUDOSQUARES_MODES = ("count", "print")
 
@@ -48,23 +50,28 @@ class QuickGenPseudosquares:
         """Floor + From + Width like primesieve mode (From blank = the Floor's start), then
         count/print and Threads, and the always-visible attribution."""
         frame = ttk.Frame(container)
-        frame.grid(row=0, column=0, sticky="w")
-        row1 = ttk.Frame(frame)
-        row1.pack(anchor="w")
+        frame.grid(row=0, column=0, sticky="ew")
+        # Each label with its field wraps whole onto the next line in a narrow window.
+        fields = FlowRow(frame)
+        fields.frame.pack(fill="x")
+        row1 = flow_group(fields)
         ttk.Label(row1, text=self.T("quick.field_floor")).pack(side="left")
         _floor_spinbox(row1, self.quick_pseudosquares_floor_var, 10, self.T,
-                       to=pseudosquares_const.MAX_FLOOR).pack(side="left", padx=(6, 20))
+                       to=pseudosquares_const.MAX_FLOOR).pack(side="left", padx=(6, 0))
+        row1 = flow_group(fields, 20)
         ttk.Label(row1, text=self.T("quick.field_from")).pack(side="left")
         number_field.attach(ttk.Entry(row1, textvariable=self.quick_pseudosquares_from_var, width=36), self.T,
                             "field_tip.quick_from").entry.pack(
-            side="left", padx=(6, 20))
+            side="left", padx=(6, 0))
+        row1 = flow_group(fields, 20)
         ttk.Label(row1, text=self.T("quick.field_width")).pack(side="left")
         number_field.attach(ttk.Entry(row1, textvariable=self.quick_pseudosquares_width_var, width=14), self.T,
                             "field_tip.quick_width").entry.pack(
             side="left", padx=(6, 0))
 
-        row2 = ttk.Frame(frame)
-        row2.pack(anchor="w", pady=(4, 0))
+        options = FlowRow(frame)
+        options.frame.pack(fill="x", pady=(4, 0))
+        row2 = flow_group(options)
         labels = {"count": self.T("quick.pseudosquares_mode_count"),
                   "print": self.T("quick.pseudosquares_mode_print")}
         shown = tk.StringVar(value=labels.get(self.quick_pseudosquares_mode_var.get(),
@@ -84,7 +91,8 @@ class QuickGenPseudosquares:
         shown.trace_add("write", on_shown)
         self.quick_pseudosquares_mode_var.trace_add("write", on_mode)
         InfoTip(row2, lambda: self.T("quick.info_pseudosquares")).label.pack(
-            side="left", padx=(4, 16))
+            side="left", padx=(4, 0))
+        row2 = flow_group(options, 16)
         ttk.Label(row2, text=self.T("quick.field_threads")).pack(side="left")
         # Auto: the program picks its own count, so it shows no number.
         threads = ThreadsField(row2, self.T, self.quick_pseudosquares_threads_var,
@@ -93,8 +101,8 @@ class QuickGenPseudosquares:
         threads.pack(side="left", padx=(6, 0))
         self._pseudosquares_threads_spinboxes.append(threads)
 
-        ttk.Label(frame, text=self.T("quick.attribution_pseudosquares"), style="Hint.TLabel",
-                  font=("TkDefaultFont", 8), wraplength=860, justify="left").pack(
+        WrapLabel(frame, text=self.T("quick.attribution_pseudosquares"), style="Hint.TLabel",
+                  font=("TkDefaultFont", 8)).pack(
             anchor="w", pady=(4, 0))
         mode_frames["pseudosquares"] = frame
         self._sync_pseudosquares_controls()

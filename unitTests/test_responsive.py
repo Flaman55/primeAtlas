@@ -10,7 +10,11 @@ out with that width and its content sizes. Checks:
   3. triggers: a resize, however many steps (dragging the window edge), gives one layout
      once the steps stop; an element not shown (a tab not selected) is laid out when it
      first shows, and showing it again at the same width lays nothing out; an explicit
-     request lays out only when the width or a content size changed;
+     request lays out only when the width or a content size changed; a width change of a
+     watched box (Item.watch) lays out at the next idle turn while the element's own width
+     is the one of its last layout (the box settles), after the debounce while that width
+     changes too (a drag), and a height-only one lays nothing out; an
+     element never laid out yet lays out at the next idle turn, without the debounce;
   4/10. round limit: an element that asks for another layout of itself (or of an element
      not deeper than the last round's) in the same pass is stopped and logged; a chain of
      deeper requests stops at MAX_ROUNDS and is logged; after either the window still
@@ -20,7 +24,11 @@ out with that width and its content sizes. Checks:
      when that is less), its minimum height unchanged;
   6. FlowRow on the coordinator: wraps whole items, a line starts at the left edge (its gap
      dropped), an item wider than the row is shortened by fit_width(); a row given a width
-     callable lays out for that width, not its frame's;
+     callable lays out for that width, not its frame's; a group frame (a label with its field)
+     moves to the next line whole, and none of its children is cut;
+  12. add_page_nav_row(): with room, the page jump group stands flush right on the row of
+     Previous/Next/count; without, it goes under them at the left edge, and back again with
+     room; min_width() is the wider of the two groups, never the whole row;
   11. keep_sash_share(): a two-pane panedwindow keeps the first pane's share of the width
      across resizes, the second pane never under its minimum, so narrow -> wide gives the
      starting layout back; a sash drag sets the share (clamped to the minimum).
@@ -39,7 +47,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation")]
 
 from primeatlas.core import responsive  # noqa: E402
-from primeatlas.core.widgets import FlowRow  # noqa: E402
+from primeatlas.core.widgets import FlowRow, add_page_nav_row  # noqa: E402
 
 
 class _Records(logging.Handler):
@@ -187,6 +195,52 @@ class OrderAndTriggers(_Base):
         self.pump()
         self.assertEqual([c[0] for c in calls][-2:], ["first", "second"],
                          "a tab shown at a new width is laid out again")
+
+    def test_first_layout_does_not_wait_for_the_debounce(self):
+        calls = []
+        holder = ttk.Frame(self.root, width=1, height=20)
+        holder.pack(anchor="w")
+        holder.pack_propagate(False)
+        _frame, item = self.element(holder, calls, "row")
+        self.pump()
+        self.assertEqual(calls, [], "no width yet, nothing laid out")
+        holder.configure(width=300)
+        self.root.update()
+        self.root.update()
+        self.assertEqual(len(calls), 1, "the first width lays out at the next idle turn")
+        calls.clear()
+        holder.configure(width=200)
+        self.root.update()
+        self.assertEqual(calls, [], "a later width change waits for the debounce")
+        self.pump()
+        self.assertEqual(len(calls), 1)
+
+    def test_watched_box_settling_lays_out_at_idle_a_drag_after_the_debounce(self):
+        calls = []
+        frame, item = self.element(self.root, calls, "row")
+        box = ttk.Frame(self.root, width=200, height=20)
+        box.pack(anchor="w")
+        box.pack_propagate(False)
+        item.watch(box)
+        self.pump()
+        layouts = []
+        item.layout = lambda width: layouts.append(width)
+        item._key = lambda: box.winfo_width()
+        box.configure(width=300)
+        self.root.update()
+        self.root.update()
+        self.assertEqual(len(layouts), 1,
+                         "the element's own width unchanged: the box settles, laid out at idle")
+        self.root.geometry("700x400")
+        box.configure(width=250)
+        self.root.update()
+        self.root.update()
+        self.assertEqual(len(layouts), 1, "with its own width changing (a drag): not yet")
+        self.pump()
+        self.assertEqual(len(layouts), 2, "one layout after the debounce")
+        box.configure(height=60)
+        self.pump()
+        self.assertEqual(len(layouts), 2, "a height-only change lays nothing out")
 
     def test_destroyed_element_is_dropped(self):
         calls = []
@@ -347,7 +401,7 @@ class MinWidth(_Base):
         self.assertEqual(self.root.winfo_width(), expected + 200, "wider stays free")
 
     def test_minimum_is_the_verified_width(self):
-        self.assertEqual(responsive.MIN_WINDOW_WIDTH, responsive.MEDIUM_MIN)
+        self.assertEqual(responsive.MIN_WINDOW_WIDTH, 800)
 
 
 class WidthClasses(unittest.TestCase):
@@ -452,6 +506,53 @@ class FlowRowOnCoordinator(_Base):
         self.resize(640)
         self.assertTrue(seen)
         self.assertEqual(seen[-1], row.frame.winfo_width())
+
+    def test_group_moves_whole_and_is_not_cut(self):
+        row = FlowRow(self.root)
+        row.frame.pack(fill="x")
+        groups = []
+        for i in range(4):
+            group = ttk.Frame(row.frame)
+            row.add(group, padx_left=16 if i else 0)
+            label = ttk.Label(group, text=f"Field number {i}:")
+            label.pack(side="left")
+            entry = ttk.Entry(group, width=10)
+            entry.pack(side="left", padx=(6, 0))
+            groups.append((group, label, entry))
+        self.resize(2000)
+        self.assertEqual(len({g.winfo_y() for g, _l, _e in groups}), 1, "one line")
+        self.resize(420)
+        self.assertGreater(len({g.winfo_y() for g, _l, _e in groups}), 1, "wrapped")
+        for group, label, entry in groups:
+            centers = [c.winfo_y() + c.winfo_height() // 2 for c in (label, entry)]
+            self.assertLessEqual(abs(centers[0] - centers[1]), 2, "label and field on one line")
+            self.assertGreater(entry.winfo_x(), label.winfo_x(), "field right of its label")
+            for child in (label, entry):
+                self.assertGreaterEqual(child.winfo_width(), child.winfo_reqwidth(), "not cut")
+            self.assertLessEqual(group.winfo_x() + group.winfo_width(), row.frame.winfo_width())
+
+
+
+class PageNavRow(_Base):
+
+    def test_jump_group_flush_right_or_under(self):
+        page = tk.StringVar(self.root, "page 1 / 9")
+        row, prev_btn, _next_btn, entry = add_page_nav_row(
+            self.root, lambda key: key, page, lambda: None, lambda: None, lambda: None)
+        row.pack(fill="x")
+        left, goto = prev_btn.master, entry.master
+        self.resize(900)
+        self.assertEqual(goto.winfo_y(), left.winfo_y(), "one line with room")
+        self.assertEqual(goto.winfo_x() + goto.winfo_width(), row.winfo_width(), "flush right")
+        self.assertEqual(row.min_width(), max(left.winfo_reqwidth(), goto.winfo_reqwidth()))
+        self.root.minsize(1, 1)
+        self.resize(max(left.winfo_reqwidth(), goto.winfo_reqwidth()) + 4)
+        self.assertGreater(goto.winfo_y(), left.winfo_y(), "under the buttons without room")
+        self.assertEqual(goto.winfo_x(), 0, "at the left edge")
+        for w in (left, goto):
+            self.assertGreaterEqual(w.winfo_width(), w.winfo_reqwidth(), "not cut")
+        self.resize(900)
+        self.assertEqual(goto.winfo_y(), left.winfo_y(), "back on one line")
 
 
 if __name__ == "__main__":

@@ -1355,8 +1355,16 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               and widths, scrolls with it, click runs the command,
                               edge drag resizes (unitTests/test_wrapped_heading.py)
   wrapped_check.py              wrapped_checkbutton -- a ttk Checkbutton whose text wraps
-                              at its parent's width (its own style carries the
-                              wraplength) (unitTests/test_pipeline_form_layout.py)
+                              to the width it has by wrap_label.py's rule (its own
+                              style carries the wraplength)
+                              (unitTests/test_pipeline_form_layout.py,
+                              unitTests/test_wrap_label.py)
+  wrap_label.py                 WrapLabel -- the app's one static text that wraps to the
+                              width it has (descriptions, hints, status lines in every
+                              tab): laid out by responsive.py from the nearest box its
+                              parent stretches, less paddings and the widgets beside
+                              it, measured as with the page's scrollbar shown
+                              (unitTests/test_wrap_label.py)
   info_tip.py                   InfoTip -- the app's one "i" marker next to a field:
                               hovering it shows how the field affects the run (the
                               Generation tab's engine selector and every engine knob);
@@ -1377,10 +1385,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               per width or content change and never from their own
                               height; a width change waits DEBOUNCE_MS, a pass runs at
                               most MAX_ROUNDS rounds of ever deeper elements and logs
-                              a loop instead of hanging; width_class() names the
-                              window's width band; apply_min_width() keeps the app
-                              window at least MIN_WINDOW_WIDTH (1280 px) wide, the
-                              narrowest width checked with nothing cut
+                              a loop instead of hanging; Item.watch() lets the width
+                              of another box trigger an element; width_class() names
+                              the window's width band; apply_min_width() keeps the app
+                              window at least MIN_WINDOW_WIDTH (800 px) wide, the
+                              narrowest width of the layout map
                               (unitTests/test_responsive.py;
                               every tab fits 1280x720 in Polish and English at font
                               100 % and 125 %, and 1920/1280/1000/800 px and back:
@@ -1436,8 +1445,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               application-specific state; FlowRow is the app's one
                               wrapping row: items wrap whole onto the next line where
                               the row runs out of width, laid out by responsive.py
-                              (page navs, the Quick-gen mode row); FitLabel, a FlowRow
-                              label that wraps to the row; keep_sash_share() keeps a
+                              (page navs, rows of fields and buttons in every tab);
+                              flow_group(), a label with its field moving as one item;
+                              status_flow_row(), a status text followed by buttons;
+                              FitLabel, a FlowRow label that wraps to the row;
+                              ScrollablePage.steady_width(), the page width wrapped
+                              content is laid out for; keep_sash_share() keeps a
                               panedwindow's first pane at its share of the width
                               across resizes (Constellations > Storage);
                               disable_notebook_wheel()
