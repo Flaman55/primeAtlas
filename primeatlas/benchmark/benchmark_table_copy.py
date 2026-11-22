@@ -25,12 +25,12 @@ CHECK_WIDTH = 50
 class BenchmarkTableCopy:
 
     def _build_table_copy_hint(self, row):
-        """The keys' one-line hint and its InfoTip, at the right end of `row`."""
+        """The keys' one-line hint and its InfoTip, packed left in `row`."""
         T = self.T
-        self.copy_info = InfoTip(row, lambda: T("bench.copy_tip"))
-        self.copy_info.label.pack(side="right", padx=(4, 0))
         self.copy_hint_label = ttk.Label(row, text=T("bench.copy_hint"))
-        self.copy_hint_label.pack(side="right")
+        self.copy_hint_label.pack(side="left")
+        self.copy_info = InfoTip(row, lambda: T("bench.copy_tip"))
+        self.copy_info.label.pack(side="left", padx=(4, 0))
 
     def _bind_table_copy(self):
         self._copy_marks = set()

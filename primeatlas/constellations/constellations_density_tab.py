@@ -25,6 +25,7 @@ from ..core.progress_bar_owner import show_fraction
 from ..core.theme import palette_for
 from ..core.ui_state import remember
 from ..core.widgets import HeightGrip, StripedTreeview
+from ..core.wrap_label import WrapLabel
 from .density_chart import draw_ratio_chart
 from .density_scan import scan_density
 
@@ -93,8 +94,8 @@ class ConstellationsDensityTab(BaseTab):
                                       command=self._on_stop_clicked)
         self.stop_button.pack(side="left", padx=(6, 0))
 
-        ttk.Label(container, text=T("const_density.hint"), wraplength=760, justify="left",
-                  style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
+        WrapLabel(container, text=T("const_density.hint"), style="Hint.TLabel").pack(
+            anchor="w", pady=(0, 8))
 
         self.tree_frame = ttk.Frame(container)
         self.tree_frame.pack(fill="x")
@@ -114,8 +115,8 @@ class ConstellationsDensityTab(BaseTab):
         HeightGrip(container, self.tree, after=self.tree_frame, pady=(2, 4))
 
         self.notes_var = tk.StringVar(value="")
-        ttk.Label(container, textvariable=self.notes_var, wraplength=760, justify="left",
-                  style="Hint.TLabel").pack(anchor="w", pady=(0, 6))
+        WrapLabel(container, textvariable=self.notes_var, style="Hint.TLabel").pack(
+            anchor="w", pady=(0, 6))
 
         self.canvas = tk.Canvas(container, width=640, height=260,
                                 background=self.palette["console_bg"], highlightthickness=1,

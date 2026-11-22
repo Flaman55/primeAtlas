@@ -19,6 +19,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 import tempfile
 import unittest
 
@@ -156,9 +157,18 @@ class TabTests(unittest.TestCase):
 
                 root.geometry("900x700")
                 tab.filter_summary_var.set("x" * 400)
-                root.update()
-                toggles = [w for w in tab.winfo_children()[0].winfo_children()
-                           if str(w.cget("text")) == tab.T("bench.show_references")]
+                end = time.time() + 0.5
+                while time.time() < end:  # the row's layout waits for the coordinator
+                    root.update()
+                    time.sleep(0.01)
+
+                def walk(w):
+                    for c in w.winfo_children():
+                        yield c
+                        yield from walk(c)
+                toggles = [w for w in walk(tab.winfo_children()[0])
+                           if "text" in w.keys()
+                           and str(w.cget("text")) == tab.T("bench.show_references")]
                 self.assertEqual(len(toggles), 1)
                 self.assertTrue(toggles[0].winfo_ismapped() and toggles[0].winfo_width() > 20,
                                 "a long filter summary does not push the PARI toggle out")

@@ -72,6 +72,7 @@ from .constellations import (
 # no row-count limit -- see _job()'s own comment).
 PDF_EXPORT_ROW_LIMIT = 50_000
 from ..core.widgets import FlowRow, HeightGrip, StripedTreeview, add_page_nav_group
+from ..core.wrap_label import WrapLabel
 
 
 def _iter_with_progress(rows, report_progress, step=100_000):
@@ -136,32 +137,41 @@ class ConstellationsRecordsTab(BaseTab):
         container = ttk.Frame(self)
         container.pack(fill="both", expand=True, padx=12, pady=12)
 
-        top_row = ttk.Frame(container)
-        top_row.pack(fill="x", pady=(0, 8))
-        ttk.Label(top_row, text=T("const_records.field_k")).pack(side="left")
+        # Field groups wrap whole onto the next line in a narrow window.
+        top_row = FlowRow(container)
+        top_row.frame.pack(fill="x", pady=(0, 8))
+        k_group = ttk.Frame(top_row.frame)
+        ttk.Label(k_group, text=T("const_records.field_k")).pack(side="left")
         self.k_combo = ttk.Combobox(
-            top_row, state="readonly", width=6,
+            k_group, state="readonly", width=6,
             values=[str(k) for k in pattern_catalog_v1.all_k()])
-        self.k_combo.pack(side="left", padx=(6, 16))
-        ttk.Label(top_row, text=T("const_records.field_floor_from")).pack(side="left")
-        self.floor_from_entry = ttk.Entry(top_row, width=8)
+        self.k_combo.pack(side="left", padx=(6, 0))
+        top_row.add(k_group)
+        from_group = ttk.Frame(top_row.frame)
+        ttk.Label(from_group, text=T("const_records.field_floor_from")).pack(side="left")
+        self.floor_from_entry = ttk.Entry(from_group, width=8)
         number_field.attach(self.floor_from_entry, self.T, "field_tip.constellation_floor_from")
-        self.floor_from_entry.pack(side="left", padx=(6, 12))
-        ttk.Label(top_row, text=T("const_records.field_floor_to")).pack(side="left")
-        self.floor_to_entry = ttk.Entry(top_row, width=8)
+        self.floor_from_entry.pack(side="left", padx=(6, 0))
+        top_row.add(from_group, padx_left=16)
+        to_group = ttk.Frame(top_row.frame)
+        ttk.Label(to_group, text=T("const_records.field_floor_to")).pack(side="left")
+        self.floor_to_entry = ttk.Entry(to_group, width=8)
         number_field.attach(self.floor_to_entry, self.T, "field_tip.constellation_floor_to")
-        self.floor_to_entry.pack(side="left", padx=(6, 16))
+        self.floor_to_entry.pack(side="left", padx=(6, 0))
+        top_row.add(to_group, padx_left=12)
         self.scan_button = ttk.Button(
-            top_row, text=T("const_records.scan_button"), command=self._on_scan_clicked)
-        self.scan_button.pack(side="left")
+            top_row.frame, text=T("const_records.scan_button"), command=self._on_scan_clicked)
+        top_row.add(self.scan_button, padx_left=16)
+        export_group = ttk.Frame(top_row.frame)
         self.export_pdf_button = ttk.Button(
-            top_row, text=T("const_records.export_pdf_button"),
+            export_group, text=T("const_records.export_pdf_button"),
             command=self._export_pdf, state="disabled")
-        self.export_pdf_button.pack(side="left", padx=(16, 0))
+        self.export_pdf_button.pack(side="left")
         self.export_csv_button = ttk.Button(
-            top_row, text=T("const_records.export_csv_button"),
+            export_group, text=T("const_records.export_csv_button"),
             command=self._export_csv, state="disabled")
         self.export_csv_button.pack(side="left", padx=(6, 0))
+        top_row.add(export_group, padx_left=16)
 
         # Optional on-screen-page-range scoping for BOTH export buttons above -- left
         # blank, /CSV export the whole currently-displayed floor range;
@@ -175,21 +185,22 @@ class ConstellationsRecordsTab(BaseTab):
         # hit-file-page distinction this depends on. Scoping lives on these same two
         # buttons rather than a separate range-scoped control, so PDF export gets the
         # same range-scoping option CSV does.
-        ttk.Label(top_row, text=T("const_records.export_range_label")).pack(
-            side="left", padx=(16, 0))
-        self.detail_export_from_entry = ttk.Entry(top_row, width=6)
+        range_group = ttk.Frame(top_row.frame)
+        ttk.Label(range_group, text=T("const_records.export_range_label")).pack(side="left")
+        self.detail_export_from_entry = ttk.Entry(range_group, width=6)
         number_field.attach(self.detail_export_from_entry, self.T,
                             "field_tip.const_records_export_from", minimum=1)
         self.detail_export_from_entry.pack(side="left", padx=(4, 0))
-        ttk.Label(top_row, text=T("const_records.export_range_to")).pack(
+        ttk.Label(range_group, text=T("const_records.export_range_to")).pack(
             side="left", padx=(4, 0))
-        self.detail_export_to_entry = ttk.Entry(top_row, width=6)
+        self.detail_export_to_entry = ttk.Entry(range_group, width=6)
         number_field.attach(self.detail_export_to_entry, self.T,
                             "field_tip.const_records_export_to", minimum=1)
         self.detail_export_to_entry.pack(side="left", padx=(4, 0))
+        top_row.add(range_group, padx_left=16)
 
-        ttk.Label(container, text=T("const_records.hint"), wraplength=760,
-                  justify="left", style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
+        WrapLabel(container, text=T("const_records.hint"), style="Hint.TLabel").pack(
+            anchor="w", pady=(0, 8))
 
         # Table on top at its own row height (see _rebuild_tree's row_count param),
         # full-hit-list drill-down for whatever cell was last double-clicked filling the

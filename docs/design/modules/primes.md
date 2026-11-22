@@ -21,10 +21,12 @@ Search runs on the shared search worker (`core/totals_search_coordinator.py`); a
 offered to the Generation tab through `generation_offer_coordinator.py`.
 
 Layout of the Storage sub-tab: the tree pane's width is the wider of the tree's columns (fitted
-to their texts) and the floor nav's widest group (`_tree_pane_width()`), set by the layout
-coordinator (`core/responsive.py`) on a window or content width change; a sash drag snaps back to
-it. The floor nav is a `FlowRow` of the app-wide page-nav groups and the page subtotal, laid out
-for that width, or less while the window is too narrow (the detail pane keeps its minimum width).
+to their texts) and the floor nav's widest group (`_tree_pane_width()`), or less while the window
+is too narrow for it (`_tree_pane_room()`): the detail pane keeps its minimum width (its page
+navigation's wider group: the page jump group goes under the buttons in a narrow pane), so both panes stay in view and the tree scrolls sideways. The layout coordinator
+(`core/responsive.py`) sets it on a window or content width change; a sash drag snaps back to it.
+The floor nav is a `FlowRow` of the app-wide page-nav groups and the page subtotal, laid out for
+the tree pane's width.
 The tree's horizontal scrollbar is always packed, disabled while the columns fit, so it never
 changes the tree's height.
 

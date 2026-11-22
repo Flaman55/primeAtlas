@@ -57,9 +57,12 @@ class ArithView(BaseTab):
             box.grid(row=0, column=col, sticky="nsew", padx=(0, 6) if col == 0 else (6, 0))
             row = ttk.Frame(box)
             row.pack(fill="x", padx=6, pady=(4, 2))
+            # The field takes the column's width left of its button: a long number fits a
+            # wide window, a narrow one shrinks it instead of cutting the button.
             self.number_entries[side] = entry(T, "field_tip.irreducibility_number",
-                                              row, "", "", width=34,
+                                              row, "", "", width=12,
                                               textvariable=numbers.number_var(side))
+            self.number_entries[side].pack_configure(fill="x", expand=True)
             ttk.Button(row, text=T("research_irreducibility.fit"),
                        command=lambda s=side: self._fit(s)).pack(side="left")
             self._layout_vars[side] = tk.StringVar()

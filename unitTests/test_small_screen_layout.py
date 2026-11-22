@@ -5,21 +5,22 @@ each configuration in its own process, since the language is read once at import
 to 1280 x 720 and every notebook tab, nested ones too, is selected in turn. Polish at 100 %
 and English at 125 % (the longest texts) also go through the widths of the layout map,
 1920, 1280, 1000 and 800 px, and back to 1920: each tab then shows every control where it
-was at the first 1920 px visit. The app's window has the minimum width MIN_WINDOW_WIDTH
-(the narrowest width checked without known gaps) (every tab is shown once before, so the reads a tab starts
+was at the first 1920 px visit (every tab is shown once before, so the reads a tab starts
 when first shown have finished; a tab whose texts still changed between the visits is
-listed and left out of that comparison). No control on a selected tab may (at 1000 and 800 px, the
-widths of KNOWN_GAP_WIDTHS, what breaks this is listed as a known gap, not a failure):
+listed and left out of that comparison). The app's window can be made as narrow as
+NARROWEST, the narrowest width of the layout map, and no narrower, and it takes every width
+of the map it is given (one over the screen's is capped at about the screen's). No control
+on a selected tab may:
   - end past the window's right edge, or past the right edge of the canvas it scrolls in;
   - be narrower than it asks for (its text cut by the geometry manager);
-  - be packed but left unmapped while its parent is shown (squeezed out of its row).
+  - be packed but left unmapped while its parent is shown (squeezed out of its row);
+and no pane of a shown panedwindow may be narrower than MIN_PANE_PX (squeezed out of view).
 Closed collapsible sections, separate windows and views that appear only with data in the
 storage are not visited.
 Windows, real display:
     python unitTests/test_small_screen_layout.py
 """
 import os
-import re
 import subprocess
 import sys
 import time
@@ -30,8 +31,10 @@ CONFIGS = [("pl", 100, (WIDTH,)), ("pl", 125, (WIDTH,)), ("en", 100, (WIDTH,)),
            ("en", 125, (WIDTH,)), ("pl", 100, (1920, 1280, 1000, 800, 1920)),
            ("en", 125, (1920, 1280, 1000, 800, 1920))]
 CHILD_TIMEOUT_S = 900
-# Widths whose cut controls are listed, not failed: the tabs are not laid out for them yet.
-KNOWN_GAP_WIDTHS = (1000, 800)
+# Narrowest width of the layout map: the app window's minimum width.
+NARROWEST = 800
+# Narrowest pane counted as in view; arbitrary, a few characters.
+MIN_PANE_PX = 40
 
 
 def _child(lang, font_scale, widths):
@@ -87,8 +90,7 @@ def _child(lang, font_scale, widths):
             time.sleep(0.01)
         app.update()
 
-    print(f"MINSIZE {app.minsize()[0]} {min(responsive.MIN_WINDOW_WIDTH, app.winfo_screenwidth())}")
-    app.minsize(1, app.minsize()[1])  # the gap widths below are visited all the same
+    print(f"MINSIZE {app.minsize()[0]} {min(NARROWEST, app.winfo_screenwidth())}")
     app.geometry(f"{widths[0]}x{HEIGHT}+0+0")
     deadline = time.time() + 60
     while not app.main_notebook.winfo_ismapped() and time.time() < deadline:
@@ -102,8 +104,16 @@ def _child(lang, font_scale, widths):
     def scan(trail, width):
         settle()
         right = app.winfo_rootx() + app.winfo_width()
+        if str(width).split(":")[-1].isdigit():
+            print(f"WIDTH {str(width).split(':')[-1]} {app.winfo_width()} {app.maxsize()[0]}")
         place = places.setdefault(trail, {})
         for w in walk(app):
+            if isinstance(w, ttk.Panedwindow) and shown(w):
+                for pane in map(w.nametowidget, w.panes()):
+                    if pane.winfo_width() < MIN_PANE_PX:
+                        problems.setdefault(str(pane), (trail, f"<pane of {w.winfo_class()}>",
+                                                        f"{width} px: pane squeezed to "
+                                                        f"{pane.winfo_width()} px"))
             if not isinstance(w, leaves):
                 continue
             if not shown(w):
@@ -213,21 +223,21 @@ def main():
         tabs = [int(line.split()[1]) for line in lines if line.startswith("TABS ")]
         sizes = [line.split()[1:] for line in lines if line.startswith("MINSIZE ")]
         check(bool(sizes) and sizes[0][0] == sizes[0][1],
-              f"{label}: the window's minimum width is MIN_WINDOW_WIDTH (got {sizes})")
+              f"{label}: the window's minimum width is {NARROWEST} px (got {sizes})")
+        # A width over the screen's is capped by the window manager at about the screen's.
+        widths_got = sorted({tuple(map(int, line.split()[1:])) for line in lines
+                             if line.startswith("WIDTH ")})
+        check(bool(widths_got) and all(got == asked or asked > cap <= got
+                                       for asked, got, cap in widths_got),
+              f"{label}: the window takes every width of the map (asked, got, screen cap: "
+              f"{widths_got})")
         check(proc.returncode == 0 and tabs and tabs[0] > 20,
               f"{label}: the app ran and every tab was visited ({tabs[0] if tabs else 0})")
         if proc.returncode != 0:
             print(proc.stderr[-2000:])
         found = [line[len("PROBLEM "):] for line in lines if line.startswith("PROBLEM ")]
-        gaps = [item for item in found
-                if int((re.search(r": \d+:(\d+) px: ", item) or [0, 0])[1]) in KNOWN_GAP_WIDTHS]
-        found = [item for item in found if item not in gaps]
         for item in found:
             print("      " + item.encode("ascii", "backslashreplace").decode("ascii"))
-        if gaps:
-            print(f"      known gaps at {'/'.join(map(str, KNOWN_GAP_WIDTHS))} px: {len(gaps)}")
-            for item in gaps:
-                print("      gap: " + item.encode("ascii", "backslashreplace").decode("ascii"))
         check(not found, f"{label}: no control past the edge, cut or squeezed out")
         if len(widths) > 1:
             for line in lines:

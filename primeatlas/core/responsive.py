@@ -17,10 +17,12 @@ Model (Flutter's "constraints go down, sizes go up", CSS container queries):
   run. A refused request or a round over the limit is logged with the widget and dropped;
   the app keeps running.
 
-Triggers: a width change of an element's widget (a window resize, a sash drag) waits
-DEBOUNCE_MS after the last change, so dragging an edge gives one pass once it stops; an
-element first shown (its tab selected) or Item.request() runs at the next idle turn. An
-element not shown is laid out when it is shown.
+Triggers: a width change of an element's widget (a window resize, a sash drag), or of a box
+it watches (Item.watch) while its widget's width changes too, waits DEBOUNCE_MS after the
+last change, so dragging an edge gives one pass once it stops; an element first shown (its
+tab selected), one never laid out yet getting its first width, a watched box settling while
+the widget keeps its width, or Item.request() runs at the next idle turn. An element not shown
+is laid out when it is shown.
 
 width_class() names the window width band (WIDE_MIN, MEDIUM_MIN); elements may use it or
 lay out for the exact width. apply_min_width() keeps the app window at least
@@ -35,9 +37,8 @@ log = logging.getLogger("primeatlas.responsive")
 WIDE_MIN = 1600
 MEDIUM_MIN = 1280
 
-# Narrowest app window: the narrowest width checked with nothing cut. Not arbitrary while
-# the tabs are not laid out for narrower windows; lowered once they are.
-MIN_WINDOW_WIDTH = MEDIUM_MIN
+# Narrowest app window: the narrowest width of the layout map, checked with nothing cut.
+MIN_WINDOW_WIDTH = 800
 
 # Pause after the last width change before a pass. Arbitrary: long enough to merge the
 # steps of a drag, short enough to look immediate once it stops.
@@ -84,12 +85,29 @@ class Item:
         self.depth = str(widget).count(".")
         self.last = None
         self._seen_width = None
+        self._laid_width = None  # the widget's own width at the last layout
         widget.bind("<Configure>", self._on_configure, add="+")
         widget.bind("<Map>", lambda _e: self.request(), add="+")
 
     def request(self):
         """Lays the element out at the next idle turn if its width or content changed."""
         self._coordinator.request(self)
+
+    def watch(self, widget):
+        """A width change of `widget` (another box the layout measures) triggers the element:
+        at the next idle turn while the element's own widget keeps the width of its last
+        layout (the box settles after that layout), after DEBOUNCE_MS while that width
+        changes too (a drag)."""
+        seen = {"width": None}
+
+        def on_configure(event):
+            if event.width != seen["width"]:
+                seen["width"] = event.width
+                if self.widget.winfo_width() == self._laid_width:
+                    self.request()
+                else:
+                    self._coordinator.resized(self)
+        widget.bind("<Configure>", on_configure, add="+")
 
     def width(self):
         return self._width() if self._width is not None else self.widget.winfo_width()
@@ -117,6 +135,7 @@ class Item:
             return
         self.layout(width)
         self.last = (width, self.key())
+        self._laid_width = self.widget.winfo_width()
 
 
 class Coordinator:
@@ -142,6 +161,9 @@ class Coordinator:
             self._idle_job = self.root.after_idle(self._run)
 
     def resized(self, item):
+        if item.last is None:  # never laid out: its first width is not a drag to wait out
+            self.request(item)
+            return
         if item not in self._requested:
             self._requested.append(item)
         if self._running:

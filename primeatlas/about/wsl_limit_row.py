@@ -27,6 +27,7 @@ from tkinter import messagebox, ttk
 from primeatlas.about import system_info, wslconfig_edit
 from primeatlas.core import number_field
 from primeatlas.core.background import run_in_background
+from primeatlas.core.wrap_label import WrapLabel
 
 GIB = wslconfig_edit.GIB
 
@@ -58,7 +59,7 @@ class WslLimitRow(ttk.Frame):
         self.save_button = ttk.Button(self, text=T("about.wsl_limit_save"), command=self.save)
         self.save_button.pack(side="left", padx=(8, 8))
         self._update_button()
-        self.proposal_label = ttk.Label(self, text="", style="Hint.TLabel")
+        self.proposal_label = WrapLabel(self, text="", style="Hint.TLabel")
         self.proposal_label.pack(side="left")
 
     def _can_save(self):

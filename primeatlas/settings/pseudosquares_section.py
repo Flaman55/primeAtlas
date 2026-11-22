@@ -22,6 +22,8 @@ from tkinter import ttk
 import pseudosquares_const
 
 from ..generation.generation_console import GenerationConsole
+from ..core.widgets import status_flow_row
+from ..core.wrap_label import WrapLabel
 
 
 def status_text(ok, payload, T):
@@ -48,26 +50,26 @@ class PseudosquaresSection:
         self._pseudosquares_busy = False
         frame = ttk.Labelframe(outer, text=self.T("settings.pseudosquares_frame"))
         frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(frame, text=self.T("settings.pseudosquares_hint",
+        WrapLabel(frame, text=self.T("settings.pseudosquares_hint",
                                      pinned=pseudosquares_const.PIN_SHORT),
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+                  style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
-        row = ttk.Frame(frame)
-        row.pack(fill="x", padx=6, pady=(0, 4))
         self.pseudosquares_status_var = tk.StringVar(
             value=self.T("settings.pseudosquares_status_not_checked"))
-        ttk.Label(row, textvariable=self.pseudosquares_status_var).pack(side="left")
+        # The status and buttons wrap whole onto the next line in a narrow window.
+        row = status_flow_row(frame, self.pseudosquares_status_var)
+        row.frame.pack(fill="x", padx=6, pady=(0, 4))
         self.pseudosquares_check_btn = ttk.Button(
-            row, text=self.T("settings.pseudosquares_check_button"),
+            row.frame, text=self.T("settings.pseudosquares_check_button"),
             command=self._on_check_pseudosquares_status)
-        self.pseudosquares_check_btn.pack(side="left", padx=(10, 0))
+        row.add(self.pseudosquares_check_btn, padx_left=10)
         self.pseudosquares_install_btn = ttk.Button(
-            row, text=self.T("settings.pseudosquares_install_button"),
+            row.frame, text=self.T("settings.pseudosquares_install_button"),
             command=self._on_install_pseudosquares_clicked)
-        self.pseudosquares_install_btn.pack(side="left", padx=(6, 0))
-        ttk.Button(row, text=self.T("settings.pseudosquares_open_github_button"),
-                   command=lambda: webbrowser.open(pseudosquares_const.REPO_URL)).pack(
-            side="left", padx=(6, 0))
+        row.add(self.pseudosquares_install_btn, padx_left=6)
+        row.add(ttk.Button(row.frame, text=self.T("settings.pseudosquares_open_github_button"),
+                           command=lambda: webbrowser.open(pseudosquares_const.REPO_URL)),
+                padx_left=6)
         self.pseudosquares_console = GenerationConsole(
             frame, self.T, height=5, start_visible=True,
             window_title=self.T("settings.pseudosquares_frame"))

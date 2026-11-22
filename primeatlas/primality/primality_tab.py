@@ -28,6 +28,7 @@ from ..core.ui_state import remember
 from ..core.widgets import HeightGrip, StripedTreeview
 from ..generation.quick_number import _eval_quick_number
 from .primality import run_all_tests as primality_run_all_tests, factorize as primality_factorize
+from ..core.wrap_label import WrapLabel
 
 
 class PrimalityTab(BaseTab):
@@ -66,8 +67,8 @@ class PrimalityTab(BaseTab):
             command=self._on_primality_factorize_compute)
         self.primality_factorize_button.pack(side="left", padx=(8, 0))
 
-        ttk.Label(self, text=self.T("primality.hint"),
-                  wraplength=640, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(self, text=self.T("primality.hint"),
+                  style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 8))
 
         tree_frame = ttk.Frame(self)
@@ -90,8 +91,7 @@ class PrimalityTab(BaseTab):
         factor_frame = ttk.Frame(self)
         factor_frame.pack(fill="x", padx=6, pady=(0, 4))
         self.primality_factor_result_var = tk.StringVar(value="")
-        ttk.Label(factor_frame, textvariable=self.primality_factor_result_var,
-                  wraplength=760, justify="left").pack(anchor="w")
+        WrapLabel(factor_frame, textvariable=self.primality_factor_result_var).pack(anchor="w")
 
         # Separate readonly Entry holding JUST the factor list (no "n = " prefix, no
         # "(method: ..., time: ...)" suffix) -- a plain Label's text can't be selected or

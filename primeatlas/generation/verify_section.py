@@ -51,6 +51,7 @@ from .generation_settings import remember_generation_field, save_generation_sett
 from .quick_gen_panel import _floor_spinbox
 from .wsl_command import build_wsl_logged_command, generation_log_paths
 from . import wsl_resources
+from ..core.wrap_label import WrapLabel
 
 VERIFY_SCRIPT_PATTERNS = run_verify.SCRIPTS
 # A slab of the default size takes about a minute of proofs on floor 29 (arbitrary margin).
@@ -80,8 +81,7 @@ class VerifySection:
             "<Button-1>", lambda _e: self._scroll_page.scroll_to(outer))
         hint_row = ttk.Frame(outer)
         hint_row.pack(fill="x", padx=8, pady=(6, 0))
-        ttk.Label(hint_row, text=self.T("gen.verify_hint"), wraplength=760, justify="left",
-                  style="Hint.TLabel").pack(side="left")
+        WrapLabel(hint_row, text=self.T("gen.verify_hint"), style="Hint.TLabel").pack(side="left")
         InfoTip(hint_row, lambda: self.T("gen.info_verify")).label.pack(side="left", padx=(4, 0))
 
         settings = self._generation_settings["verify"]

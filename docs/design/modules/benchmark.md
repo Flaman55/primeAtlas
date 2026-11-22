@@ -93,8 +93,9 @@ copies the ticked runs as a Markdown table, Ctrl+Shift+C as tab-separated values
 floor or its summary row = every run the filter keeps on it). Both use the export columns, each
 run once in table order: shown values padded to one width per column in Markdown (readable where
 a chat does not render it), raw values in TSV; a column no copied run has a value in is left
-out. The row above the tree names both keys; its InfoTip says how the copy
-is made and formatted. A writing row from before
+out. The row above the tree (page navigation, then this hint, a `FlowRow` that wraps its groups
+in a narrow window, like the controls above the charts) names both keys; its InfoTip says how the
+copy is made and formatted. A writing row from before
 `write_threads` reads `write ?`. Each point names the range it was measured on (`@ 10^11`,
 `line_names.width_label()`); on the floor axis a chart can set points of different widths side by
 side, and `mixed_width_floors()` lists those floors: the tab shows them under the chart, the PDF

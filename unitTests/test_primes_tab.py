@@ -538,6 +538,17 @@ def _test_tree_columns(app, widget, node0, node3):
           f"{widget._tree_content_width()}px)")
     check(widget._tree_hsb.winfo_ismapped() and widget._tree_hsb.instate(["!disabled"]),
           "a too-narrow tree pane enables the horizontal scrollbar")
+    # Both panes stay in view: the tree pane gives way to the detail pane's minimum.
+    detail = app.nametowidget(widget._tree_paned.panes()[1])
+    check(detail.winfo_width() >= widget._detail_min_width,
+          f"the detail pane keeps its minimum width ({detail.winfo_width()}px >= "
+          f"{widget._detail_min_width}px)")
+    check(narrow > 0 and narrow + detail.winfo_width() <= widget._tree_paned.winfo_width() + 2,
+          f"the tree pane takes the rest ({narrow}px)")
+    widget._on_sash_released(None)
+    _pump(app, 0.5)
+    check(detail.winfo_width() >= widget._detail_min_width,
+          "a sash drag ending there snaps back to the same split")
     app.minsize(*min_size)
     app.geometry("2400x800")
     _pump(app, 1.0)

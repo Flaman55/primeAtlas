@@ -18,6 +18,8 @@ from tkinter.scrolledtext import ScrolledText
 from ..generation.generation_console import GenerationConsole
 from . import app_update
 from .env_versions_view import format_report
+from ..core.widgets import status_flow_row
+from ..core.wrap_label import WrapLabel
 
 # Same URL prime_sieve_cudasieve.py's own CUDASIEVE_REPO_URL clones from -- duplicated
 # here (not imported -- that module is WSL-side, this is the Windows GUI process) purely
@@ -593,19 +595,20 @@ class UpdatesSection:
 
         libs_frame = ttk.Labelframe(outer, text=self.T("settings.libs_frame"))
         libs_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(libs_frame, text=self.T("settings.libs_hint"),
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(libs_frame, text=self.T("settings.libs_hint"),
+                  style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
-        libs_btn_row = ttk.Frame(libs_frame)
-        libs_btn_row.pack(fill="x", padx=6, pady=(0, 4))
+        # Each status + buttons row below wraps whole items onto the next line in a narrow
+        # window.
         self.libs_status_var = tk.StringVar(value="")
-        ttk.Label(libs_btn_row, textvariable=self.libs_status_var).pack(side="left")
-        ttk.Button(libs_btn_row, text=self.T("settings.libs_check_button"),
-                   command=self._on_check_libs_status).pack(side="left", padx=(10, 0))
+        libs_btn_row = status_flow_row(libs_frame, self.libs_status_var)
+        libs_btn_row.frame.pack(fill="x", padx=6, pady=(0, 4))
+        libs_btn_row.add(ttk.Button(libs_btn_row.frame, text=self.T("settings.libs_check_button"),
+                                    command=self._on_check_libs_status), padx_left=10)
         self.install_sympy_btn = ttk.Button(
-            libs_btn_row, text=self.T("settings.libs_install_sympy_button"),
+            libs_btn_row.frame, text=self.T("settings.libs_install_sympy_button"),
             command=self._on_install_sympy)
-        self.install_sympy_btn.pack(side="left", padx=(6, 0))
+        libs_btn_row.add(self.install_sympy_btn, padx_left=6)
         self.libs_console = GenerationConsole(
             libs_frame, self.T, height=5, start_visible=True,
             window_title=self.T("settings.libs_frame"))
@@ -625,23 +628,23 @@ class UpdatesSection:
         # an explicit click, same reasoning as CUDASieve's own status var below.
         primecount_frame = ttk.Labelframe(outer, text=self.T("settings.primecount_frame"))
         primecount_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(primecount_frame, text=self.T("settings.primecount_hint"),
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(primecount_frame, text=self.T("settings.primecount_hint"),
+                  style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
-        primecount_btn_row = ttk.Frame(primecount_frame)
-        primecount_btn_row.pack(fill="x", padx=6, pady=(0, 4))
         self.primecount_status_var = tk.StringVar(
             value=self.T("settings.primecount_status_not_checked"))
-        ttk.Label(primecount_btn_row, textvariable=self.primecount_status_var).pack(side="left")
-        ttk.Button(primecount_btn_row, text=self.T("settings.primecount_check_button"),
-                   command=self._on_check_primecount_status).pack(side="left", padx=(10, 0))
-        ttk.Button(
-            primecount_btn_row, text=self.T("settings.primecount_open_github_button"),
-            command=self._on_open_primecount_github_clicked).pack(side="left", padx=(6, 0))
+        primecount_btn_row = status_flow_row(primecount_frame, self.primecount_status_var)
+        primecount_btn_row.frame.pack(fill="x", padx=6, pady=(0, 4))
+        primecount_btn_row.add(ttk.Button(
+            primecount_btn_row.frame, text=self.T("settings.primecount_check_button"),
+            command=self._on_check_primecount_status), padx_left=10)
+        primecount_btn_row.add(ttk.Button(
+            primecount_btn_row.frame, text=self.T("settings.primecount_open_github_button"),
+            command=self._on_open_primecount_github_clicked), padx_left=6)
         self.install_primecount_btn = ttk.Button(
-            primecount_btn_row, text=self.T("settings.primecount_install_button"),
+            primecount_btn_row.frame, text=self.T("settings.primecount_install_button"),
             command=self._on_install_primecount_clicked)
-        self.install_primecount_btn.pack(side="left", padx=(6, 0))
+        primecount_btn_row.add(self.install_primecount_btn, padx_left=6)
         self.primecount_console = GenerationConsole(
             primecount_frame, self.T, height=5, start_visible=True,
             window_title=self.T("settings.primecount_frame"))
@@ -656,23 +659,23 @@ class UpdatesSection:
         # _on_install_cudasieve_clicked's own docstring block above.
         cudasieve_frame = ttk.Labelframe(outer, text=self.T("settings.cudasieve_frame"))
         cudasieve_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(cudasieve_frame, text=self.T("settings.cudasieve_hint"),
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(cudasieve_frame, text=self.T("settings.cudasieve_hint"),
+                  style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
-        cudasieve_btn_row = ttk.Frame(cudasieve_frame)
-        cudasieve_btn_row.pack(fill="x", padx=6, pady=(0, 4))
         self.cudasieve_status_var = tk.StringVar(
             value=self.T("settings.cudasieve_status_not_checked"))
-        ttk.Label(cudasieve_btn_row, textvariable=self.cudasieve_status_var).pack(side="left")
-        ttk.Button(cudasieve_btn_row, text=self.T("settings.cudasieve_check_button"),
-                   command=self._on_check_cudasieve_status).pack(side="left", padx=(10, 0))
-        ttk.Button(
-            cudasieve_btn_row, text=self.T("settings.cudasieve_open_github_button"),
-            command=self._on_open_cudasieve_github_clicked).pack(side="left", padx=(6, 0))
+        cudasieve_btn_row = status_flow_row(cudasieve_frame, self.cudasieve_status_var)
+        cudasieve_btn_row.frame.pack(fill="x", padx=6, pady=(0, 4))
+        cudasieve_btn_row.add(ttk.Button(
+            cudasieve_btn_row.frame, text=self.T("settings.cudasieve_check_button"),
+            command=self._on_check_cudasieve_status), padx_left=10)
+        cudasieve_btn_row.add(ttk.Button(
+            cudasieve_btn_row.frame, text=self.T("settings.cudasieve_open_github_button"),
+            command=self._on_open_cudasieve_github_clicked), padx_left=6)
         self.install_cudasieve_btn = ttk.Button(
-            cudasieve_btn_row, text=self.T("settings.cudasieve_install_button"),
+            cudasieve_btn_row.frame, text=self.T("settings.cudasieve_install_button"),
             command=self._on_install_cudasieve_clicked, state="disabled")
-        self.install_cudasieve_btn.pack(side="left", padx=(6, 0))
+        cudasieve_btn_row.add(self.install_cudasieve_btn, padx_left=6)
         self.cudasieve_console = GenerationConsole(
             cudasieve_frame, self.T, height=5, start_visible=True,
             window_title=self.T("settings.cudasieve_frame"))
@@ -689,21 +692,21 @@ class UpdatesSection:
         # or broken after the first-run check already passed once.
         env_frame = ttk.Labelframe(outer, text=self.T("settings.env_frame"))
         env_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(env_frame, text=self.T("settings.env_hint"),
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(env_frame, text=self.T("settings.env_hint"),
+                  style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
-        env_btn_row = ttk.Frame(env_frame)
-        env_btn_row.pack(fill="x", padx=6, pady=(0, 6))
         self.env_status_var = tk.StringVar(value=self.T("settings.env_status_not_checked"))
-        ttk.Label(env_btn_row, textvariable=self.env_status_var).pack(side="left")
-        ttk.Button(env_btn_row, text=self.T("settings.env_recheck_button"),
-                   command=self._on_verify_environment_clicked).pack(side="left", padx=(10, 0))
+        env_btn_row = status_flow_row(env_frame, self.env_status_var)
+        env_btn_row.frame.pack(fill="x", padx=6, pady=(0, 6))
+        env_btn_row.add(ttk.Button(env_btn_row.frame, text=self.T("settings.env_recheck_button"),
+                                   command=self._on_verify_environment_clicked), padx_left=10)
         # Attribution for libprimesieve, installed as part of this same environment
         # check (REQUIRED_APT_PACKAGES) rather than through its own dedicated installer
         # section -- see PRIMESIEVE_REPO_URL's own comment above for why the link lives
         # here instead of a separate Labelframe.
-        ttk.Button(env_btn_row, text=self.T("settings.env_open_primesieve_github_button"),
-                   command=self._on_open_primesieve_github_clicked).pack(side="left", padx=(6, 0))
+        env_btn_row.add(ttk.Button(
+            env_btn_row.frame, text=self.T("settings.env_open_primesieve_github_button"),
+            command=self._on_open_primesieve_github_clicked), padx_left=6)
         # Seeded immediately (unlike _show_cached_cudasieve_status(), which __init__
         # defers past _build_widgets() to avoid a live WSL round-trip racing mainloop()
         # startup) -- AppSettings.env_status is a plain local JSON read with no subprocess
@@ -719,11 +722,10 @@ class UpdatesSection:
         versions_text.pack(side="left", fill="x", expand=True, padx=(10, 0))
         self.env_versions_var = tk.StringVar(
             value=self.T("settings.env_versions_not_checked"))
-        ttk.Label(versions_text, textvariable=self.env_versions_var, justify="left",
-                  wraplength=640).pack(anchor="w")
+        WrapLabel(versions_text, textvariable=self.env_versions_var).pack(anchor="w")
         self.env_versions_warning_var = tk.StringVar(value="")
-        ttk.Label(versions_text, textvariable=self.env_versions_warning_var, justify="left",
-                  wraplength=640, style="Status.TLabel").pack(anchor="w", pady=(4, 0))
+        WrapLabel(versions_text, textvariable=self.env_versions_warning_var,
+                  style="Status.TLabel").pack(anchor="w", pady=(4, 0))
         self._env_versions_running = False
 
         # PrimeAtlas's own self-update -- checks GitHub (via `git fetch` against this
@@ -735,8 +737,8 @@ class UpdatesSection:
         # separate release/version-number scheme).
         app_update_frame = ttk.Labelframe(outer, text=self.T("settings.app_update_frame"))
         app_update_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(app_update_frame, text=self.T("settings.app_update_hint"),
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(app_update_frame, text=self.T("settings.app_update_hint"),
+                  style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
 
         app_update_toggle_row = ttk.Frame(app_update_frame)

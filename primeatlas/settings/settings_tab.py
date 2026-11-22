@@ -45,6 +45,7 @@ from .full_backup_section import FullBackupSection
 from .storage_integrate_section import StorageIntegrateSection
 from .updates_section import UpdatesSection
 from .pseudosquares_section import PseudosquaresSection
+from ..core.wrap_label import WrapLabel
 
 
 class SettingsTab(GeneralSection, RestoreSection, DeleteSection, FullBackupSection,
@@ -293,9 +294,9 @@ class SettingsTab(GeneralSection, RestoreSection, DeleteSection, FullBackupSecti
         # between both buttons -- see _selected_delete_floor()'s own docstring.
         floor_delete_frame = ttk.Labelframe(outer, text=self.T("settings.delete_floor_frame"))
         floor_delete_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(
+        WrapLabel(
             floor_delete_frame, text=self.T("settings.delete_floor_hint"),
-            style="Hint.TLabel", wraplength=760, justify="left").pack(
+            style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
         floor_pick_row = ttk.Frame(floor_delete_frame)
         floor_pick_row.pack(fill="x", padx=6, pady=(0, 4))
@@ -316,17 +317,17 @@ class SettingsTab(GeneralSection, RestoreSection, DeleteSection, FullBackupSecti
 
         bench_delete_frame = ttk.Labelframe(outer, text=self.T("settings.delete_benchmarks_frame"))
         bench_delete_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(
-            bench_delete_frame, text=self.T("settings.delete_benchmarks_hint"),
-            wraplength=760, justify="left").pack(anchor="w", padx=6, pady=(6, 4))
+        WrapLabel(
+            bench_delete_frame, text=self.T("settings.delete_benchmarks_hint")).pack(
+            anchor="w", padx=6, pady=(6, 4))
         ttk.Button(bench_delete_frame, text=self.T("settings.delete_benchmarks_button"),
                    command=self._on_delete_benchmarks_clicked).pack(anchor="w", padx=6, pady=(0, 6))
 
         delete_frame = ttk.Labelframe(outer, text=self.T("settings.delete_frame"))
         delete_frame.pack(fill="x")
-        ttk.Label(
+        WrapLabel(
             delete_frame, text=self.T("settings.delete_warning"),
-            foreground="#a33", wraplength=760, justify="left").pack(
+            foreground="#a33").pack(
             anchor="w", padx=6, pady=(6, 4))
         ttk.Button(delete_frame, text=self.T("settings.delete_button"),
                    command=self._on_delete_clicked).pack(anchor="w", padx=6, pady=(0, 6))

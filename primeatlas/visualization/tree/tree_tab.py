@@ -33,6 +33,8 @@ from .tree_mode import TREE_MAX_DEPTH
 from ...core import number_field
 from ...core import number_format
 from ...core.number_text import fraction_value
+from ...core.widgets import FlowRow
+from ...core.wrap_label import WrapLabel
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 RENDERER_SCRIPT = os.path.join(os.path.dirname(_THIS_DIR), "shared", "renderer.py")
@@ -143,20 +145,20 @@ class TreeTab(VizTabBase):
 
     def _add_entries(self, parent, fields, saved, label):
         for attr, label_key, saved_key, default, kind in fields:
-            row = ttk.Frame(parent)
-            row.pack(fill="x", padx=8, pady=(0, 4))
-            ttk.Label(row, text=label(label_key)).pack(side="left")
+            row = FlowRow(parent)  # the field goes under its label in a narrow window
+            row.frame.pack(fill="x", padx=8, pady=(0, 4))
+            row.add(ttk.Label(row.frame, text=label(label_key)))
             if kind == "spin":
-                entry = ttk.Spinbox(row, from_=1, to=TREE_MAX_DEPTH, increment=1, width=10)
+                entry = ttk.Spinbox(row.frame, from_=1, to=TREE_MAX_DEPTH, increment=1, width=10)
                 number_field.attach(entry, self.T, f"field_tip.tree_{saved_key}", minimum=1,
                                     maximum=TREE_MAX_DEPTH)
             else:
-                entry = ttk.Entry(row, width=12)
+                entry = ttk.Entry(row.frame, width=12)
                 if kind in ("int", "float"):
                     number_field.attach(entry, self.T, f"field_tip.tree_{saved_key}",
                                         fraction=kind == "float")
             entry.insert(0, saved.get(saved_key, default))
-            entry.pack(side="left", padx=(6, 0))
+            row.add(entry, padx_left=6)
             setattr(self, attr, entry)
 
     def _build_ui(self):
@@ -184,27 +186,27 @@ class TreeTab(VizTabBase):
         self.mode_combo.pack(side="left", padx=(6, 0))
         self.mode_combo.bind("<<ComboboxSelected>>", lambda _e: self._apply_mode())
 
-        self.intro_label = ttk.Label(container, wraplength=760, justify="left")
+        self.intro_label = WrapLabel(container)
         self.intro_label.pack(anchor="w", pady=(0, 10))
 
         common_frame = ttk.LabelFrame(container, text=self._tk("section_common"))
         common_frame.pack(fill="x", pady=(0, 8))
-        n_row = ttk.Frame(common_frame)
-        n_row.pack(fill="x", padx=8, pady=(6, 4))
-        self.n_label = ttk.Label(n_row)
-        self.n_label.pack(side="left")
-        self.n_entry = ttk.Entry(n_row, width=28)
+        self._n_row = FlowRow(common_frame)  # the field goes under its label when narrow
+        self._n_row.frame.pack(fill="x", padx=8, pady=(6, 4))
+        self.n_label = ttk.Label(self._n_row.frame)
+        self._n_row.add(self.n_label)
+        self.n_entry = ttk.Entry(self._n_row.frame, width=28)
         number_field.attach(self.n_entry, self.T, "field_tip.tree_n")
         self.n_entry.insert(0, saved.get("n", "2"))
-        self.n_entry.pack(side="left", padx=(6, 0))
+        self._n_row.add(self.n_entry, padx_left=6)
         self._add_entries(common_frame, _COMMON_FIELDS, saved, self._tk)
-        colors_row = ttk.Frame(common_frame)
-        colors_row.pack(fill="x", padx=8, pady=(0, 6))
-        ttk.Label(colors_row, text=self._tk("colors_label")).pack(side="left")
+        colors_row = FlowRow(common_frame)
+        colors_row.frame.pack(fill="x", padx=8, pady=(0, 6))
+        colors_row.add(ttk.Label(colors_row.frame, text=self._tk("colors_label")))
         # not a number field: a list of colours
-        self.colors_entry = ttk.Entry(colors_row, width=40)
+        self.colors_entry = ttk.Entry(colors_row.frame, width=40)
         self.colors_entry.insert(0, saved.get("colors", ""))
-        self.colors_entry.pack(side="left", padx=(6, 0))
+        colors_row.add(self.colors_entry, padx_left=6)
 
         self._options_holder = ttk.Frame(container)
         self._options_holder.pack(fill="x")
@@ -225,8 +227,7 @@ class TreeTab(VizTabBase):
         self.axis_combo.pack(side="left", padx=(6, 0))
         self._add_entries(tree_frame, _TREE_FIELDS, saved, self._tk)
         self.depth_info_var = tk.StringVar()
-        self.depth_info_label = ttk.Label(tree_frame, textvariable=self.depth_info_var, wraplength=700,
-                                          justify="left")
+        self.depth_info_label = WrapLabel(tree_frame, textvariable=self.depth_info_var)
         self.depth_info_label.pack(anchor="w", padx=8, pady=(0, 6))
         self.depth_entry.configure(command=self._refresh_depth_info)
         for entry in (self.n_entry, self.depth_entry, self.branches_entry, self.max_nodes_entry):
@@ -253,7 +254,7 @@ class TreeTab(VizTabBase):
         assembly_frame.pack(fill="x", pady=(0, 8))
         self._add_entries(assembly_frame, _ASSEMBLY_FIELDS, saved, self._ak)
 
-        self.hint_label = ttk.Label(container, wraplength=760, justify="left", style="Hint.TLabel")
+        self.hint_label = WrapLabel(container, style="Hint.TLabel")
         self.hint_label.pack(anchor="w", pady=(0, 8))
 
         hud_frame = ttk.LabelFrame(container, text=self._tk("hud_panel_title"))
@@ -310,6 +311,7 @@ class TreeTab(VizTabBase):
         shown.pack(fill="x")
         self.intro_label.configure(text=self.T(f"{mode}.intro"))
         self.n_label.configure(text=self.T(f"{mode}.field_n"))
+        self._n_row.relayout()
         self.hint_label.configure(text=self.T(f"{mode}.controls_hint"))
 
     # -- VizTabBase hooks -------------------------------------------------------

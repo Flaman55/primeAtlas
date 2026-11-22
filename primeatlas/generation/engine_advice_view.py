@@ -8,10 +8,11 @@ The texts come from engine_advice_text.advice_text().
 """
 import tkinter as tk
 from tkinter import ttk
+from ..core.wrap_label import WrapLabel
 
 
 class EngineAdviceView(ttk.Frame):
-    def __init__(self, parent, T, on_use, wraplength=560):
+    def __init__(self, parent, T, on_use):
         super().__init__(parent)
         self._on_use = on_use
         self._engine = None
@@ -21,15 +22,12 @@ class EngineAdviceView(ttk.Frame):
         top = ttk.Frame(self)
         top.pack(fill="x", anchor="w")
         ttk.Label(top, text=T("advisor.label")).pack(side="left", anchor="n")
-        ttk.Label(top, textvariable=self.proposal_var, wraplength=wraplength,
-                  justify="left").pack(side="left", padx=(6, 0))
+        WrapLabel(top, textvariable=self.proposal_var).pack(side="left", padx=(6, 0))
         self.use_button = ttk.Button(top, text=T("advisor.use_button"), width=6,
                                      command=self._use)
         self.use_button.pack(side="left", padx=(8, 0), anchor="n")
-        self.warning_label = ttk.Label(self, textvariable=self.warning_var,
-                                       wraplength=wraplength, justify="left")
-        self.guest_label = ttk.Label(self, textvariable=self.guest_var, style="Hint.TLabel",
-                                     wraplength=wraplength, justify="left")
+        self.warning_label = WrapLabel(self, textvariable=self.warning_var)
+        self.guest_label = WrapLabel(self, textvariable=self.guest_var, style="Hint.TLabel")
 
     def show(self, text, engine, selected_engine):
         """Fills the view from an AdviceText; `engine` is the proposed engine (None: no

@@ -17,6 +17,7 @@ from ..core import number_field
 from ..core.ui_state import remember
 from .goldbach_paging import (
     GOLDBACH_CASCADE_ROW_CAP, GOLDBACH_VIZ_MAX_COLS, GOLDBACH_VIZ_ROWS_PER_COL)
+from ..core.wrap_label import WrapLabel
 
 
 GOLDBACH_VIZ_CHIP_ROWS_PER_PAGE = 6  # old-base prime chips: how many CHIP ROWS (not
@@ -217,13 +218,13 @@ class GoldbachVizSection:
             top, text=T("research_goldbach.run_button"),
             command=self._on_goldbach_viz_refresh)
         self.goldbach_viz_check_button.pack(side="left")
-        ttk.Label(win, text=T("research_goldbach.viz_range_hint"),
-                  wraplength=780, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(win, text=T("research_goldbach.viz_range_hint"),
+                  style="Hint.TLabel").pack(
             anchor="w", padx=10, pady=(0, 6))
 
         self.goldbach_viz_status_var = tk.StringVar(value="")
-        ttk.Label(win, textvariable=self.goldbach_viz_status_var,
-                  wraplength=780, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(win, textvariable=self.goldbach_viz_status_var,
+                  style="Hint.TLabel").pack(
             anchor="w", padx=10, pady=(0, 6))
 
         # Own Progressbar, separate from the shared self.totals_progress in the

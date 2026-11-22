@@ -34,7 +34,7 @@ from ..core import number_field
 from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
-from ..core.widgets import StripedTreeview
+from ..core.widgets import FitLabel, FlowRow, StripedTreeview
 from .benchmark import (
     BENCHMARK_PAGE_SIZE, aggregate_benchmark_fair_spw,
     aggregate_benchmark_growth, aggregate_benchmark_sieve_nps,
@@ -399,8 +399,9 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
     def _build_widgets(self):
         T = self.T
 
-        top = ttk.Frame(self)
-        top.pack(fill="x", padx=6, pady=4)
+        # Controls wrap whole onto the next line in a narrow window.
+        top = FlowRow(self)
+        top.frame.pack(fill="x", padx=6, pady=4)
         # "Points of different widths on floor N" under each chart, set by its redraw.
         self.mixed_widths_vars = {"run": tk.StringVar(), "sieve": tk.StringVar(),
                                   "ram": tk.StringVar()}
@@ -414,18 +415,22 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self.references_var = tk.BooleanVar(value=False)
         remember("benchmark.log_scale", self.log_scale_var)
         remember("benchmark.show_references", self.references_var)
-        # The toggles are packed first: when the row is too narrow, pack cuts the filter
-        # summary packed after them, not the toggles.
-        ttk.Checkbutton(top, text=T("bench.log_scale"), variable=self.log_scale_var,
-                        command=self._redraw_charts).pack(side="right")
-        ttk.Checkbutton(top, text=T("bench.show_references"), variable=self.references_var,
-                        command=self._redraw_charts).pack(side="right", padx=(0, 8))
-        ttk.Button(top, text=T("common.refresh"), command=self.reload_benchmark_log).pack(side="left")
-        self._build_export_controls(top)
-        ttk.Button(top, text=T("bench.filter_button"), command=self._open_filter_window).pack(
-            side="left", padx=(6, 0))
-        ttk.Label(top, textvariable=self.filter_summary_var, style="Status.TLabel").pack(
-            side="left", padx=(6, 12))
+        top.add(ttk.Button(top.frame, text=T("common.refresh"),
+                           command=self.reload_benchmark_log))
+        export_group = ttk.Frame(top.frame)
+        self._build_export_controls(export_group)
+        top.add(export_group)
+        top.add(ttk.Button(top.frame, text=T("bench.filter_button"),
+                           command=self._open_filter_window), padx_left=6)
+        top.add(FitLabel(top.frame, textvariable=self.filter_summary_var,
+                         style="Status.TLabel"), padx_left=6)
+        self.filter_summary_var.trace_add("write", lambda *_a: top.relayout())
+        toggles = ttk.Frame(top.frame)
+        ttk.Checkbutton(toggles, text=T("bench.show_references"), variable=self.references_var,
+                        command=self._redraw_charts).pack(side="left")
+        ttk.Checkbutton(toggles, text=T("bench.log_scale"), variable=self.log_scale_var,
+                        command=self._redraw_charts).pack(side="left", padx=(8, 0))
+        top.add(toggles, padx_left=12)
 
         # The charts stand one under another, full width: the sieve, the whole run (sieve
         # + write), RAM. Canvas colors come from the CURRENT theme (console_bg/border, the
@@ -470,27 +475,34 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         # expanding a floor only lists/groups rows already in memory (cheap -- the
         # whole CSV is small text) and INSERTS one page's worth of Treeview rows at a
         # time (inserting all of them is what would freeze the GUI).
-        benchmark_nav = ttk.Frame(tree_frame)
-        benchmark_nav.pack(fill="x", pady=(0, 4))
+        # Its groups wrap whole onto the next line in a narrow window.
+        benchmark_nav = FlowRow(tree_frame)
+        benchmark_nav.frame.pack(fill="x", pady=(0, 4))
+        pages = ttk.Frame(benchmark_nav.frame)
         self.benchmark_prev_btn = ttk.Button(
-            benchmark_nav, text=T("common.prev_page"), command=self._prev_benchmark_page,
+            pages, text=T("common.prev_page"), command=self._prev_benchmark_page,
             state="disabled")
         self.benchmark_prev_btn.pack(side="left")
         self.benchmark_page_label = tk.StringVar(value="")
-        ttk.Label(benchmark_nav, textvariable=self.benchmark_page_label, width=16,
+        ttk.Label(pages, textvariable=self.benchmark_page_label, width=16,
                   anchor="center").pack(side="left")
         self.benchmark_next_btn = ttk.Button(
-            benchmark_nav, text=T("common.next_page"), command=self._next_benchmark_page,
+            pages, text=T("common.next_page"), command=self._next_benchmark_page,
             state="disabled")
         self.benchmark_next_btn.pack(side="left")
-        ttk.Label(benchmark_nav, text=T("common.page_prefix")).pack(side="left", padx=(10, 0))
-        self.benchmark_goto_entry = ttk.Entry(benchmark_nav, width=6)
+        benchmark_nav.add(pages)
+        goto = ttk.Frame(benchmark_nav.frame)
+        ttk.Label(goto, text=T("common.page_prefix")).pack(side="left")
+        self.benchmark_goto_entry = ttk.Entry(goto, width=6)
         number_field.attach(self.benchmark_goto_entry, self.T, "field_tip.goto_page", minimum=1)
         self.benchmark_goto_entry.pack(side="left", padx=(4, 0))
         self.benchmark_goto_entry.bind("<Return>", lambda _e: self._goto_benchmark_page())
-        ttk.Button(benchmark_nav, text=T("common.goto"), command=self._goto_benchmark_page).pack(
+        ttk.Button(goto, text=T("common.goto"), command=self._goto_benchmark_page).pack(
             side="left", padx=(4, 0))
-        self._build_table_copy_hint(benchmark_nav)
+        benchmark_nav.add(goto, padx_left=10)
+        hint = ttk.Frame(benchmark_nav.frame)
+        self._build_table_copy_hint(hint)
+        benchmark_nav.add(hint, padx_left=16)
 
         # height is the tree's height when the page has to scroll, as it does under the three
         # stacked charts at the default 1050x680; while the page fits, pack(expand=True)

@@ -49,7 +49,9 @@ from ..core.storage import (
 )
 from ..core import responsive
 from ..core.widgets import (FitLabel, FlowRow, RevealFrame, StripedTreeview, add_page_nav_group,
-                            add_page_nav_row, clamp_pane_min_width)
+                            add_page_nav_row, clamp_pane_min_width, flow_group,
+                            sash_gap)
+from ..core.wrap_label import WrapLabel
 
 _BASE_DISPLAY_COLUMNS = ("count", "cumulative", "files", "size", "timer")
 _CELL_PAD = 16  # px around a cell's text (ttk Treeview cell padding + a margin)
@@ -187,22 +189,24 @@ class PrimesTab(BaseTab):
     def _build_widgets(self):
         T = self.T
 
-        top = ttk.Frame(self)
-        top.pack(fill="x", padx=6, pady=4)
-        ttk.Button(top, text=T("common.refresh"), command=self._reload_primes_tree).pack(side="left")
-        ttk.Button(top, text=T("primes.btn_verify_totals"),
-                   command=self._verify_all_totals).pack(side="left", padx=(6, 0))
-        self.verify_dp_button = ttk.Button(top, text=T("primes.btn_verify_dp"),
+        # The buttons and the search group wrap whole onto the next line in a narrow window.
+        top = FlowRow(self)
+        top.frame.pack(fill="x", padx=6, pady=4)
+        top.add(ttk.Button(top.frame, text=T("common.refresh"), command=self._reload_primes_tree))
+        top.add(ttk.Button(top.frame, text=T("primes.btn_verify_totals"),
+                           command=self._verify_all_totals), padx_left=6)
+        self.verify_dp_button = ttk.Button(top.frame, text=T("primes.btn_verify_dp"),
                                            command=self._verify_p_against_d)
-        self.verify_dp_button.pack(side="left", padx=(6, 0))
+        top.add(self.verify_dp_button, padx_left=6)
 
-        ttk.Label(top, text=T("common.search_label")).pack(side="left")
-        self.search_entry = ttk.Entry(top, width=26)
+        search = flow_group(top, 6)
+        ttk.Label(search, text=T("common.search_label")).pack(side="left")
+        self.search_entry = ttk.Entry(search, width=26)
         number_field.attach(self.search_entry, self.T, "field_tip.primes_search", minimum=0)
         self.search_entry.pack(side="left", padx=(4, 4))
         self.search_entry.bind("<Return>", lambda _e: self._search_prime())
         self.search_button = ttk.Button(
-            top, text=T("common.search_button"), command=self._search_prime)
+            search, text=T("common.search_button"), command=self._search_prime)
         self.search_button.pack(side="left")
 
         # "Verify totals" (verify_all_totals, added above): Refresh shows the grand
@@ -292,7 +296,7 @@ class PrimesTab(BaseTab):
         vsb.pack(side="right", fill="y")
         self.tree.pack(side="left", fill="both", expand=True)
 
-        # The sash is pinned to _tree_pane_width(), set by the layout coordinator whenever
+        # The sash is pinned to _tree_pane_room(), set by the layout coordinator whenever
         # the window's or the content's width changes; <ButtonRelease-1> on the
         # panedwindow itself only fires on the sash.
         self._tree_paned = paned
@@ -322,8 +326,8 @@ class PrimesTab(BaseTab):
         paned.add(detail_frame, weight=2)
 
         self.detail_text = tk.StringVar(value=T("primes.detail_hint"))
-        ttk.Label(detail_frame, textvariable=self.detail_text, justify="left",
-                  anchor="nw", wraplength=560).pack(fill="x", padx=6, pady=6)
+        WrapLabel(detail_frame, textvariable=self.detail_text, anchor="nw").pack(
+            fill="x", padx=6, pady=6)
 
         # No "Load preview" button -- selecting a file node in the tree on the left
         # loads its preview immediately (see _on_tree_select()). add_page_nav_row()
@@ -341,14 +345,12 @@ class PrimesTab(BaseTab):
                 self._prev_preview_page, self._next_preview_page, self._goto_preview_page))
         preview_nav_row.pack(anchor="w", padx=6, fill="x")
 
-        # add_page_nav_row() never wraps onto extra lines -- so the detail pane must
-        # never be draggable narrower than this row's own natural width, or its
-        # right-flush "Page:"/entry/Go jump group starts sliding off the pane's own
-        # edge and out of view entirely. Same fix as Storage/ConstellationsHitsTab's
-        # own preview pane -- see clamp_pane_min_width()'s own docstring for why a
-        # ttk::panedwindow needs this done by hand.
+        # The detail pane is never narrower than the row's wider group (the jump group
+        # goes under the buttons below the full row's width), so nothing in it is cut;
+        # see clamp_pane_min_width()'s own docstring for why a ttk::panedwindow needs
+        # this done by hand.
         self.update_idletasks()
-        self._detail_min_width = preview_nav_row.winfo_reqwidth() + 12
+        self._detail_min_width = preview_nav_row.min_width() + 12
         clamp_pane_min_width(paned, detail_frame, self._detail_min_width)
 
         preview_frame = ttk.Frame(self._preview_area)
@@ -583,12 +585,18 @@ class PrimesTab(BaseTab):
         groups = [item for item, _gap in self.floor_nav._items[:2]]
         return max([self._tree_content_width()] + [g.winfo_reqwidth() for g in groups])
 
-    def _floor_nav_width(self):
-        """The width the floor nav wraps to: the tree pane's, or less while the window is
-        too narrow for it (the detail pane keeps its minimum width)."""
+    def _tree_pane_room(self):
+        """The tree pane's width on screen: _tree_pane_width(), or less while the window is
+        too narrow for it, so the detail pane keeps its minimum width and both stay in view
+        (the tree then scrolls sideways)."""
         width = self._tree_pane_width()
-        room = self._tree_paned.winfo_width() - self._detail_min_width
+        room = (self._tree_paned.winfo_width() - self._detail_min_width
+                - sash_gap(self._tree_paned))
         return min(width, room) if self._tree_paned.winfo_width() > 1 and room > 0 else width
+
+    def _floor_nav_width(self):
+        """The width the floor nav wraps to: the tree pane's on screen."""
+        return self._tree_pane_room()
 
     def _fit_tree_pane(self):
         """Asks the layout coordinator to set the tree pane again (after the columns
@@ -596,7 +604,7 @@ class PrimesTab(BaseTab):
         self._tree_pane_layout.request()
 
     def _layout_tree_pane(self, _width):
-        """Coordinator layout of the panedwindow: the sash to _tree_pane_width(), then the
+        """Coordinator layout of the panedwindow: the sash to _tree_pane_room(), then the
         floor nav (deeper, the next round) for that width."""
         self._tree_paned.after_idle(self._set_tree_sash)
         self.floor_nav.relayout()
@@ -610,7 +618,7 @@ class PrimesTab(BaseTab):
     def _set_tree_sash(self):
         try:
             if self._tree_paned.winfo_ismapped():
-                self._tree_paned.sashpos(0, self._tree_pane_width())
+                self._tree_paned.sashpos(0, self._tree_pane_room())
         except tk.TclError:
             pass
 

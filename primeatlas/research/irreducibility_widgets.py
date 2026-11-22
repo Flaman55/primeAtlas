@@ -1,6 +1,6 @@
 """
 irreducibility_widgets.py -- small widget helpers shared by the Research -> Irreducibility
-sub-tabs: a label that wraps at its parent's width, a labelled remembered number field, and
+sub-tabs: a wrapping label packed across its parent, a labelled remembered number field, and
 a read-only text area for results.
 """
 import tkinter as tk
@@ -8,15 +8,13 @@ from tkinter import ttk
 
 from ..core import number_field
 from ..core.ui_state import remember
+from ..core.wrap_label import WrapLabel
 
 
 def wrapped_label(parent, padx=0, pady=0, **kw):
-    """A left-aligned label packed across parent that wraps at the parent's current width,
-    so it follows window resizes and the font scale."""
-    label = ttk.Label(parent, justify="left", **kw)
+    """A WrapLabel packed across parent, left-aligned."""
+    label = WrapLabel(parent, **kw)
     label.pack(anchor="w", fill="x", padx=padx, pady=pady)
-    parent.bind("<Configure>",
-                lambda e: label.configure(wraplength=max(e.width - 2 * padx - 8, 200)), add="+")
     return label
 
 

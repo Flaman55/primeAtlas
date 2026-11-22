@@ -273,6 +273,40 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   której każda zakładka ma sprawdzone, że pokazuje wszystkie swoje elementy; startuje
   z szerokością 1280 px.
 
+### +16 — Small screens: every tab down to 800 px
+
+- English: The window can now be made as narrow as 800 px, and every tab still shows all its
+  controls, in English and Polish, at font size 100 % and 125 %. Descriptions, hints and status
+  lines wrap to the width they have instead of a fixed width, follow the window, a sash drag
+  and the font size, and keep the same wrap whether the page scrolls or not. Rows of fields and
+  buttons (the Records table's fields and exports, Benchmark's controls and table navigation,
+  the Quick-gen modes, the k-tuple form, the Rings line mode, the Tree fields, the Irreducibility
+  layouts, the search row of Prime numbers, the installers in Settings) wrap whole groups onto
+  the next line: a label stays with its field and its Auto button. Folder fields and the
+  Irreducibility number fields fill their row and shrink in a narrow window instead of pushing
+  their buttons out. Under Prime numbers > Storage the tree pane gives way in a narrow window, so
+  the pane with the file's numbers stays in view and the tree scrolls sideways instead; there
+  and under Constellations > Storage a page navigation too narrow for one line puts its
+  Page/Go group under its buttons. In a
+  wide window Benchmark's view toggles and copy hint now follow the
+  other controls instead of standing at the right edge, and the k-tuple fields flow in a row
+  instead of two aligned columns.
+- Polski: Okno można teraz zwęzić do 800 px, a każda zakładka nadal pokazuje wszystkie swoje
+  elementy, po polsku i po angielsku, przy czcionce 100 % i 125 %. Opisy, podpowiedzi i linie
+  stanu zawijają się do szerokości, jaką mają, zamiast do stałej, idą za oknem, przeciąganiem
+  przegródki i rozmiarem czcionki, i zawijają się tak samo, czy strona się przewija, czy nie.
+  Rzędy pól i przycisków (pola i eksporty Tabeli rekordów, przyciski i nawigacja tabeli
+  Benchmarku, tryby Quick-gen, formularz k-krotek, tryb liniowy Pierścieni, pola Drzewa, układy
+  Nieredukowalności, wyszukiwanie w Liczbach pierwszych, instalatory w Ustawieniach) przenoszą
+  całe grupy do następnej linii: etykieta zostaje ze swoim polem i przyciskiem Auto. Pola
+  folderów i pola liczb Nieredukowalności wypełniają swój rząd i zwężają się w wąskim oknie,
+  zamiast wypychać przyciski. W Liczby pierwsze > Magazyn panel drzewa ustępuje w wąskim oknie,
+  więc panel z liczbami pliku zostaje widoczny, a drzewo przewija się w poziomie; tam i w
+  Konstelacje > Magazyn nawigacja stron za wąska na jedną linię przenosi grupę Strona/Idź pod
+  swoje przyciski. W szerokim oknie przełączniki widoku i podpowiedź kopiowania
+  Benchmarku stoją teraz za pozostałymi przyciskami, a nie przy prawej krawędzi, a pola k-krotek
+  układają się w rzędzie zamiast w dwóch wyrównanych kolumnach.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

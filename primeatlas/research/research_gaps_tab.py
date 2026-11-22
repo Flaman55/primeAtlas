@@ -29,6 +29,7 @@ from ..core.ui_state import remember
 from ..core.widgets import StripedTreeview
 from .gaps_window import check_gap_range, check_gap_range_from_source, MAX_SIEVE_BOUND
 from .research_gaps import read_is_prime_from_storage, MissingStorageRangeError
+from ..core.wrap_label import WrapLabel
 
 GAPS_ROW_CAP = 200
 """Rows per page in the results Treeview -- same "verdict/stats always
@@ -117,13 +118,12 @@ class ResearchGapsTab(BaseTab):
             command=self._on_gaps_export_csv, state="disabled")
         self.gaps_export_button.pack(side="left", padx=(16, 0))
 
-        ttk.Label(self, text=T("research_gaps.hint"),
-                  wraplength=760, justify="left", style="Hint.TLabel").pack(
+        WrapLabel(self, text=T("research_gaps.hint"),
+                  style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(0, 8))
 
         self.gaps_summary_var = tk.StringVar(value="")
-        ttk.Label(self, textvariable=self.gaps_summary_var,
-                  wraplength=760, justify="left").pack(anchor="w", padx=6, pady=(0, 8))
+        WrapLabel(self, textvariable=self.gaps_summary_var).pack(anchor="w", padx=6, pady=(0, 8))
 
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))

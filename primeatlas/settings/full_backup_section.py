@@ -21,6 +21,7 @@ from ..core.widgets import HeightGrip
 from ..generation.generation_console import GenerationConsole
 from . import full_backup as fb
 from ..core import background, machines_file
+from ..core.wrap_label import WrapLabel
 
 
 class FullBackupSection:
@@ -324,9 +325,9 @@ class FullBackupSection:
         below."""
         frame = ttk.Labelframe(outer, text=self.T("settings.full_backup_frame"))
         frame.pack(fill="both", expand=True, pady=(0, 8))
-        ttk.Label(
+        WrapLabel(
             frame, text=self.T("settings.full_backup_hint"),
-            style="Hint.TLabel", wraplength=760, justify="left").pack(
+            style="Hint.TLabel").pack(
             anchor="w", padx=6, pady=(6, 4))
 
         dest_row = ttk.Frame(frame)
@@ -334,8 +335,9 @@ class FullBackupSection:
         ttk.Label(dest_row, text=self.T("settings.full_backup_dest_label")).pack(side="left")
         self.full_backup_dest_var = tk.StringVar(
             value=self.app_settings.full_backup_destination or "")
+        # It fills the row and shrinks in a narrow window instead of pushing the buttons out.
         # not a number field: a folder path
-        ttk.Entry(dest_row, textvariable=self.full_backup_dest_var, width=48).pack(
+        ttk.Entry(dest_row, textvariable=self.full_backup_dest_var, width=16).pack(
             side="left", padx=(6, 6), fill="x", expand=True)
         ttk.Button(dest_row, text=self.T("settings.full_backup_browse_button"),
                    command=self._on_browse_full_backup_dest).pack(side="left")
