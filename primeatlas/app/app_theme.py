@@ -5,24 +5,14 @@ palette, applied once in __init__ before any child widget exists.
 from tkinter import ttk
 
 from primeatlas.app import app_dynamic as _dyn
+from primeatlas.core import font_scale
 
 
 class ThemeMixin:
     def _apply_font_scale(self, percent):
-        """Multiplies `tk scaling` (pixels per point) by percent/100 before any widget
-        is built, so every point-sized font -- named fonts and explicit ("Consolas", 9)
-        tuples, canvas text included -- grows by the same factor. Pixel sizes (column
-        widths, wraplength, paddings) are unaffected; content-fitted widths follow the
-        fonts. The named fonts are reconfigured so they re-resolve their point size
-        under the new scaling. Restart-required, same as the theme."""
-        import tkinter.font as tkfont
-        if percent == 100:
-            return
-        base = float(self.tk.call("tk", "scaling"))
-        self.tk.call("tk", "scaling", base * percent / 100)
-        for name in tkfont.names(self):
-            named = tkfont.nametofont(name, root=self)
-            named.configure(size=named.cget("size"))
+        """Applies the font scale before any widget is built and keeps it across display
+        changes (core/font_scale.py). Restart-required, same as the theme."""
+        font_scale.apply(self, percent)
 
     def _apply_theme(self, theme_name):
         """Applies primeatlas.core.theme's color palette to every widget class this app
