@@ -49,7 +49,7 @@ from ..core import number_field
 from ..core import number_format
 from ..core import ui_state_dynamic
 from ..core.base_tab import BaseTab
-from ..core.widgets import StripedTreeview
+from ..core.widgets import HeightGrip, StripedTreeview
 from ..core.storage import digit_count_floor, list_floors
 from ..core.ui_state import remember
 from ..core.wrap_label import WrapLabel
@@ -159,7 +159,7 @@ class ConstellationsCalcTab(BaseTab):
         self.compute_button.pack(side="left")
 
         tree_frame = ttk.Frame(container)
-        tree_frame.pack(fill="both", expand=True, pady=(0, 8))
+        tree_frame.pack(fill="x")
         self.results_tree = StripedTreeview(
             tree_frame, columns=("offset", "number"), show="headings",
             height=10, selectmode="browse")
@@ -171,6 +171,8 @@ class ConstellationsCalcTab(BaseTab):
         cvsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.results_tree.yview)
         self.results_tree.configure(yscrollcommand=cvsb.set)
         cvsb.pack(side="left", fill="y")
+        HeightGrip(container, self.results_tree, after=tree_frame, pady=(2, 8),
+                   place="constellations.calculator")
 
         self.search_button = ttk.Button(
             container, text=T("const_calc.search_button"),

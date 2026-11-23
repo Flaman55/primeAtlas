@@ -38,7 +38,7 @@ from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
-from ..core.widgets import StripedTreeview
+from ..core.widgets import HeightGrip, StripedTreeview
 from .polynomials_window import (
     check_polynomial_range, check_polynomial_range_from_source, MAX_SIEVE_BOUND,
 )
@@ -177,7 +177,7 @@ class ResearchPolynomialsTab(BaseTab):
         WrapLabel(self, textvariable=self.poly_summary_var).pack(anchor="w", padx=6, pady=(0, 8))
 
         tree_frame = ttk.Frame(self)
-        tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))
+        tree_frame.pack(fill="x", padx=6)
         columns = ("n", "value", "is_prime")
         self.poly_results_tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=16)
@@ -189,6 +189,8 @@ class ResearchPolynomialsTab(BaseTab):
         self.poly_results_tree.column("is_prime", width=110, anchor="center")
         svsb = ttk.Scrollbar(
             tree_frame, orient="vertical", command=self.poly_results_tree.yview)
+        HeightGrip(self, self.poly_results_tree, after=tree_frame, padx=6, pady=(2, 8),
+                   place="research.polynomials")
         self.poly_results_tree.configure(yscrollcommand=svsb.set)
         self.poly_results_tree.pack(side="left", fill="both", expand=True)
         svsb.pack(side="right", fill="y")

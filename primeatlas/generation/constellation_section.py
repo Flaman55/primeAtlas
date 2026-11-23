@@ -114,7 +114,7 @@ class ConstellationSection:
         # builder here -- the constellation-finder section has no Quick-gen-style panel
         # to duplicate, only its own raw Run/Stop pair above.
         self.const_console = GenerationConsole(
-            const_outer, self.T, height=20)
+            const_outer, self.T, place="generation.constellation")
         self.const_output = self.const_console.text
         self._register_scroll_exclude(self.const_console.text.frame)
 

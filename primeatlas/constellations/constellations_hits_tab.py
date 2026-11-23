@@ -118,8 +118,11 @@ class ConstellationsHitsTab(BaseTab):
             top, text=T("common.search_button"), command=self.search_constellation)
         self.hits_search_button.pack(side="left")
 
+        # Its height is the panes' (the grip under it sets the tree and the preview list),
+        # never stretched to the page.
         paned = ttk.Panedwindow(self, orient="horizontal")
-        paned.pack(fill="both", expand=True, padx=6, pady=4)
+        paned.pack(fill="x", padx=6, pady=4)
+        self.hits_paned = paned
 
         tree_frame = ttk.Frame(paned)
         paned.add(tree_frame, weight=1)
@@ -157,7 +160,8 @@ class ConstellationsHitsTab(BaseTab):
         self.search_results_list = tk.Listbox(self._search_results_area, height=5, font=("Consolas", 9))
         self.search_results_list.pack(fill="x", padx=6, pady=(0, 0))
         self.search_results_grip = HeightGrip(self._search_results_area, self.search_results_list,
-                                              after=self.search_results_list, padx=6)
+                                              after=self.search_results_list, padx=6,
+                                              place="constellations.search_results")
         self.search_results_list.bind("<Double-Button-1>", self._on_search_result_activate)
         self.search_results_list.bind("<Return>", self._on_search_result_activate)
         self._search_results_data = []  # parallel to search_results_list rows
@@ -224,9 +228,10 @@ class ConstellationsHitsTab(BaseTab):
             max(btn_row_frame.min_width(), file_page_row_frame.min_width())
             + 10 + self.hits_export_btn.winfo_reqwidth() + 12)
         clamp_pane_min_width(paned, detail_frame, preview_nav_min_width)
-        # The tree keeps a third of the width (the panes' 1:2 weights) across resizes, so a
-        # window made narrow and wide again shows the same split; a sash drag sets it.
-        keep_sash_share(paned, 1 / 3, preview_nav_min_width)
+        # The tree keeps its share of the width (default a third, the panes' 1:2 weights)
+        # across resizes, so a window made narrow and wide again shows the same split; a
+        # sash drag sets it and is remembered.
+        keep_sash_share(paned, None, preview_nav_min_width, place="constellations.storage")
 
         hits_preview_frame = ttk.Frame(self._hits_preview_area)
         hits_preview_frame.pack(fill="both", expand=True, padx=6, pady=6)
@@ -236,6 +241,8 @@ class ConstellationsHitsTab(BaseTab):
         self.hits_preview_list.configure(yscrollcommand=hits_preview_vsb.set)
         self.hits_preview_list.pack(side="left", fill="both", expand=True)
         hits_preview_vsb.pack(side="right", fill="y")
+        self.storage_grip = HeightGrip(self, [self.hits_tree, self.hits_preview_list],
+                                       place="constellations.storage", after=paned, padx=6)
 
         # Each row here is ONE number (the pattern's position/offset context is shown
         # alongside it, not merged into a single copy-unfriendly comma-joined tuple

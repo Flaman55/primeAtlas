@@ -194,7 +194,7 @@ class VerifySection:
         self.verify_status_label = tk.StringVar(value=self.T("common.ready"))
         ttk.Label(buttons, textvariable=self.verify_status_label).pack(side="left", padx=(12, 0))
 
-        self.verify_console = GenerationConsole(outer, self.T, height=12)
+        self.verify_console = GenerationConsole(outer, self.T, place="generation.verify")
         self._register_scroll_exclude(self.verify_console.text.frame)
         self._verify_runner = None
         self._verify_output_queue = queue.Queue()

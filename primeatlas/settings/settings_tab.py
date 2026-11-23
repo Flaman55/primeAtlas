@@ -233,7 +233,7 @@ class SettingsTab(GeneralSection, RestoreSection, DeleteSection, FullBackupSecti
         scrollbar.pack(side="left", fill="y")
         self.backup_listbox.configure(yscrollcommand=scrollbar.set)
         self.backup_list_grip = HeightGrip(backup_frame, self.backup_listbox, after=list_row,
-                                           padx=6)
+                                           padx=6, place="settings.backups")
 
         restore_frame = ttk.Labelframe(outer, text=self.T("settings.restore_frame"))
         restore_frame.pack(fill="both", expand=True, pady=(0, 8))
@@ -277,10 +277,11 @@ class SettingsTab(GeneralSection, RestoreSection, DeleteSection, FullBackupSecti
         ttk.Button(incomplete_row, text=self.T("settings.restore_delete_selected"),
                    command=self._on_delete_incomplete).pack(side="left", padx=(6, 0))
         self.incomplete_list_grip = HeightGrip(restore_frame, self.incomplete_listbox,
-                                               after=incomplete_row, min_lines=2, padx=6)
+                                               after=incomplete_row, padx=6,
+                                               place="settings.incomplete")
 
         self.restore_console = GenerationConsole(
-            restore_frame, self.T, height=8, start_visible=True,
+            restore_frame, self.T, start_visible=True, place="settings.restore",
             window_title=self.T("settings.restore_frame"))
         self.restore_output = self.restore_console.text
 

@@ -263,7 +263,8 @@ class TreeTab(VizTabBase):
         ttk.Label(hud_frame, textvariable=self.hud_var, justify="left", anchor="w",
                   font=("TkFixedFont",)).pack(fill="x", padx=8, pady=6)
 
-        self.console = GenerationConsole(container, self.T, height=14, window_title=self._tk("console_title"))
+        self.console = GenerationConsole(container, self.T, place="visualization.tree",
+                                          window_title=self._tk("console_title"))
         self._register_scroll_exclude(self.console.text.frame)
 
         self._launch_param_entries = [self.n_entry, self.colors_entry] + [

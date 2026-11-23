@@ -112,7 +112,8 @@ class ConstellationsDensityTab(BaseTab):
         hsb.pack(side="bottom", fill="x")
         self.tree.pack(side="left", fill="both", expand=True)
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
-        HeightGrip(container, self.tree, after=self.tree_frame, pady=(2, 4))
+        HeightGrip(container, self.tree, after=self.tree_frame, pady=(2, 4),
+                   place="constellations.density")
 
         self.notes_var = tk.StringVar(value="")
         WrapLabel(container, textvariable=self.notes_var, style="Hint.TLabel").pack(
@@ -121,8 +122,10 @@ class ConstellationsDensityTab(BaseTab):
         self.canvas = tk.Canvas(container, width=640, height=260,
                                 background=self.palette["console_bg"], highlightthickness=1,
                                 highlightbackground=self.palette["border"])
-        self.canvas.pack(fill="both", expand=True)
+        self.canvas.pack(fill="x")
         self.canvas.bind("<Configure>", lambda _e: self.redraw_chart())
+        HeightGrip(container, self.canvas, after=self.canvas, pady=(2, 4),
+                   place="constellations.density_chart")
 
         if pattern_catalog_v1.all_k():
             self.k_combo.current(0)

@@ -616,7 +616,7 @@ class RingsTab(VizTabBase):
         ttk.Label(hud_frame, textvariable=self.hud_var, justify="left", anchor="w",
                   font=("TkFixedFont",)).pack(fill="x", padx=8, pady=6)
 
-        self.console = GenerationConsole(container, self.T, height=14,
+        self.console = GenerationConsole(container, self.T, place="visualization.rings",
                                           window_title=self.T("rings.console_title"))
         # See _build_scrollable_container's own docstring -- this tells the tab's
         # outer scroll wrapper to leave mousewheel/button events that land

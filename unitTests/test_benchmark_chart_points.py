@@ -222,8 +222,11 @@ class TabTests(unittest.TestCase):
                 writer.writerows(rows)
             root = tk.Tk()
             try:
+                # In a scrollable page, as in the app: the tab is taller than a screen.
+                from primeatlas.core.widgets import ScrollablePage
+                page = ScrollablePage(root)
                 tab = benchmark_tab.BenchmarkTab(
-                    root, lambda: portal, tk.StringVar(master=root), Translator("en"),
+                    page.body, lambda: portal, tk.StringVar(master=root), Translator("en"),
                     lambda *a, **k: None, palette_for("light"))
                 tab.pack(fill="both", expand=True)
                 tab.reload_benchmark_log()

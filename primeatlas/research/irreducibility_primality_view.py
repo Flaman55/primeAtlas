@@ -18,7 +18,7 @@ from tkinter import ttk
 
 from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
-from ..core.widgets import StripedTreeview
+from ..core.widgets import HeightGrip, StripedTreeview
 from ..primality.primality import miller_rabin_test
 from . import irreducibility_layout as layout
 from . import irreducibility_residues as res
@@ -108,7 +108,7 @@ class PrimalityView(BaseTab):
         self.oracle_label.pack(anchor="w", padx=6, pady=(0, 4))
 
         frame = ttk.Frame(self)
-        frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))
+        frame.pack(fill="x", padx=6)
         cols = ("step", "m", "vs_m", "vs_square", "remainder")
         self.steps_tree = StripedTreeview(frame, columns=cols, show="headings", height=12)
         for c in cols:
@@ -118,6 +118,8 @@ class PrimalityView(BaseTab):
         self.steps_tree.configure(yscrollcommand=scroll.set)
         self.steps_tree.pack(side="left", fill="both", expand=True)
         scroll.pack(side="left", fill="y")
+        HeightGrip(self, self.steps_tree, after=frame, padx=6, pady=(2, 8),
+                   place="irreducibility.primality")
 
         numbers.on_change(lambda side: side == "A" and self.refresh_info())
         self.refresh_info()

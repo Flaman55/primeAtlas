@@ -202,7 +202,7 @@ class KtupleSection:
             variable=self._ktuple_reset_checkpoint_var).pack(anchor="w", padx=8, pady=(0, 4))
 
         self.ktuple_console = GenerationConsole(
-            ktuple_outer, self.T, height=20)
+            ktuple_outer, self.T, place="generation.ktuple")
         self.ktuple_output = self.ktuple_console.text
         self._register_scroll_exclude(self.ktuple_console.text.frame)
 

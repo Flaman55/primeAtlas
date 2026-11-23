@@ -1385,6 +1385,20 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               layout pass, a window activation, a key or mouse
                               press; nothing runs while idle)
                               (unitTests/test_font_scale.py)
+  height_grip.py                HeightGrip, the app's one height control (re-exported
+                              by widgets.py): a drag handle under a terminal, list,
+                              table, multi-line field or chart, its height remembered
+                              per place (unitTests/test_layout_memory.py)
+  layout_const.py               the default layout: every height grip's default, min
+                              and max (lines, or pixels for a chart), the remembered
+                              sash share, the main window (maximized, 1280x680
+                              normal); Settings > General > Default layout returns
+                              to it
+  layout_memory.py              the remembered layout in ui_state.json ("layout."
+                              keys): grip heights, terminals shown/hidden, sash share,
+                              window size/position/state, saved on the person's own
+                              action (a default never stored), reset_layout()
+                              (unitTests/test_layout_memory.py, test_layout_app.py)
   responsive.py                 the layout coordinator: elements whose arrangement
                               depends on their width (FlowRow, the Prime numbers tree
                               pane) are laid out top-down, outer before inner, once
@@ -1462,11 +1476,13 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               disable_notebook_wheel()
                               keeps the mouse wheel from switching notebook tabs
                               app-wide; HeightGrip is the app's one
-                              height control -- a drag handle under a terminal, list or
-                              table that sets its height in lines (no vertical paned
-                              windows anywhere; the Generation tab's sections stack at
-                              natural height, the Records table keeps a dragged height
-                              across rescans); ScrollablePage is the app's one page
+                              height control -- a drag handle under every terminal,
+                              list, table, multi-line field and chart that sets its
+                              height in lines (pixels for a chart); the widget is
+                              exactly that tall, never stretched to the page, and the
+                              height is remembered per place (layout_memory.py; no
+                              vertical paned windows anywhere; the Records table keeps
+                              a dragged height across rescans); ScrollablePage is the app's one page
                               container (every sub-tab of Prime numbers, Constellations,
                               Research and Settings, plus Generation, the visualization
                               tabs, Benchmark and About): its scrollbar and ScrollPad
@@ -1570,8 +1586,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               app_dynamic sets it), for colors chosen per theme
                               outside primeatlas/app/ (Benchmark line colors)
   ui_state_store.py             UiStateStore -- the flat {key: value} JSON file, debounced
-                              atomic writes; no tkinter import (app_dynamic opens it
-                              before any window exists)
+                              atomic writes, remove()/remove_prefix(); no tkinter
+                              import (app_dynamic opens it before any window exists)
   totals_search_coordinator.py TotalsSearchCoordinator -- the two PersistentWorkers
                               (floor-totals scanning, prime/constellation search) that
                               used to live directly on PortalBrowserApp itself in

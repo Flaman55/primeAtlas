@@ -10,7 +10,7 @@ section's
 import tkinter as tk
 from tkinter import ttk
 
-from ..core.widgets import RevealFrame, StripedTreeview
+from ..core.widgets import HeightGrip, RevealFrame, StripedTreeview
 from ..core.wrap_label import WrapLabel
 
 COLUMNS = ("number", "floor", "from", "to", "windows", "targets", "method", "time")
@@ -45,6 +45,8 @@ class TargetPlannerView(ttk.Labelframe):
             anchor="w", pady=(6, 2))
         self.text = tk.Text(self._after_howto, height=6, width=80, wrap="none")
         self.text.pack(fill="x")
+        HeightGrip(self._after_howto, self.text, after=self.text, pady=(2, 0),
+                   place="planner.targets")
         buttons = ttk.Frame(self._after_howto)
         buttons.pack(anchor="w", pady=(4, 0))
         self.example_button = ttk.Button(buttons, text=T("target_planner.example_button"),
@@ -66,6 +68,8 @@ class TargetPlannerView(ttk.Labelframe):
             self.tree.column(column, width=_WIDTHS[column], stretch=column in ("from", "to"),
                              anchor="w")
         self.tree.pack(fill="x", pady=(4, 0))
+        HeightGrip(self._after_howto, self.tree, after=self.tree, pady=(2, 0),
+                   place="planner.table")
         self.tree.bind("<<TreeviewSelect>>", lambda _e: self._sync_use())
         self.summary_var = tk.StringVar()
         WrapLabel(self._after_howto, textvariable=self.summary_var).pack(anchor="w", pady=(4, 0))

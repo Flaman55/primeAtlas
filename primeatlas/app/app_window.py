@@ -26,7 +26,7 @@ from primeatlas.constellations.constellations_tree_coordinator import Constellat
 from primeatlas.about.machine_prompt import MachinePrompt
 from primeatlas.core import (cpu_dynamic, cpu_load, hardware_details, hardware_dynamic,
                              ui_state_dynamic)
-from primeatlas.core import responsive
+from primeatlas.core import layout_memory, responsive
 from primeatlas.core.background import run_in_background
 from primeatlas.core.app_icon import apply_tk_icon
 from primeatlas.core.totals_search_coordinator import TotalsSearchCoordinator
@@ -56,9 +56,10 @@ class PortalBrowserApp(ThemeMixin, PrimesSectionMixin, ConstellationsSectionMixi
         self._apply_theme(_dyn.APP_SETTINGS.theme)
         # Release, merges since it and the checked-out commit, see version.py.
         self.title(f"{_dyn.T('app.title')} {version_label(_dyn.REPO_DIR)}")
-        self.geometry("1280x680")
         # Never narrower than the width every tab is checked at (responsive.py).
         responsive.apply_min_width(self)
+        # Size, position and maximized state as the person left them (layout_memory.py).
+        layout_memory.remember_window(self, min_width=responsive.MIN_WINDOW_WIDTH)
 
         # status_frame/notebook are BUILT here but deliberately left UNPACKED until
         # _finish_loading_screen() reveals them -- see the loading_frame block just

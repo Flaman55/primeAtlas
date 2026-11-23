@@ -845,16 +845,21 @@ class RamChartTests(unittest.TestCase):
             root = tk.Tk()
             try:
                 fresh_ui_store()
+                # In a scrollable page, as in the app: the tab is taller than a screen.
+                from primeatlas.core.widgets import ScrollablePage
+                page = ScrollablePage(root)
                 tab = benchmark_tab.BenchmarkTab(
-                    root, lambda: portal, tk.StringVar(master=root), Translator("en"),
+                    page.body, lambda: portal, tk.StringVar(master=root), Translator("en"),
                     lambda *a, **k: None, palette_for("light"))
                 tab.pack()
                 tab.reload_benchmark_log()
                 root.update()
                 self.assertEqual(tab.mixed_widths_vars["ram"].get(), note)
-                label, canvas = tab._mixed_widths_labels["ram"]
+                label, _grip_frame = tab._mixed_widths_labels["ram"]
                 self.assertTrue(label.winfo_ismapped())
-                self.assertIs(canvas, tab.benchmark_chart3)
+                # Under the chart and its height grip.
+                slaves = label.master.pack_slaves()
+                self.assertEqual(slaves.index(label), slaves.index(tab.benchmark_chart3) + 2)
                 path = os.path.join(portal, "r.pdf")
                 tab._render_pdf(path)
                 text = Path(path).read_bytes().decode("latin-1")

@@ -17,6 +17,9 @@ A. ScrollablePage alone:
      a nested frame) and keeps it there after a re-check; a widget near the end scrolls to
      the end with the widget in view; back to the first widget returns to the top; on a
      page that fits it scrolls nothing.
+   - a show/hide loop settles: content that gets taller when the page widens (a layout
+     following the width a moment late) leaves the scrollbar shown instead of showing
+     and hiding it for ever; the content shrinking to another height then hides it.
 B. The app: every page uses it -- Primes (Storage, primesieve, Primality), Constellations
    (Storage, Calculator, Records), Research (five sub-tabs), Benchmark, About, the three
    Settings sub-tabs, Generation and the visualization tabs; the three old copies of the
@@ -230,6 +233,58 @@ def _test_scroll_to():
         page.scroll_to(rows[1])
         _settle(root)
         check(page.canvas.yview()[0] == 0.0, "a page that fits scrolls nothing")
+    finally:
+        root.destroy()
+
+
+def _test_show_hide_loop():
+    print("\n--- A. ScrollablePage show/hide loop ---")
+    root = tk.Tk()
+    root.geometry("500x400")
+    try:
+        page = widgets.ScrollablePage(root)
+        block = tk.Frame(page.body, width=100, height=100)
+        block.pack(fill="x")
+        _settle(root)
+        view = page.canvas.winfo_height()
+        wide = page.canvas.winfo_width()
+        # Taller than the view while wide (scrollbar hidden), shorter while narrow (shown),
+        # set a moment after each width change: the inverse of what wrapping gives.
+        state = {"height": view - 10}
+
+        def follow(_event):
+            target = view + 15 if block.winfo_width() >= wide - 2 else view - 10
+            if target != state["height"]:
+                state["height"] = target
+                root.after(30, lambda: block.configure(height=target))
+        block.bind("<Configure>", follow, add="+")
+        toggles = {"n": 0}
+        original = page._set_shown
+
+        def counting(shown):
+            if shown != page._shown:
+                toggles["n"] += 1
+            original(shown)
+        page._set_shown = counting
+        block.configure(height=view + 15)
+        end = time.time() + 2
+        while time.time() < end:
+            root.update()
+            time.sleep(0.01)
+        check(toggles["n"] <= 3, f"the loop settles ({toggles['n']} show/hide changes)")
+        check(page.scrolls(), "it settles with the scrollbar shown")
+        block.unbind("<Configure>")
+        end = time.time() + 0.5  # the last delayed height change lands
+        while time.time() < end:
+            root.update()
+            time.sleep(0.01)
+        block.configure(height=view // 2)
+        end = time.time() + 0.5
+        while time.time() < end:
+            root.update()
+            time.sleep(0.01)
+        check(not page.scrolls(), f"content shrinking to another height hides it "
+                                  f"({page.body.winfo_reqheight()} in {page.canvas.winfo_height()})")
     finally:
         root.destroy()
 
@@ -532,6 +587,7 @@ def _test_wheel_routing():
 def main():
     _test_page()
     _test_scroll_to()
+    _test_show_hide_loop()
     _test_sources()
     _test_notebook_wheel()
     _test_wheel_routing()

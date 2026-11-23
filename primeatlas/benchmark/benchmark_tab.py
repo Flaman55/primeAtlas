@@ -34,7 +34,7 @@ from ..core import number_field
 from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
-from ..core.widgets import FitLabel, FlowRow, StripedTreeview
+from ..core.widgets import FitLabel, FlowRow, HeightGrip, StripedTreeview
 from .benchmark import (
     BENCHMARK_PAGE_SIZE, aggregate_benchmark_fair_spw,
     aggregate_benchmark_growth, aggregate_benchmark_sieve_nps,
@@ -439,33 +439,38 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         # _draw_chart below) keep ticks and axis titles readable on it. Each chart is
         # always shown: _draw_growth_chart() draws a "no data yet" placeholder when its
         # series are empty. A mixed-width note is packed under its chart only while it
-        # has text, so an empty one takes no height.
+        # has text, so an empty one takes no height. Each chart's height is its grip's
+        # (layout_const: one default for the three, remembered per chart).
         p = self._theme_palette
         self._mixed_widths_labels = {}
         chart_frame2 = self._chart_frame("sieve")
-        self.benchmark_chart2 = tk.Canvas(chart_frame2, height=220, background=p["console_bg"],
+        self.benchmark_chart2 = tk.Canvas(chart_frame2, background=p["console_bg"],
                                            highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart2.pack(fill="x")
+        sieve_grip = HeightGrip(chart_frame2, self.benchmark_chart2,
+                                after=self.benchmark_chart2, place="benchmark.sieve_chart")
         self.benchmark_chart2.bind("<Configure>", lambda _e: self._redraw_benchmark_chart2())
         self._bind_chart_zoom(self.benchmark_chart2, "sieve")
         self._mixed_widths_labels["sieve"] = (
             ttk.Label(chart_frame2, style="Status.TLabel",
-                      textvariable=self.mixed_widths_vars["sieve"]), self.benchmark_chart2)
+                      textvariable=self.mixed_widths_vars["sieve"]), sieve_grip.frame)
 
         chart_frame = self._chart_frame("run")
-        self.benchmark_chart = tk.Canvas(chart_frame, height=180, background=p["console_bg"],
+        self.benchmark_chart = tk.Canvas(chart_frame, background=p["console_bg"],
                                           highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart.pack(fill="x")
+        run_grip = HeightGrip(chart_frame, self.benchmark_chart, after=self.benchmark_chart,
+                              place="benchmark.run_chart")
         self.benchmark_chart.bind("<Configure>", lambda _e: self._redraw_benchmark_chart())
         self._bind_chart_zoom(self.benchmark_chart, "run")
         self._mixed_widths_labels["run"] = (
             ttk.Label(chart_frame, style="Status.TLabel",
-                      textvariable=self.mixed_widths_vars["run"]), self.benchmark_chart)
+                      textvariable=self.mixed_widths_vars["run"]), run_grip.frame)
 
         self._build_ram_chart(self._chart_frame("ram"))
 
         tree_frame = ttk.Frame(self)
-        tree_frame.pack(fill="both", expand=True, padx=6, pady=4)
+        tree_frame.pack(fill="x", padx=6, pady=(4, 0))
 
         # Floor pagination -- ABOVE the tree, same Prev/label/Next/goto layout as the
         # "Prime numbers" tab's floor nav (see that tab's own _build_primes_tab for the
@@ -504,9 +509,8 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self._build_table_copy_hint(hint)
         benchmark_nav.add(hint, padx_left=16)
 
-        # height is the tree's height when the page has to scroll, as it does under the three
-        # stacked charts at the default 1050x680; while the page fits, pack(expand=True)
-        # gives it the rest of the window.
+        # The tree's height is its grip's (under the tree frame), never stretched to the
+        # page.
         self.benchmark_tree = StripedTreeview(tree_frame, show="tree headings", height=10)
         self.benchmark_tree.heading("#0", text=T("bench.col_floor"))
         self.benchmark_tree.column("#0", width=170, stretch=False)
@@ -523,6 +527,8 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         self.benchmark_tree.configure(yscrollcommand=vsb.set,
                                       xscrollcommand=self._build_table_heading(tree_frame, hsb.set))
         self.benchmark_tree.pack(side="left", fill="both", expand=True)
+        HeightGrip(self, self.benchmark_tree, after=tree_frame, padx=6, pady=(2, 4),
+                   place="benchmark.table")
 
         # Explicit foreground alongside each background -- a tag's own colors
         # override the base "Treeview" ttk.Style() colors per-row (see this
@@ -639,9 +645,9 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         notes = [self.T("bench.mixed_widths", floors=", ".join(map(str, floors)))] if floors else []
         notes += [note for note in (self._unplaced_note(metrics),) if note]
         self.mixed_widths_vars[chart].set("  |  ".join(notes))
-        label, canvas = self._mixed_widths_labels[chart]
+        label, grip_frame = self._mixed_widths_labels[chart]
         if notes:
-            label.pack(anchor="w", after=canvas)
+            label.pack(anchor="w", after=grip_frame)
         else:
             label.pack_forget()
 

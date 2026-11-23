@@ -17,7 +17,7 @@ from tkinter import ttk
 
 from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
-from ..core.widgets import StripedTreeview
+from ..core.widgets import HeightGrip, StripedTreeview
 from ..primality.primality import miller_rabin_test
 from . import irreducibility_multiplicative as mult
 from .irreducibility_cases_window import show_cases
@@ -91,16 +91,24 @@ class MultiplicativeView(BaseTab):
         self.oracle_label.pack(anchor="w", padx=6, pady=(0, 4))
 
         body = ttk.Frame(self)
-        body.pack(fill="both", expand=True, padx=6, pady=(0, 8))
+        body.pack(fill="x", padx=6, pady=(0, 8))
+        # The table and its grip in their own column, so the chart beside it never
+        # stretches the table.
+        table_column = ttk.Frame(body)
+        table_column.pack(side="left", anchor="n")
+        table_row = ttk.Frame(table_column)
+        table_row.pack(fill="x")
         cols = ("t", "value", "count", "mark")
-        self.table = StripedTreeview(body, columns=cols, show="headings", height=10)
+        self.table = StripedTreeview(table_row, columns=cols, show="headings", height=10)
         for c, width in zip(cols, (70, 90, 100, 110)):
             self.table.heading(c, text=T(f"research_irreducibility.mul_col_{c}"))
             self.table.column(c, width=width, anchor="e", stretch=False)
-        scroll = ttk.Scrollbar(body, orient="vertical", command=self.table.yview)
+        scroll = ttk.Scrollbar(table_row, orient="vertical", command=self.table.yview)
         self.table.configure(yscrollcommand=scroll.set)
         self.table.pack(side="left", fill="y")
         scroll.pack(side="left", fill="y")
+        HeightGrip(table_column, self.table, after=table_row,
+                   place="irreducibility.multiplicative")
         right = ttk.Frame(body)
         right.pack(side="left", fill="both", expand=True, padx=(8, 0))
         self.comb_var = tk.StringVar()
@@ -108,6 +116,9 @@ class MultiplicativeView(BaseTab):
         self.canvas = tk.Canvas(right, width=500, height=170, background=palette["console_bg"],
                                 highlightthickness=1, highlightbackground=palette["border"])
         self.canvas.bind("<Configure>", lambda _e: self._redraw())
+        # Packed with the chart, below it (see the chart's own pack/pack_forget).
+        self.canvas_grip = HeightGrip(right, self.canvas,
+                                      place="irreducibility.multiplicative_chart")
         self.run()
 
     # --- inputs --------------------------------------------------------------------------
@@ -149,6 +160,7 @@ class MultiplicativeView(BaseTab):
         self.table.delete(*self.table.get_children())
         self.canvas.delete("all")
         self.canvas.pack_forget()
+        self.canvas_grip.pack_forget()
 
     # --- the cycle -----------------------------------------------------------------------
 
@@ -271,6 +283,7 @@ class MultiplicativeView(BaseTab):
                             peaks=_steps_text(peaks), returns=_steps_text(returns), same=same))
         self._comb = (q, returns, a["step"])
         self.canvas.pack(fill="x", pady=(4, 0))
+        self.canvas_grip.pack(after=self.canvas)
         self._redraw()
 
     def _redraw(self):

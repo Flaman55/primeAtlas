@@ -9,22 +9,27 @@ primesieve runs write no Atlas windows, so they have a point on MB per run only.
 import tkinter as tk
 from tkinter import ttk
 
-DEFAULT_SIZE = (900, 180)
+from ..core import layout_const
+from ..core.widgets import HeightGrip
+
+# The chart's size before its canvas has one on screen (a PDF export of a hidden tab).
+DEFAULT_SIZE = (900, layout_const.CHART_HEIGHT_PX)
 
 
 class BenchmarkRamChart:
     def _build_ram_chart(self, parent):
         """The chart's canvas and mixed-width note in `parent`, under its hint."""
         p = self._theme_palette
-        self.benchmark_chart3 = tk.Canvas(parent, height=DEFAULT_SIZE[1],
-                                          background=p["console_bg"], highlightthickness=1,
-                                          highlightbackground=p["border"])
+        self.benchmark_chart3 = tk.Canvas(parent, background=p["console_bg"],
+                                          highlightthickness=1, highlightbackground=p["border"])
         self.benchmark_chart3.pack(fill="x")
+        grip = HeightGrip(parent, self.benchmark_chart3, after=self.benchmark_chart3,
+                          place="benchmark.ram_chart")
         self.benchmark_chart3.bind("<Configure>", lambda _e: self._redraw_benchmark_chart3())
         self._bind_chart_zoom(self.benchmark_chart3, "ram")
         self._mixed_widths_labels["ram"] = (
             ttk.Label(parent, style="Status.TLabel", textvariable=self.mixed_widths_vars["ram"]),
-            self.benchmark_chart3)
+            grip.frame)
 
     def _redraw_benchmark_chart3(self):
         self._show_mixed_widths("ram", ("ram", "ram_per_window"))

@@ -41,6 +41,9 @@ class UiStateStore:
         if old is not _MISSING and type(old) is type(value) and old == value:
             return
         self._data[key] = value
+        self._changed()
+
+    def _changed(self):
         if self.path is None:
             return
         self.dirty = True
@@ -51,6 +54,20 @@ class UiStateStore:
                 self._pending = self._root.after(SAVE_DELAY_MS, self._on_timer)
             except Exception:  # noqa: BLE001 -- TclError: root already destroyed
                 self.flush()
+
+    def remove(self, key):
+        """Removes `key`; writes only when it was there."""
+        return self.remove_prefix(key, exact=True)
+
+    def remove_prefix(self, prefix, *, exact=False):
+        """Removes every key starting with `prefix` (only `prefix` itself with exact=True)
+        and returns how many; writes only when it removed one."""
+        keys = [k for k in self._data if (k == prefix if exact else k.startswith(prefix))]
+        for key in keys:
+            del self._data[key]
+        if keys:
+            self._changed()
+        return len(keys)
 
     def _on_timer(self):
         self._pending = None

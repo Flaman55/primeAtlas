@@ -71,7 +71,7 @@ class PseudosquaresSection:
                            command=lambda: webbrowser.open(pseudosquares_const.REPO_URL)),
                 padx_left=6)
         self.pseudosquares_console = GenerationConsole(
-            frame, self.T, height=5, start_visible=True,
+            frame, self.T, start_visible=True, place="settings.pseudosquares",
             window_title=self.T("settings.pseudosquares_frame"))
 
     def _pseudosquares_set_busy(self, busy):

@@ -16,18 +16,25 @@ a no-argument cleanup callable, invoked when the window closes.
 
 A drag grip under the embedded output sets its height in whole lines, clamped to
 [min_lines, max_lines]; on_change fires once when the drag ends.
+
+`place` names the console in the remembered layout (layout_memory.py): its grip is the
+layout_const.GRIPS entry "console.<place>" (height, min and max from there), and the
+shown/hidden state the person toggles is saved and restored over start_visible. Showing
+or hiding from code (a run starting) saves nothing. reset_layout() hides or shows it as
+start_visible says.
 """
 import tkinter as tk
 from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
 
+from ..core import layout_memory
 from ..core.widgets import HeightGrip
 
 
 class GenerationConsole:
     def __init__(self, parent, translator, *, height=10, extra_controls_builder=None,
                  window_title=None, on_change=None, start_visible=False, min_lines=3,
-                 max_lines=200):
+                 max_lines=200, place=None):
         self.T = translator
         self._parent = parent
         self._extra_controls_builder = extra_controls_builder
@@ -58,8 +65,14 @@ class GenerationConsole:
 
         self.height_grip = HeightGrip(parent, self.text, min_lines=min_lines,
                                       max_lines=max_lines, on_change=self._notify_change,
-                                      padx=8)
+                                      padx=8, place=place and f"console.{place}")
         self.grip = self.height_grip.frame
+        self._place = place
+        self._start_visible = start_visible
+        if place is not None:
+            start_visible = layout_memory.load_bool(layout_memory.console_key(place),
+                                                    start_visible)
+            layout_memory.register(self)
         # Output and grip are packed only while visible, see show()/hide()/toggle().
         if start_visible:
             self.show()
@@ -85,7 +98,14 @@ class GenerationConsole:
                 self._on_change()
 
     def toggle(self):
+        """The person's Show/Hide click; the new state is remembered."""
         self.hide() if self._visible else self.show()
+        if self._place is not None:
+            layout_memory.save(layout_memory.console_key(self._place), self._visible,
+                               self._start_visible)
+
+    def reset_layout(self):
+        self.show() if self._start_visible else self.hide()
 
     def _notify_change(self):
         if self._on_change is not None:
