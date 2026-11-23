@@ -1327,7 +1327,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               main notebook, the totals/search and both tree-scan
                               coordinators, the "generate missing data, then retry"
                               coordinator, close guard and update auto-check at startup
-  app_theme.py                  ThemeMixin: font scale and ttk/Tk color palette
+  app_theme.py                  ThemeMixin: font scale (core/font_scale.py) and ttk/Tk
+                              color palette
   paging.py                     render_page / update_nav_controls, injected into the
                               tabs with paged preview lists
   primes_section.py             PrimesSectionMixin: Prime numbers tab + its sub-tabs,
@@ -1379,6 +1380,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               Generation tab's Quick-gen mode row)
                               (unitTests/test_elided_choice.py,
                               unitTests/test_quick_mode_row.py)
+  font_scale.py                 the font scale as a multiple of `tk scaling`, set
+                              again when a display change resets it (checked at a
+                              layout pass, a window activation, a key or mouse
+                              press; nothing runs while idle)
+                              (unitTests/test_font_scale.py)
   responsive.py                 the layout coordinator: elements whose arrangement
                               depends on their width (FlowRow, the Prime numbers tree
                               pane) are laid out top-down, outer before inner, once
@@ -1493,7 +1499,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               (secondary text), bold Status.TLabel, Title.TLabel and
                               Link.TLabel (About tab) styles and the
                               font-size `tk scaling` live in PortalBrowserApp's
-                              _apply_theme()/_apply_font_scale(), which need a live Tk
+                              _apply_theme() and font_scale.py, which need a live Tk
                               root this module deliberately never touches
   i18n.py                       Translator: loads one of two static locale files
   windows_hardware.py           Windows OS, CPU model, physical cores (ctypes

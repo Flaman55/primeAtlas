@@ -307,6 +307,21 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   Benchmarku stoją teraz za pozostałymi przyciskami, a nie przy prawej krawędzi, a pola k-krotek
   układają się w rzędzie zamiast w dwóch wyrównanych kolumnach.
 
+### +17 — Font size kept after a display change
+
+- English: With a font size other than 100 %, the app kept it only until Windows reported a
+  display change (a monitor woken from sleep, a new resolution): after that, radio buttons,
+  number fields and new windows came out a few pixels smaller. The app now checks the font size
+  when something happens in it (a resize, a tab shown, the window activated, a key or mouse
+  press) and sets it again for the screen it finds, so controls keep their size. Nothing runs
+  while the app is idle.
+- Polski: Przy rozmiarze czcionki innym niż 100 % aplikacja trzymała go tylko do chwili, gdy
+  Windows zgłosił zmianę ekranu (monitor wybudzony z uśpienia, nowa rozdzielczość): potem
+  przyciski wyboru, pola liczb i nowe okna wychodziły o kilka pikseli mniejsze. Aplikacja
+  sprawdza teraz rozmiar czcionki, gdy coś się w niej dzieje (zmiana rozmiaru, pokazanie
+  zakładki, aktywacja okna, klawisz lub kliknięcie), i ustawia go ponownie dla ekranu, który
+  zastanie, więc kontrolki zachowują rozmiar. Bezczynna aplikacja nic nie robi.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

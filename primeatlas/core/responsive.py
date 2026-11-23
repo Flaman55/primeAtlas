@@ -31,6 +31,8 @@ controls (unitTests/test_small_screen_layout.py).
 """
 import logging
 
+from primeatlas.core import font_scale
+
 log = logging.getLogger("primeatlas.responsive")
 
 # Width bands of the window. Arbitrary: a full-HD window, a 13" full-HD screen at 150 %.
@@ -184,6 +186,8 @@ class Coordinator:
             return
         self._running = True
         try:
+            # A display change may have reset the font scale; widgets lay out under it.
+            font_scale.check(self.root)
             self._pass()
         finally:
             self._running = False
