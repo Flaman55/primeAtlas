@@ -32,6 +32,10 @@ out with that width and its content sizes. Checks:
   11. keep_sash_share(): a two-pane panedwindow keeps the first pane's share of the width
      across resizes, the second pane never under its minimum, so narrow -> wide gives the
      starting layout back; a sash drag sets the share (clamped to the minimum).
+  13. on a scrollable page an element is laid out for the page's width with the scrollbar
+     shown (ScrollablePage.steady_width()), whether it is shown or not (a layout following
+     it a debounce late could show and hide the scrollbar for ever); an element not reaching
+     the page's right edge keeps its own width.
 Windows, real display:
     python unitTests/test_responsive.py
 """
@@ -47,7 +51,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation")]
 
 from primeatlas.core import responsive  # noqa: E402
-from primeatlas.core.widgets import FlowRow, add_page_nav_row  # noqa: E402
+from primeatlas.core.widgets import FlowRow, ScrollablePage, add_page_nav_row  # noqa: E402
 
 
 class _Records(logging.Handler):
@@ -531,6 +535,49 @@ class FlowRowOnCoordinator(_Base):
                 self.assertGreaterEqual(child.winfo_width(), child.winfo_reqwidth(), "not cut")
             self.assertLessEqual(group.winfo_x() + group.winfo_width(), row.frame.winfo_width())
 
+
+
+class OnScrollablePage(_Base):
+
+    def build(self, filler_height):
+        page = ScrollablePage(self.root)
+        widths = []
+        row = FlowRow(page.body)
+        row.frame.pack(fill="x")
+        original = row._place
+
+        def place(width):
+            widths.append(width)
+            original(width)
+        row.layout_item.layout = place
+        for i in range(12):
+            row.add(ttk.Button(row.frame, text=f"Button number {i}"), padx_left=12 if i else 0)
+        filler = ttk.Frame(page.body, height=filler_height)
+        filler.pack(fill="x")
+        return page, row, widths, filler
+
+    def test_laid_out_for_the_steady_width_either_way(self):
+        page, row, widths, filler = self.build(50)
+        self.pump()
+        self.assertFalse(page.scrolls())
+        hidden = widths[-1]
+        self.assertLess(hidden, row.frame.winfo_width(), "narrower than the row while hidden")
+        filler.configure(height=2000)
+        self.pump()
+        self.assertTrue(page.scrolls())
+        self.assertEqual(row.frame.winfo_width(), hidden, "the row's width once shown")
+        self.assertEqual(widths[-1], hidden, "the same width laid out for, shown or hidden")
+
+    def test_element_short_of_the_edge_keeps_its_width(self):
+        page = ScrollablePage(self.root)
+        holder = ttk.Frame(page.body)
+        holder.pack(anchor="w")
+        calls = []
+        frame = ttk.Frame(holder, width=200, height=20)
+        frame.pack()
+        self.coordinator.add(frame, lambda width: calls.append(width))
+        self.pump()
+        self.assertEqual(calls[-1], frame.winfo_width())
 
 
 class PageNavRow(_Base):

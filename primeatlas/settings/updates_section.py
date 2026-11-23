@@ -610,7 +610,7 @@ class UpdatesSection:
             command=self._on_install_sympy)
         libs_btn_row.add(self.install_sympy_btn, padx_left=6)
         self.libs_console = GenerationConsole(
-            libs_frame, self.T, height=5, start_visible=True,
+            libs_frame, self.T, start_visible=True, place="settings.libs",
             window_title=self.T("settings.libs_frame"))
         self.libs_output = self.libs_console.text
 
@@ -646,7 +646,7 @@ class UpdatesSection:
             command=self._on_install_primecount_clicked)
         primecount_btn_row.add(self.install_primecount_btn, padx_left=6)
         self.primecount_console = GenerationConsole(
-            primecount_frame, self.T, height=5, start_visible=True,
+            primecount_frame, self.T, start_visible=True, place="settings.primecount",
             window_title=self.T("settings.primecount_frame"))
         self.primecount_output = self.primecount_console.text
         self._primecount_status_running = False
@@ -677,7 +677,7 @@ class UpdatesSection:
             command=self._on_install_cudasieve_clicked, state="disabled")
         cudasieve_btn_row.add(self.install_cudasieve_btn, padx_left=6)
         self.cudasieve_console = GenerationConsole(
-            cudasieve_frame, self.T, height=5, start_visible=True,
+            cudasieve_frame, self.T, start_visible=True, place="settings.cudasieve",
             window_title=self.T("settings.cudasieve_frame"))
         self.cudasieve_output = self.cudasieve_console.text
 

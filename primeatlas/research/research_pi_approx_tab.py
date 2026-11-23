@@ -59,7 +59,7 @@ from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
-from ..core.widgets import StripedTreeview
+from ..core.widgets import HeightGrip, StripedTreeview
 from ..generation.engine_argv import build_primecount_query_argv
 from ..generation.wsl_blocking import (run_primecount_wsl_blocking,
                                        run_primecount_install_wsl_blocking)
@@ -177,7 +177,7 @@ class ResearchPiApproxTab(BaseTab):
         WrapLabel(self, textvariable=self.pi_summary_var).pack(anchor="w", padx=6, pady=(0, 8))
 
         tree_frame = ttk.Frame(self)
-        tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))
+        tree_frame.pack(fill="x", padx=6)
         columns = ("x", "pi_x", "li_x", "r_x", "li_error", "r_error")
         self.pi_results_tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=16)
@@ -195,6 +195,8 @@ class ResearchPiApproxTab(BaseTab):
         self.pi_results_tree.column("r_error", width=90, anchor="e")
         svsb = ttk.Scrollbar(
             tree_frame, orient="vertical", command=self.pi_results_tree.yview)
+        HeightGrip(self, self.pi_results_tree, after=tree_frame, padx=6, pady=(2, 8),
+                   place="research.pi_approx")
         self.pi_results_tree.configure(yscrollcommand=svsb.set)
         self.pi_results_tree.pack(side="left", fill="both", expand=True)
         svsb.pack(side="right", fill="y")

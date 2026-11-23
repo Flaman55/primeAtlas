@@ -13,7 +13,7 @@ from tkinter import ttk
 
 from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
-from ..core.widgets import StripedTreeview
+from ..core.widgets import HeightGrip, StripedTreeview
 from . import irreducibility_layout as layout
 from .irreducibility_draw import COLOR_B, GOLD_BG
 from .irreducibility_numbers import DEFAULTS, blocks_text, layout_info, parse_params
@@ -88,6 +88,8 @@ class RangesView(BaseTab):
             self.fit_tree.column(c, width=150, anchor="e")
         self.fit_tree.tag_configure("heavy", foreground=_DOWN)
         self.fit_tree.pack(fill="x")
+        HeightGrip(self, self.fit_tree, after=frame, padx=6,
+                   place="irreducibility.ranges")
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(0, 8))
         self.use_a_button = ttk.Button(row, text=T("research_irreducibility.use_for_a"),

@@ -86,7 +86,7 @@ class PrimalityTab(BaseTab):
         self.primality_results_tree.column("seconds", width=100, anchor="e")
         self.primality_results_tree.pack(fill="x")
         self.results_grip = HeightGrip(self, self.primality_results_tree, after=tree_frame,
-                                       min_lines=2, padx=6, pady=(0, 8))
+                                       padx=6, pady=(0, 8), place="primes.primality_results")
 
         factor_frame = ttk.Frame(self)
         factor_frame.pack(fill="x", padx=6, pady=(0, 4))

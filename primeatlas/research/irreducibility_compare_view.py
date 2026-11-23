@@ -14,7 +14,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ..core.base_tab import BaseTab
-from ..core.widgets import FlowRow, StripedTreeview
+from ..core.widgets import FlowRow, HeightGrip, StripedTreeview
 from . import irreducibility_layout as layout
 from . import irreducibility_residues as res
 from .irreducibility_draw import COLOR_A, COLOR_B, COLOR_QUOT, GOLD_BG, MAX_DIALS, draw_dials
@@ -114,7 +114,7 @@ class CompareView(BaseTab):
         wrapped_label(self, textvariable=self.note_var, style="Hint.TLabel", padx=6, pady=(2, 4))
 
         frame = ttk.Frame(self)
-        frame.pack(fill="x", padx=6, pady=(0, 8))
+        frame.pack(fill="x", padx=6)
         cols = ("modulus", "radix", "digit_a", "digit_b")
         self.digits_tree = StripedTreeview(frame, columns=cols, show="headings", height=12)
         for c in cols:
@@ -125,6 +125,8 @@ class CompareView(BaseTab):
         self.digits_tree.configure(yscrollcommand=scroll.set)
         self.digits_tree.pack(side="left", fill="x", expand=True)
         scroll.pack(side="left", fill="y")
+        HeightGrip(self, self.digits_tree, after=frame, padx=6, pady=(2, 8),
+                   place="irreducibility.compare")
 
         numbers.on_change(self.refresh_info)
         for side in ("A", "B"):

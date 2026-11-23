@@ -13,6 +13,7 @@ from tkinter import ttk
 
 from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
+from ..core.widgets import HeightGrip
 from .irreducibility_comb import PROVED_SCALE
 from .irreducibility_draw import draw_combs
 from .irreducibility_widgets import entry, wrapped_label
@@ -51,7 +52,9 @@ class CombView(BaseTab):
                       style="Hint.TLabel", padx=6, pady=(0, 4))
         self.canvas = tk.Canvas(self, width=900, height=240, background=palette["console_bg"],
                                 highlightthickness=1, highlightbackground=palette["border"])
-        self.canvas.pack(fill="x", padx=6, pady=(0, 8))
+        self.canvas.pack(fill="x", padx=6)
+        HeightGrip(self, self.canvas, after=self.canvas, padx=6, pady=(2, 8),
+                   place="irreducibility.comb_chart")
         self.canvas.bind("<Configure>", lambda _e: self._redraw())
         self.draw()
 

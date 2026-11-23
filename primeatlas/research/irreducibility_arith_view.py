@@ -12,6 +12,7 @@ from tkinter import ttk
 
 from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
+from ..core.widgets import HeightGrip
 from . import irreducibility_layout as layout
 from . import irreducibility_ops as ops
 from . import irreducibility_residues as res
@@ -108,7 +109,9 @@ class ArithView(BaseTab):
             command=self.self_test)
         self.test_button.pack(side="left")
         self.out = OutputText(self, palette)
-        self.out.pack(fill="both", expand=True, padx=6, pady=(0, 8))
+        self.out.pack(fill="x", padx=6)
+        HeightGrip(self, self.out, after=self.out, padx=6, pady=(2, 8),
+                   place="irreducibility.arithmetic")
 
         numbers.on_change(self._refresh_layout)
         for side in ("A", "B"):

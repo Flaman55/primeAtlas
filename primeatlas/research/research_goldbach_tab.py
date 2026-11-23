@@ -32,7 +32,7 @@ from ..core import number_format
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
-from ..core.widgets import StripedTreeview
+from ..core.widgets import HeightGrip, StripedTreeview
 from .goldbach_paging import GOLDBACH_CASCADE_ROW_CAP, GOLDBACH_DECOMPOSE_ROW_CAP
 from .goldbach_viz_section import GoldbachVizSection
 from .goldbach_decompose_section import GoldbachDecomposeSection
@@ -198,7 +198,7 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
             anchor="w", padx=6, pady=(0, 8))
 
         tree_frame = ttk.Frame(self)
-        tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))
+        tree_frame.pack(fill="x", padx=6)
         columns = ("n", "p", "q", "rep_count")
         self.goldbach_results_tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=16)
@@ -213,6 +213,8 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
         self.goldbach_results_tree.column("rep_count", width=110, anchor="e")
         gvsb = ttk.Scrollbar(
             tree_frame, orient="vertical", command=self.goldbach_results_tree.yview)
+        HeightGrip(self, self.goldbach_results_tree, after=tree_frame, padx=6, pady=(2, 8),
+                   place="research.goldbach")
         self.goldbach_results_tree.configure(yscrollcommand=gvsb.set)
         self.goldbach_results_tree.pack(side="left", fill="both", expand=True)
         gvsb.pack(side="right", fill="y")

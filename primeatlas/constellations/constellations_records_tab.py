@@ -203,14 +203,13 @@ class ConstellationsRecordsTab(BaseTab):
             anchor="w", pady=(0, 8))
 
         # Table on top at its own row height (see _rebuild_tree's row_count param),
-        # full-hit-list drill-down for whatever cell was last double-clicked filling the
-        # rest below. The grip between them sets the table's height in rows; a height
-        # set by dragging is kept across later rebuilds (self._tree_rows_override).
+        # full-hit-list drill-down for whatever cell was last double-clicked below. The
+        # grip between them sets the table's height in rows; a height set by dragging
+        # (tree_grip.value, remembered) is kept across later rebuilds.
         self.tree_frame = ttk.Frame(container)
         self.tree_frame.pack(fill="x")
-        self._tree_rows_override = None
         self.tree_grip = HeightGrip(container, lambda: self.tree, after=self.tree_frame,
-                                    on_change=self._on_tree_resized, pady=(2, 4))
+                                    pady=(2, 4), place="constellations.records")
         self.tree = None  # built fresh per scan -- see _rebuild_tree(), column count
                            # depends on how many variants k has
         self.tree_vsb = None  # its scrollbars, tracked separately so they can be
@@ -224,7 +223,7 @@ class ConstellationsRecordsTab(BaseTab):
         self._rebuild_tree([])
 
         detail_frame = ttk.Frame(container)
-        detail_frame.pack(fill="both", expand=True)
+        detail_frame.pack(fill="x")
         self.detail_label_var = tk.StringVar(value=T("const_records.detail_hint"))
         ttk.Label(detail_frame, textvariable=self.detail_label_var,
                   anchor="w").pack(fill="x", padx=4, pady=(2, 4))
@@ -255,13 +254,15 @@ class ConstellationsRecordsTab(BaseTab):
             prev_key="const_records.file_page_prev", next_key="const_records.file_page_next")
 
         detail_list_frame = ttk.Frame(detail_frame)
-        detail_list_frame.pack(fill="both", expand=True, padx=4, pady=(0, 4))
+        detail_list_frame.pack(fill="x", padx=4, pady=(0, 4))
         self.detail_list = tk.Listbox(detail_list_frame, font=("Consolas", 9))
         detail_vsb = ttk.Scrollbar(detail_list_frame, orient="vertical",
                                     command=self.detail_list.yview)
         self.detail_list.configure(yscrollcommand=detail_vsb.set)
         self.detail_list.pack(side="left", fill="both", expand=True)
         detail_vsb.pack(side="right", fill="y")
+        HeightGrip(detail_frame, self.detail_list, after=detail_list_frame, padx=4,
+                   place="constellations.records_detail")
 
         self.detail_list.bind("<Control-c>", lambda _e: self._copy_selected_detail_value())
         self.detail_list.bind("<Button-3>", self._show_detail_context_menu)
@@ -296,7 +297,7 @@ class ConstellationsRecordsTab(BaseTab):
         recreated right alongside it. Every column is stretch=False (fixed width)
         with a horizontal scrollbar, as in the Benchmark tab's tree.
         `row_count` sizes the Treeview's own `height` to match (capped at 14, floored
-        at 3), unless a height was set with the grip (self._tree_rows_override)."""
+        at 3), unless a height was set with the grip (tree_grip.value)."""
         if self.tree is not None:
             self.tree.destroy()
         if self.tree_vsb is not None:
@@ -306,8 +307,8 @@ class ConstellationsRecordsTab(BaseTab):
         T = self.T
         columns = ("exp",) + tuple(f"v{vid}" for vid in variant_ids)
         height = max(3, min(row_count, 14)) if row_count else 3
-        if self._tree_rows_override is not None:
-            height = self._tree_rows_override
+        if self.tree_grip.value is not None:
+            height = self.tree_grip.value
         tree = StripedTreeview(
             self.tree_frame, columns=columns, show="headings", height=height)
         tree.heading("exp", text=T("const_records.col_exp"))
@@ -325,10 +326,6 @@ class ConstellationsRecordsTab(BaseTab):
         self.tree = tree
         self.tree_vsb = vsb
         self.tree_hsb = hsb
-
-    def _on_tree_resized(self):
-        if self.tree is not None:
-            self._tree_rows_override = int(self.tree.cget("height"))
 
     def _on_scan_clicked(self):
         if self._busy:

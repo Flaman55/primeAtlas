@@ -47,7 +47,7 @@ from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
-from ..core.widgets import StripedTreeview
+from ..core.widgets import HeightGrip, StripedTreeview
 from .squares_window import (
     check_interval_range, check_interval_range_from_source, MAX_SIEVE_BOUND, PRESETS,
 )
@@ -212,7 +212,7 @@ class ResearchSquaresTab(BaseTab):
         WrapLabel(self, textvariable=self.squares_summary_var).pack(anchor="w", padx=6, pady=(0, 8))
 
         tree_frame = ttk.Frame(self)
-        tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))
+        tree_frame.pack(fill="x", padx=6)
         columns = ("n", "a", "b", "count", "covered")
         self.squares_results_tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=16)
@@ -228,6 +228,8 @@ class ResearchSquaresTab(BaseTab):
         self.squares_results_tree.column("covered", width=90, anchor="center")
         svsb = ttk.Scrollbar(
             tree_frame, orient="vertical", command=self.squares_results_tree.yview)
+        HeightGrip(self, self.squares_results_tree, after=tree_frame, padx=6, pady=(2, 8),
+                   place="research.squares")
         self.squares_results_tree.configure(yscrollcommand=svsb.set)
         self.squares_results_tree.pack(side="left", fill="both", expand=True)
         svsb.pack(side="right", fill="y")

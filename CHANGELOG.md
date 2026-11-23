@@ -322,6 +322,25 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   zakładki, aktywacja okna, klawisz lub kliknięcie), i ustawia go ponownie dla ekranu, który
   zastanie, więc kontrolki zachowują rozmiar. Bezczynna aplikacja nic nie robi.
 
+### +18 — Height grips everywhere, layout remembered
+
+- English: Every terminal, list, table, multi-line field and chart has a height grip under it
+  (Research results, Benchmark table and its three charts, Constellations calculator, records
+  and storage, Prime numbers storage, Irreducibility views, About texts, the target planner).
+  A list is exactly as tall as its grip sets it; a page that grows taller scrolls. The three
+  Benchmark charts start at the same height. Grip heights, terminals shown or hidden, the
+  Constellations storage split and the window's size, position and maximized state are
+  remembered; the app opens maximized the first time. Settings > General > Default layout
+  brings the default layout back at once; form values stay.
+- Polski: Każdy terminal, lista, tabela, pole wielowierszowe i wykres ma pod sobą uchwyt
+  wysokości (wyniki Badań, tabela Benchmarku i jego trzy wykresy, kalkulator, rekordy i magazyn
+  Konstelacji, magazyn Liczb pierwszych, widoki Nieredukowalności, teksty O programie, planer
+  celów). Lista ma dokładnie wysokość ustawioną uchwytem; strona, która urośnie, przewija się.
+  Trzy wykresy Benchmarku startują z tą samą wysokością. Wysokości uchwytów, pokazane lub
+  schowane terminale, podział magazynu Konstelacji oraz rozmiar, położenie i maksymalizacja okna
+  są zapamiętywane; za pierwszym razem aplikacja otwiera się zmaksymalizowana. Ustawienia >
+  Ogólne > Domyślny układ od razu przywraca układ domyślny; wartości formularzy zostają.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

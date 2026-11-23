@@ -32,6 +32,7 @@ from primeatlas.core.background import run_in_background
 from primeatlas.core.base_tab import BaseTab
 from primeatlas.core.info_tip import InfoTip
 from primeatlas.core.version import read_changelog, version_label
+from primeatlas.core.widgets import HeightGrip
 from primeatlas.core.wrap_label import WrapLabel
 
 AUTHOR_NAME = "Artur Flamandzki"
@@ -111,21 +112,25 @@ class AboutTab(BaseTab):
 
         changelog = read_changelog(self._repo_root)
         changes = ttk.LabelFrame(self, text=T("about.changes_frame", release=changelog.release))
-        changes.pack(fill="both", expand=True, padx=16, pady=(8, 0))
+        changes.pack(fill="x", padx=16, pady=(8, 0))
         full = ttk.Label(changes, text=T("about.changes_full"), style="Link.TLabel",
                          cursor="hand2")
         full.pack(anchor="w", padx=4, pady=(4, 0))
         full.bind("<Button-1>", lambda _e: webbrowser.open(CHANGELOG_URL))
         self.links["changelog"] = full
         self.changes_text = ScrolledText(changes, height=8, wrap="word", font=("Consolas", 9))
-        self.changes_text.pack(fill="both", expand=True, padx=4, pady=4)
+        self.changes_text.pack(fill="x", padx=4, pady=(4, 0))
+        HeightGrip(changes, self.changes_text, after=self.changes_text.frame, padx=4,
+                   place="about.changes")
         self.changes_text.insert("1.0", self._changes_text(changelog))
         self.changes_text.configure(state="disabled")
 
         notice = ttk.LabelFrame(self, text=T("about.notice_frame"))
-        notice.pack(fill="both", expand=True, padx=16, pady=(8, 16))
+        notice.pack(fill="x", padx=16, pady=(8, 16))
         self.notice_text = ScrolledText(notice, height=10, wrap="word", font=("Consolas", 9))
-        self.notice_text.pack(fill="both", expand=True, padx=4, pady=4)
+        self.notice_text.pack(fill="x", padx=4, pady=(4, 0))
+        HeightGrip(notice, self.notice_text, after=self.notice_text.frame, padx=4,
+                   place="about.notice")
         self.notice_text.insert("1.0", self._read_notice())
         self.notice_text.configure(state="disabled")
 

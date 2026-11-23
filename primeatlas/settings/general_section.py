@@ -11,7 +11,7 @@ other mixins set up, so it is never instantiated on its own.
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-from ..core import number_field, number_format
+from ..core import layout_memory, number_field, number_format
 from ..core.app_settings import SCROLL_PAD_WIDTH_MAX, SCROLL_PAD_WIDTH_MIN
 from ..core.number_text import plain_number
 from ..core.theme import (BRIGHTNESS_DEFAULT, BRIGHTNESS_MAX, BRIGHTNESS_MIN, FONT_SCALE_DEFAULT,
@@ -297,6 +297,17 @@ class GeneralSection:
                    command=self._on_readability_reset).pack(side="left", padx=(6, 0))
         WrapLabel(ui_frame, text=self.T("settings.readability_note"), style="Hint.TLabel").grid(
             row=5, column=0, columnspan=3, sticky="w", padx=6, pady=(0, 6))
+
+        # Grip heights, terminals, the remembered sash and the window back to
+        # layout_const's defaults, at once and without a restart. Its own frame: the note
+        # would widen the columns of the grid above.
+        layout_frame = ttk.Labelframe(outer, text=self.T("settings.layout_frame"))
+        layout_frame.pack(fill="x", pady=(0, 8))
+        self.layout_reset_button = ttk.Button(layout_frame, text=self.T("settings.layout_reset"),
+                                              command=layout_memory.reset_layout)
+        self.layout_reset_button.pack(anchor="w", padx=6, pady=(4, 2))
+        WrapLabel(layout_frame, text=self.T("settings.layout_reset_note"),
+                  style="Hint.TLabel").pack(anchor="w", fill="x", padx=6, pady=(0, 6))
 
         path_frame = ttk.Labelframe(outer, text=self.T("settings.path_frame"))
         path_frame.pack(fill="x", pady=(0, 8))

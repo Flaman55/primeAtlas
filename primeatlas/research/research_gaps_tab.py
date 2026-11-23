@@ -26,7 +26,7 @@ from ..core import number_field
 from ..core import background
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
-from ..core.widgets import StripedTreeview
+from ..core.widgets import HeightGrip, StripedTreeview
 from .gaps_window import check_gap_range, check_gap_range_from_source, MAX_SIEVE_BOUND
 from .research_gaps import read_is_prime_from_storage, MissingStorageRangeError
 from ..core.wrap_label import WrapLabel
@@ -126,7 +126,7 @@ class ResearchGapsTab(BaseTab):
         WrapLabel(self, textvariable=self.gaps_summary_var).pack(anchor="w", padx=6, pady=(0, 8))
 
         tree_frame = ttk.Frame(self)
-        tree_frame.pack(fill="both", expand=True, padx=6, pady=(0, 8))
+        tree_frame.pack(fill="x", padx=6)
         columns = ("n", "p_n", "p_n1", "gap", "overlay_value", "holds")
         self.gaps_results_tree = StripedTreeview(
             tree_frame, columns=columns, show="headings", height=16)
@@ -144,6 +144,8 @@ class ResearchGapsTab(BaseTab):
         self.gaps_results_tree.column("holds", width=90, anchor="center")
         svsb = ttk.Scrollbar(
             tree_frame, orient="vertical", command=self.gaps_results_tree.yview)
+        HeightGrip(self, self.gaps_results_tree, after=tree_frame, padx=6, pady=(2, 8),
+                   place="research.gaps")
         self.gaps_results_tree.configure(yscrollcommand=svsb.set)
         self.gaps_results_tree.pack(side="left", fill="both", expand=True)
         svsb.pack(side="right", fill="y")

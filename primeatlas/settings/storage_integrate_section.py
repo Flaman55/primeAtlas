@@ -261,7 +261,8 @@ class StorageIntegrateSection:
         results_scroll.pack(side="left", fill="y")
         self.storage_integrate_results_listbox.configure(yscrollcommand=results_scroll.set)
         self.storage_integrate_results_grip = HeightGrip(
-            frame, self.storage_integrate_results_listbox, after=results_list_row, padx=6)
+            frame, self.storage_integrate_results_listbox, after=results_list_row, padx=6,
+            place="settings.storage_integrate_results")
 
         self.storage_integrate_totals_var = tk.StringVar(value="")
         ttk.Label(frame, textvariable=self.storage_integrate_totals_var).pack(
@@ -288,6 +289,6 @@ class StorageIntegrateSection:
                   style="Hint.TLabel").pack(anchor="w", padx=6, pady=(0, 4))
 
         self.storage_integrate_console = GenerationConsole(
-            frame, self.T, height=4, start_visible=True,
+            frame, self.T, start_visible=True, place="settings.storage_integrate",
             window_title=self.T("settings.storage_integrate_frame"))
         self.storage_integrate_output = self.storage_integrate_console.text

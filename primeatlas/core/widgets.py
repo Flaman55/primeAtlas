@@ -7,12 +7,13 @@ as _FlowRow`).
 This module imports tkinter, unlike the package's pure-logic modules; FlowRow is UI-only
 by nature (it lays out already-built widgets), so there is no non-tkinter half to split it into.
 """
+import time
 import tkinter as tk
-import tkinter.font as tkfont
 import weakref
 from tkinter import ttk
 
-from . import number_field, responsive
+from . import layout_const, layout_memory, number_field, responsive
+from .height_grip import HeightGrip  # noqa: F401 -- the app's one height control
 from .app_settings import SCROLL_PAD_WIDTH_DEFAULT, clamp_scroll_pad_width
 
 
@@ -273,14 +274,21 @@ def clamp_pane_min_width(paned, pane_widget, min_width):
     pane_widget.after_idle(_enforce)
 
 
-def keep_sash_share(paned, share, min_second_width):
+def keep_sash_share(paned, share, min_second_width, *, place=None):
     """Keeps the first pane of the two-pane horizontal `paned` at `share` of its width, the
     second pane never narrower than `min_second_width`, so a resize narrow and back gives
     the starting layout back (ttk weights alone spread each change and lose the start
     once the minimum clamps). A sash drag sets the share from where it is released. Laid
     out by the coordinator (responsive.py) on a width change of `paned`; the sashpos()
-    calls run at an idle turn, see clamp_pane_min_width()."""
-    state = {"share": share}
+    calls run at an idle turn, see clamp_pane_min_width().
+
+    `place` names the sash's layout_const.SASH_SHARES entry, the default share (`share` is
+    then ignored): the share set by a drag is saved on release and restored when the sash
+    is built again (layout_memory.py), and reset_layout() puts the default back."""
+    default = layout_const.SASH_SHARES[place] if place is not None else share
+    state = {"share": default}
+    if place is not None:
+        state["share"] = layout_memory.load_share(layout_memory.sash_key(place), default)
 
     def sash_for(width):
         return max(0, min(round(state["share"] * width), width - min_second_width))
@@ -301,98 +309,41 @@ def keep_sash_share(paned, share, min_second_width):
                 position = min(paned.sashpos(0), width - min_second_width)
                 state["share"] = max(0, position) / width
                 set_sash(width)
+                if place is not None:
+                    layout_memory.save(layout_memory.sash_key(place), state["share"],
+                                       default)
         paned.after_idle(take)
 
     paned.bind("<ButtonRelease-1>", released, add="+")
-    return responsive.coordinator(paned).add(paned, layout, key=lambda: state["share"])
+    item = responsive.coordinator(paned).add(paned, layout, key=lambda: state["share"])
+    if place is not None:
+        paned._layout_sash = _SashReset(paned, state, default, set_sash)
+        layout_memory.register(paned._layout_sash)
+    return item
 
 
-class HeightGrip:
-    """A thin drag handle that sets the height of one or more line-sized widgets (Text,
-    Listbox, Treeview -- anything whose `height` option counts lines or rows). Dragging
-    it changes every target's height by whole lines, clamped to [min_lines, max_lines];
-    on_change (no args) fires once when the drag ends.
+class _SashReset:
+    """reset_layout() target of a remembered sash (keep_sash_share)."""
 
-    `targets` is a widget, a list of widgets, or a no-argument callable returning either
-    (for a widget that is destroyed and rebuilt later). The grip lives in `parent`; when
-    `after` is given it is packed right below that widget, otherwise the caller packs it
-    with pack()."""
+    def __init__(self, paned, state, default, set_sash):
+        self._paned = paned
+        self._state = state
+        self._default = default
+        self._set_sash = set_sash
 
-    def __init__(self, parent, targets, *, after=None, min_lines=3, max_lines=200,
-                 on_change=None, padx=0, pady=(0, 4)):
-        self._targets = targets
-        self.min_lines = min_lines
-        self.max_lines = max_lines
-        self._on_change = on_change
-        self._pack_options = {"fill": "x", "padx": padx, "pady": pady}
-        self._drag = None
-        self.frame = ttk.Frame(parent, height=8, cursor="sb_v_double_arrow")
-        line = ttk.Separator(self.frame, orient="horizontal")
-        line.place(relx=0.35, rely=0.5, relwidth=0.3)
-        for widget in (self.frame, line):
-            widget.configure(cursor="sb_v_double_arrow")
-            widget.bind("<ButtonPress-1>", self._on_press)
-            widget.bind("<B1-Motion>", self._on_drag)
-            widget.bind("<ButtonRelease-1>", self._on_release)
-        if after is not None:
-            self.pack(after=after)
-
-    def pack(self, after=None):
-        options = dict(self._pack_options)
-        if after is not None:
-            options["after"] = after
-        self.frame.pack(**options)
-
-    def pack_forget(self):
-        self.frame.pack_forget()
-
-    def targets(self):
-        targets = self._targets() if callable(self._targets) else self._targets
-        if not isinstance(targets, (list, tuple)):
-            targets = [targets]
-        return [t for t in targets if t is not None and t.winfo_exists()]
-
-    def line_height(self):
-        """Pixels per line of the first target: the Treeview style's row height, or the
-        target font's line spacing."""
-        targets = self.targets()
-        if not targets:
-            return 1
-        target = targets[0]
-        if isinstance(target, ttk.Treeview):
-            style = target.cget("style") or "Treeview"
-            try:
-                rowheight = int(ttk.Style(target).lookup(style, "rowheight") or 0)
-            except (TypeError, ValueError):
-                rowheight = 0
-            if rowheight > 0:
-                return rowheight
-            return tkfont.nametofont("TkDefaultFont", root=target).metrics("linespace") + 4
-        return max(1, tkfont.Font(root=target, font=target.cget("font")).metrics("linespace"))
-
-    def _on_press(self, event):
-        targets = self.targets()
-        if targets:
-            self._drag = (event.y_root, [int(t.cget("height")) for t in targets],
-                          self.line_height())
-
-    def _on_drag(self, event):
-        if self._drag is None:
+    def reset_layout(self):
+        self._state["share"] = self._default
+        try:
+            width = self._paned.winfo_width()
+        except tk.TclError:
             return
-        start_y, start_lines, line = self._drag
-        delta = int((event.y_root - start_y) / line)
-        for target, lines in zip(self.targets(), start_lines):
-            lines = max(self.min_lines, min(self.max_lines, lines + delta))
-            if lines != int(target.cget("height")):
-                target.configure(height=lines)
+        if width > 1:
+            self._paned.after_idle(self._set_sash, width)
 
-    def _on_release(self, _event):
-        if self._drag is None:
-            return
-        self._drag = None
-        if self._on_change is not None:
-            self._on_change()
 
+# A scrollbar shown again this soon after being hidden, at the same page size, is a
+# show/hide loop (ScrollablePage). Arbitrary: several layout debounces.
+LOOP_WINDOW_MS = 4 * responsive.DEBOUNCE_MS
 
 SCROLL_PAD_WIDTH = SCROLL_PAD_WIDTH_DEFAULT
 _scroll_pads = weakref.WeakSet()
@@ -581,15 +532,21 @@ class ScrollablePage:
     The scrollbar and the pad are shown only while the body's requested height exceeds the
     viewport. While the content fits, the body is stretched to the viewport height, so
     expand=True children (trees, logs) fill the page as with a plain pack layout; while it
-    does not, the body keeps its requested height and the page scrolls. Hiding the
-    scrollbar widens the canvas and can only make wrapped content shorter, so the two
-    states cannot alternate.
+    does not, the body keeps its requested height and the page scrolls. Wrapped content is
+    laid out for the width with the scrollbar shown (steady_width()), but a layout that
+    follows a width change a moment late can still leave the content taller just after the
+    page widened, and the two states would alternate for ever: a scrollbar shown again
+    within LOOP_WINDOW_MS of being hidden, at the page size it was hidden at (the window
+    unchanged), keeps showing while the content is back at the height it was hidden with
+    (a loop); any other height hides it.
 
     The canvas window is a holder frame with no fixed height, packed with a zero-width
     strut as tall as the viewport next to the body: the holder is then always
     max(viewport, content) tall and gets a <Configure> whenever that changes, both on a
     window resize and on content growing past or shrinking below the viewport (a fixed
     window-item height would swallow the content's size requests without any event).
+    While a loop holds the scrollbar shown, the strut is 1px, so the holder follows the
+    content and its next height change is still seen.
 
     The scrollregion comes from the holder's requested size, not canvas.bbox("all"), which
     can still hold a stale, larger box mid-reflow. Until the person scrolls, every re-check
@@ -619,6 +576,12 @@ class ScrollablePage:
         self._exclude_roots = []
         self._user_scrolled = False
         self._shown = False
+        # (viewport height, page width, content height) the scrollbar was last hidden at,
+        # and the one that would hide it again in a show/hide loop (see the class
+        # docstring).
+        self._hidden_at = None
+        self._hidden_time = 0.0
+        self._loop_at = None
         self._holder.bind("<Configure>", lambda _e: self._sync())
         self.canvas.bind("<Configure>", self._on_canvas_configure)
         self.canvas.wheel_target = self
@@ -670,11 +633,30 @@ class ScrollablePage:
         canvas_h = self.canvas.winfo_height()
         if canvas_h <= 1:
             return
-        if int(self._strut.cget("height")) != canvas_h:
-            self._strut.configure(height=canvas_h)
-        fits = self.body.winfo_reqheight() <= canvas_h
+        content_h = self.body.winfo_reqheight()
+        fits = content_h <= canvas_h
+        # The page's own width does not follow the scrollbar: a show at the size the
+        # scrollbar was hidden at comes from the content alone.
+        size = (canvas_h, self.frame.winfo_width())
+        if not fits and not self._shown:
+            # Shown again where it was hidden, a layout's delay after: the next fit at that
+            # size is the loop's.
+            hidden_at = self._hidden_at
+            soon = time.monotonic() - self._hidden_time < LOOP_WINDOW_MS / 1000
+            self._loop_at = hidden_at if hidden_at and hidden_at[:2] == size and soon else None
+        held = fits and self._shown and self._loop_at == size + (content_h,)
+        # Held shown, the holder follows the content (no strut), so a later change of the
+        # content's height still gives a <Configure> and a re-check.
+        strut_h = 1 if held else canvas_h
+        if int(self._strut.cget("height")) != strut_h:
+            self._strut.configure(height=strut_h)
         self.canvas.configure(scrollregion=(0, 0, self._holder.winfo_reqwidth(),
-                                            max(canvas_h, self.body.winfo_reqheight())))
+                                            max(canvas_h, content_h)))
+        if held:
+            return
+        if fits and self._shown:
+            self._hidden_at = size + (content_h,)
+            self._hidden_time = time.monotonic()
         self._set_shown(not fits)
         if fits or not self._user_scrolled:
             self.canvas.yview_moveto(0.0)

@@ -112,7 +112,33 @@ class Item:
         widget.bind("<Configure>", on_configure, add="+")
 
     def width(self):
-        return self._width() if self._width is not None else self.widget.winfo_width()
+        """The width laid out for: `width()` when given, else the widget's own width, on a
+        scrollable page never past the page's right edge as it is with the scrollbar shown
+        (ScrollablePage.steady_width(), as wrap_label.py measures). Showing or hiding the
+        scrollbar then never changes a layout: a layout following it, a debounce late, would
+        make the content taller after the page got wider and show and hide the scrollbar
+        for ever."""
+        if self._width is not None:
+            return self._width()
+        width = self.widget.winfo_width()
+        page = self._page()
+        if page is None or page.canvas.winfo_width() <= 1:  # no page, or not sized yet
+            return width
+        steady_right = page.canvas.winfo_rootx() + page.steady_width()
+        return min(width, steady_right - self.widget.winfo_rootx())
+
+    def _page(self):
+        """The ScrollablePage (duck-typed: steady_width) the widget is on, or None."""
+        if not hasattr(self, "_page_found"):
+            node = self.widget.master
+            self._page_found = None
+            while node is not None:
+                target = getattr(node, "wheel_target", None)
+                if target is not None and hasattr(target, "steady_width"):
+                    self._page_found = target
+                    break
+                node = node.master
+        return self._page_found
 
     def key(self):
         return self._key() if self._key is not None else None

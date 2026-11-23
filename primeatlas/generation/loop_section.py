@@ -187,7 +187,7 @@ class LoopSection:
         # to the SAME shared StringVars as the embedded one, so both always show the
         # same values and a run started from either place behaves identically.
         self.loop_console = GenerationConsole(
-            loop_outer, self.T, height=20,
+            loop_outer, self.T, place="generation.loop",
             extra_controls_builder=self._build_detached_quick_panel)
         self.loop_output = self.loop_console.text
         # See _build_scrollable_container's own docstring: scrolling this console's

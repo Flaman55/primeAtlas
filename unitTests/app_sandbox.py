@@ -18,8 +18,9 @@ replaced by a no-op, so the redirected storage_path and any setting
 a test changes never reach primeatlas/locales/app_settings.json. A test that counts
 saves replaces save() again after this. The remembered-fields store
 (primeatlas/core/ui_state_dynamic.STORE) is replaced by an in-memory one, so the user's
-ui_state.json is neither read nor written; a test of persistence installs its own. Message
-boxes stay the caller's business: tests patch them their own way (some record what was shown).
+ui_state.json is neither read nor written; a test of persistence installs its own. It holds
+a normal window state, so the window opens normal (not maximized) and takes the size a test
+gives it. Message boxes stay the caller's business: tests patch them their own way (some record what was shown).
 
 isolate_app() also arms a watchdog: a test process still running timeout_s seconds later
 (default APP_TEST_TIMEOUT_S) prints a FAIL line and exits with code 1, so a hung layout or a
@@ -84,6 +85,8 @@ def isolate_app(portal=None, prefix="primeatlas_test_portal_", timeout_s=APP_TES
     from primeatlas.core import ui_state_dynamic
     from primeatlas.core.ui_state import UiStateStore
     ui_state_dynamic.STORE = UiStateStore(None)
+    # A normal window, not the maximized default: tests size the window with geometry().
+    ui_state_dynamic.STORE.set("layout.window.state", "normal")
     from primeatlas.generation import time_simulation_controls
     time_simulation_controls.estimate_free_ram_bytes = lambda **_k: None
     from primeatlas.generation import wsl_resources

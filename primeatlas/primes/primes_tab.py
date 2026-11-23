@@ -48,7 +48,8 @@ from ..core.storage import (
     list_floors, list_source_filenames, read_source_file_headers,
 )
 from ..core import responsive
-from ..core.widgets import (FitLabel, FlowRow, RevealFrame, StripedTreeview, add_page_nav_group,
+from ..core.widgets import (FitLabel, FlowRow, HeightGrip, RevealFrame, StripedTreeview,
+                            add_page_nav_group,
                             add_page_nav_row, clamp_pane_min_width, flow_group,
                             sash_gap)
 from ..core.wrap_label import WrapLabel
@@ -214,8 +215,10 @@ class PrimesTab(BaseTab):
         # docstring), so THIS button is the only way to trigger a real per-file rescan --
         # a manual safety net for the rare case those persisted totals drift (a crash
         # mid-write, or files touched outside the app).
+        # Its height is the panes' (the grip under it sets the tree and the preview list),
+        # never stretched to the page.
         paned = ttk.Panedwindow(self, orient="horizontal")
-        paned.pack(fill="both", expand=True, padx=6, pady=4)
+        paned.pack(fill="x", padx=6, pady=4)
 
         # Weight 0: window resizes go entirely to the detail pane, so the tree pane keeps
         # the width _tree_pane_width() gives it.
@@ -360,6 +363,8 @@ class PrimesTab(BaseTab):
         self.preview_list.configure(yscrollcommand=preview_vsb.set)
         self.preview_list.pack(side="left", fill="both", expand=True)
         preview_vsb.pack(side="right", fill="y")
+        self.storage_grip = HeightGrip(self, [self.tree, self.preview_list],
+                                       place="primes.storage", after=paned, padx=6)
 
         # Each row here IS a single prime (unlike the Constellations tab's rows, which
         # show a whole reconstructed tuple) -- Ctrl+C and right-click "Copy" both

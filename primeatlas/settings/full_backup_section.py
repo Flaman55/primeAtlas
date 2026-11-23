@@ -380,9 +380,11 @@ class FullBackupSection:
         # level side by side.
         full_backup_lists = [self.full_backup_floor_listbox, self.full_backup_entries_listbox]
         self.full_backup_lists_grip = HeightGrip(live_col, full_backup_lists,
-                                                 after=live_list_row)
+                                                 after=live_list_row,
+                                                 place="settings.full_backup_lists")
         self.full_backup_entries_grip = HeightGrip(entries_col, full_backup_lists,
-                                                   after=entries_list_row)
+                                                   after=entries_list_row,
+                                                   place="settings.full_backup_lists")
         entries_btn_row = ttk.Frame(entries_col)
         entries_btn_row.pack(anchor="w", pady=(4, 0))
         self.full_backup_restore_btn = ttk.Button(
@@ -410,6 +412,6 @@ class FullBackupSection:
             anchor="w", padx=6, pady=(0, 4))
 
         self.full_backup_console = GenerationConsole(
-            frame, self.T, height=5, start_visible=True,
+            frame, self.T, start_visible=True, place="settings.full_backup",
             window_title=self.T("settings.full_backup_frame"))
         self.full_backup_output = self.full_backup_console.text
