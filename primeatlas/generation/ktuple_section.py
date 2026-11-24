@@ -10,7 +10,6 @@ import queue
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-import pattern_catalog_v1
 
 from ..core.number_text import plain_number
 from ..core import number_field, number_format
@@ -22,7 +21,7 @@ from .generation_settings import (
 from .window_planning import recommended_digit_sweep_n_locations
 from .wsl_command import generation_log_paths, build_wsl_logged_command
 from ..core.widgets import FlowRow
-from ..core.wrap_label import WrapLabel
+from ..constellations.pattern_picker import PatternPicker
 
 
 class KtupleSection:
@@ -41,27 +40,11 @@ class KtupleSection:
 
         ktuple_settings = self._generation_settings["ktuple"]
 
-        ktuple_pattern_row = ttk.Frame(ktuple_outer)
-        ktuple_pattern_row.pack(fill="x", padx=8, pady=(6, 0))
-        ttk.Label(ktuple_pattern_row, text=self.T("gen.ktuple_field_k")).pack(side="left")
-        self._ktuple_k_values = pattern_catalog_v1.all_k()
-        self.ktuple_k_combo = ttk.Combobox(
-            ktuple_pattern_row, state="readonly", width=6,
-            values=[str(k) for k in self._ktuple_k_values])
-        self.ktuple_k_combo.pack(side="left", padx=(6, 16))
-        self.ktuple_k_combo.bind("<<ComboboxSelected>>", self._on_ktuple_k_changed)
-
-        ttk.Label(ktuple_pattern_row, text=self.T("gen.ktuple_field_variant")).pack(side="left")
-        self._ktuple_variants = []
-        self.ktuple_variant_combo = ttk.Combobox(ktuple_pattern_row, state="readonly", width=10)
-        self.ktuple_variant_combo.pack(side="left", padx=(6, 0))
-        self.ktuple_variant_combo.bind(
-            "<<ComboboxSelected>>", self._on_ktuple_variant_changed)
-
-        self.ktuple_pattern_info_var = tk.StringVar(value="")
-        WrapLabel(ktuple_outer, textvariable=self.ktuple_pattern_info_var,
-                  style="Hint.TLabel").pack(
-            anchor="w", padx=8, pady=(0, 4))
+        self.ktuple_picker = PatternPicker(
+            ktuple_outer, self.T, "gen.ktuple_field_k", "gen.ktuple_field_variant",
+            on_change=self._on_ktuple_pattern_changed)
+        self.ktuple_picker.row.pack(fill="x", padx=8, pady=(6, 0))
+        self.ktuple_picker.info_label.pack(anchor="w", padx=8, pady=(0, 4))
 
         # Each label with its field (and its Auto button) wraps whole onto the next line in
         # a narrow window.
@@ -209,60 +192,13 @@ class KtupleSection:
         self._ktuple_runner = None
         self._ktuple_output_queue = queue.Queue()
 
-        if self._ktuple_k_values:
-            _saved_k = ktuple_settings.get("k", "")
-            try:
-                _saved_k_int = int(_saved_k) if _saved_k else None
-            except ValueError:
-                _saved_k_int = None
-            self.ktuple_k_combo.current(
-                self._ktuple_k_values.index(_saved_k_int)
-                if _saved_k_int in self._ktuple_k_values else 0)
-            self._on_ktuple_k_changed(restore_variant_id=ktuple_settings.get("variant_id"))
+        self.ktuple_picker.select(k=ktuple_settings.get("k"),
+                                  variant_id=ktuple_settings.get("variant_id"))
 
-    def _on_ktuple_k_changed(self, _event=None, restore_variant_id=None):
-        """Repopulates the variant combo for whichever k is now selected -- same
-        two-combo cascade as the Constellation calculator tab's own
-        _on_const_calc_k_changed(). `restore_variant_id`, given only on initial
-        build (see _build_ktuple_section()'s own call), re-selects a persisted
-        variant instead of always defaulting to index 0, so the form reopens showing
-        whatever pattern was last used here."""
-        k_str = self.ktuple_k_combo.get()
-        if not k_str:
-            return
-        self._ktuple_variants = pattern_catalog_v1.patterns_for_k(int(k_str))
-        self.ktuple_variant_combo.configure(
-            values=[self.T("const_calc.variant_label", id=w["id"])
-                    for w in self._ktuple_variants])
-        if self._ktuple_variants:
-            idx = 0
-            if restore_variant_id not in (None, ""):
-                for i, w in enumerate(self._ktuple_variants):
-                    if str(w["id"]) == str(restore_variant_id):
-                        idx = i
-                        break
-            self.ktuple_variant_combo.current(idx)
-        else:
-            self.ktuple_variant_combo.set("")
-        self._on_ktuple_variant_changed()
-
-    def _on_ktuple_variant_changed(self, _event=None):
-        idx = self.ktuple_variant_combo.current()
-        if idx < 0 or idx >= len(self._ktuple_variants):
-            self.ktuple_pattern_info_var.set("")
-            return
-        w = self._ktuple_variants[idx]
-        ui_state_dynamic.STORE.set(generation_key("ktuple", "k"), self.ktuple_k_combo.get())
-        ui_state_dynamic.STORE.set(generation_key("ktuple", "variant_id"), str(w["id"]))
-        offsets_str = ", ".join(str(o) for o in w["offsets"])
-        if w["record_digits"] is not None:
-            self.ktuple_pattern_info_var.set(self.T(
-                "const_calc.pattern_info", offsets=offsets_str,
-                record_digits=w["record_digits"], discoverer=w["discoverer"],
-                date=w["date"]))
-        else:
-            self.ktuple_pattern_info_var.set(
-                self.T("const_calc.pattern_info_untracked", offsets=offsets_str))
+    def _on_ktuple_pattern_changed(self, pattern):
+        """Remembers the selected pattern, so the form reopens showing it."""
+        ui_state_dynamic.STORE.set(generation_key("ktuple", "k"), str(pattern["k"]))
+        ui_state_dynamic.STORE.set(generation_key("ktuple", "variant_id"), str(pattern["id"]))
 
     def _on_ktuple_n_locations_auto_clicked(self):
         """Auto button for the shared "n_locations" field -- primarily meant for
@@ -325,12 +261,10 @@ class KtupleSection:
             messagebox.showerror(self.T("gen.dialog_title"), self.T("gen.error_base_exponent_int"))
             return
 
-        k_idx = self.ktuple_k_combo.current()
-        variant_idx = self.ktuple_variant_combo.current()
-        if k_idx < 0 or variant_idx < 0 or variant_idx >= len(self._ktuple_variants):
+        pattern = self.ktuple_picker.pattern()
+        if pattern is None:
             messagebox.showerror(self.T("gen.dialog_title"), self.T("gen.ktuple_error_no_pattern"))
             return
-        pattern = self._ktuple_variants[variant_idx]
 
         def number(key):
             return plain_number(self._ktuple_vars[key].get())

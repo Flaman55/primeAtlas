@@ -10,7 +10,7 @@ prediction over the finder's scanned spans).
 | Part | Files |
 |---|---|
 | Storage sub-tab | `primeatlas/constellations/constellations_hits_tab.py`, `constellations_tree_coordinator.py` |
-| Calculator | `constellations_calc_tab.py` |
+| Calculator | `constellations_calc_tab.py`; the pattern control `pattern_picker.py` (`PatternPicker`: k dropdown, variant dropdown, offsets/record line; also used by Generation's k-tuple section and Rings' line mode) |
 | Records table | `constellations_records_tab.py` |
 | Density | `constellations_density_tab.py` (UI, background scan with Stop), `density_scan.py` (covered spans, hits inside them, rows), `hl_density.py` (constant and integral), `density_chart.py` (chart) |
 | Backend | `constellations.py` (hit listing, paged reads, participation search, export) |
@@ -55,7 +55,8 @@ None of its own.
 ## Specs and tests
 
 `test_constellations_tab`, `test_constellations_paging`, `test_const_records_worker`,
-`test_constellation_auto_retry`, `test_constellations_density`, `test_constellations_density_tab`.
+`test_constellation_auto_retry`, `test_constellations_density`, `test_constellations_density_tab`,
+`test_pattern_picker`.
 
 ## Known gaps
 

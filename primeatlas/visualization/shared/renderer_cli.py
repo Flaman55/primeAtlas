@@ -107,7 +107,8 @@ def build_parser(description=None):
     parser.add_argument("--viz-mode", choices=list(MODES), default="rings",
                          help="rings (default): one ring per active small prime, phase = n%%p. "
                               "line: a fixed row of real primes from --load-range, with an optional "
-                              "--pattern-seed-k/--pattern-seed-start k-tuple pattern slid along it by N. "
+                              "--pattern-offsets or --pattern-seed-k/--pattern-seed-start k-tuple pattern "
+                              "slid along it by N. "
                               "tree: the prime tree on the real n axis (use with --source none). "
                               "assembly: the wheel assembled level by level, q copies of the period "
                               "minus the multiples of q (use with --source none). "

@@ -16,6 +16,8 @@ sys.path.insert(0, _REPO_ROOT)
 # needed even just to import primeatlas.visualization.rings.rings_tab for _test_build_renderer_argv
 # below.
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
+# rings_tab's pattern switch reads constellation/pattern_catalog_v1.py.
+sys.path.insert(0, os.path.join(_REPO_ROOT, "constellation"))
 
 failures = []
 
@@ -140,6 +142,14 @@ def _test_build_renderer_argv():
     check("--pattern-seed-start" in pattern_argv and
           pattern_argv[pattern_argv.index("--pattern-seed-start") + 1] == "11",
           f"--pattern-seed-start forwards a real value as-is (got {pattern_argv!r})")
+    check("--pattern-offsets" not in default_argv and "--pattern-offsets" not in pattern_argv,
+          "no --pattern-offsets without a catalog pattern")
+    offsets_argv = build_renderer_argv("/x", 1, load_range=(100, 500), viz_mode="line",
+                                        pattern_offsets=[0, 2, 6, 8])
+    check("--pattern-offsets" in offsets_argv
+          and offsets_argv[offsets_argv.index("--pattern-offsets") + 1] == "0,2,6,8"
+          and "--pattern-seed-k" not in offsets_argv,
+          f"a catalog pattern is --pattern-offsets 0,2,6,8, no seed flags (got {offsets_argv!r})")
 
     # Manual/Auto step-mode + MATCH! argv wiring.
     check("--pattern-step-mode" not in default_argv and "--pattern-stop-on-match" not in default_argv,

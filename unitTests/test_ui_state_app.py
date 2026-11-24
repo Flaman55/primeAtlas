@@ -131,12 +131,10 @@ def check_restart(work):
         app.benchmark_tab_widget.log_scale_var.set(True)
 
         const_calc = app.constellations_calc_tab_widget
-        const_calc.k_combo.current(1)
-        const_calc._on_k_changed()
-        last_variant = len(const_calc._variants) - 1
-        const_calc.variant_combo.current(last_variant)
-        const_calc._on_variant_changed()
-        chosen = (const_calc.k_combo.get(), const_calc.variant_combo.get())
+        picker = const_calc.picker
+        picker.select(k=picker.k_values[1])
+        picker.select(k=picker.k_values[1], variant_id=picker.variants[-1]["id"])
+        chosen = (picker.k_combo.get(), picker.variant_combo.get())
         _type(const_calc.exp_entry, "20")
         _type(app.constellations_records_tab_widget.floor_from_entry, "12")
         app.update()
@@ -203,7 +201,7 @@ def check_restart(work):
         passed &= check(app.benchmark_tab_widget.log_scale_var.get() is True,
                         "Benchmark log scale comes back")
         const_calc = app.constellations_calc_tab_widget
-        passed &= check((const_calc.k_combo.get(), const_calc.variant_combo.get()) == chosen
+        passed &= check((const_calc.picker.k_combo.get(), const_calc.picker.variant_combo.get()) == chosen
                         and const_calc.exp_entry.get() == "20",
                         f"constellation calculator k, variant and floor come back ({chosen})")
         passed &= check(app.constellations_records_tab_widget.floor_from_entry.get() == "12",

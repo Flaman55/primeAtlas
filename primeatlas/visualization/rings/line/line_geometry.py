@@ -47,12 +47,15 @@ def pattern_offsets_from_seed(k, p0):
     that catalog pattern's own smallest realization IS the run
     11,13,17,19,23,29,31.
 
-    Any pattern built this way is automatically admissible (never forced to
-    zero by covering all residues mod some small prime p): it already
-    occurred once as real primes, which is only possible if it wasn't
-    forced composite at every n -- see the shift-correlation experiment
-    (constellation/shift_correlation_experiment_v1.py) this is a direct
-    extension of.
+    A pattern built this way is admissible (no prime p <= k has every residue
+    mod p hit by an offset, see is_admissible) whenever p0 > k: every member of
+    the occurrence is then a prime above k, so none is divisible by any p <= k
+    and the residue -n mod p stays free. With p0 <= k a member can be the
+    small prime p itself and the pattern can cover every residue mod p --
+    e.g. (3, 3) gives [0, 2, 4] from 3, 5, 7 and (7, 5) gives offsets
+    covering every residue mod 5 -- a pattern that occurs once only (see
+    pattern_wheel_residues). This extends the shift-correlation experiment
+    (constellation/shift_correlation_experiment_v1.py).
 
     `p0` need not itself be prime -- treated as a lower bound. Requires
     `p0 > 2` (a pattern seeded at 2 always degenerates to the trivial
@@ -71,6 +74,17 @@ def pattern_offsets_from_seed(k, p0):
         candidate += 1
     first = primes[0]
     return [p - first for p in primes]
+
+
+def is_admissible(offsets):
+    """True when no prime p <= len(offsets) has every residue mod p hit by an offset --
+    the condition for a k-tuple pattern to occur infinitely often (Hardy-Littlewood) and
+    to occur at all past its small primes; [0, 2, 4] covers 0, 1, 2 mod 3 and is not."""
+    k = len(offsets)
+    for p in range(2, k + 1):
+        if all(p % d for d in range(2, int(p ** 0.5) + 1)) and len({o % p for o in offsets}) == p:
+            return False
+    return True
 
 
 def line_positions(primes, world_width=1600.0):
@@ -392,9 +406,9 @@ def pattern_wheel_residues(offsets, wheel_primes=DEFAULT_WHEEL_PRIMES):
     pattern_offsets_from_seed(3, 3)'s own [0, 2, 4] case: 3,5,7 works
     once only, because 3 itself is the forced multiple of 3 -- prime, not
     composite -- an exception pure residue arithmetic can't see). A
-    pattern built by pattern_offsets_from_seed is otherwise guaranteed at
-    least one surviving residue per prime (it already occurred once for
-    real), and CRT guarantees a nonempty COMBINED residue set whenever
+    pattern built by pattern_offsets_from_seed with p0 > k has at least one
+    surviving residue per prime (its occurrence avoids every residue 0
+    mod p), and CRT guarantees a nonempty COMBINED residue set whenever
     every individual prime has at least one -- see this function's own
     call site in RenderSession for how a caller distinguishes "empty on
     purpose" (this docstring's exception) from "no filtering possible"
@@ -474,8 +488,11 @@ def resolve_pattern_anchor(seed_prime, offsets, lo, hi):
     that is an arbitrary value with no guarantee of being wheel-
     compatible at all. Compute the phase (pattern_wheel_residues) and jump straight
     to the first wheel-compatible candidate at or past `lo`, via next_wheel_n, so
-    scrubbing from there on is phase-aligned from the first frame."""
-    if lo <= seed_prime <= hi:
+    scrubbing from there on is phase-aligned from the first frame.
+
+    `seed_prime` is None for a pattern given by its offsets (a catalog pattern): there is
+    no occurrence to start from, so the anchor is the first wheel-compatible candidate."""
+    if seed_prime is not None and lo <= seed_prime <= hi:
         return seed_prime
     modulus, residues = pattern_wheel_residues(offsets)
     if modulus <= 1:

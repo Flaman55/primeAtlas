@@ -49,6 +49,24 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   Poniżej miliona i na osi logarytmicznej podziałka jest jak dotąd; dymek i menu przypinania
   pokazują dokładną wartość.
 
+### +3 — Rings line mode: pattern from the catalog list or typed by hand
+
+- English: Line mode in the Rings tab gets a Pattern switch: From the list, Manual or None. From
+  the list (the default) picks a catalog pattern by k and variant, the same control as the
+  Constellation calculator, with its offsets and record shown. Manual keeps the k and p0 fields,
+  adds a line on how they make a pattern and previews the offsets as you type, naming the
+  catalog pattern they match. None draws the primes alone. Each mode keeps its own values, and
+  a k/p0 saved by an earlier version opens in Manual. The Calculator and the Generation tab's
+  k-tuple section use the same pattern control, with no change in what they do.
+- Polski: Tryb liniowy w karcie Rings dostaje przełącznik Wzorzec: Z listy, Ręcznie albo Brak.
+  Z listy (domyślnie) wybiera wzorzec z katalogu po k i wariancie, tą samą kontrolką co
+  kalkulator konstelacji, z pokazanymi offsetami i rekordem. Ręcznie zostawia pola k i p0,
+  dodaje zdanie o tym, jak tworzą wzorzec, i pokazuje offsety w trakcie pisania, z nazwą
+  wzorca z katalogu, któremu odpowiadają. Brak rysuje same liczby pierwsze. Każdy tryb pamięta
+  swoje wartości, a k/p0 zapisane przez wcześniejszą wersję otwierają się w trybie Ręcznie.
+  Kalkulator i sekcja k-krotek w karcie Generacja używają tej samej kontrolki wzorca, bez
+  zmiany działania.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs
