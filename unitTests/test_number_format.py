@@ -7,6 +7,10 @@ A. whole(): digit grouping per notation; zero, one digit, four digits (always gr
    negatives, 10^30 exact, numpy integers; a float is refused (no silent truncation).
 B. decimal(): fixed places per notation, the integer part grouped; 0 places has no decimal
    mark; rounding and negative values as Python rounds them.
+B2. compact(): from a million up three significant digits and an SI prefix (M ... Y) after
+   a no-break space, in the notation; rounding that reaches 1000 moves to the next prefix,
+   rounding to the next power of ten keeps three digits; negatives keep the sign; below a
+   million decimal() with the given places.
 C. resolve(): "Follow language" maps pl and en to their notations; an explicit notation
    wins over the language; an unknown choice follows the language; an unknown language
    takes the English notation.
@@ -118,6 +122,33 @@ def _test_decimal(nf):
     check(nf.signed(1234.5, 1, nf.SPACE_COMMA) == f"+1{NBSP}234,5", "signed: + before a positive")
     check(nf.signed(-0.25, 2, nf.SPACE_COMMA) == "-0,25", "signed: a negative keeps its -")
     check(nf.signed(0, 2, nf.COMMA_DOT) == "+0.00", "signed: zero takes +")
+
+
+def _test_compact(nf):
+    print("\n--- B2. compact(): chart labels from a million up ---")
+    cases = [
+        (1178767926, 0, nf.COMMA_DOT, f"1.18{NBSP}G"),
+        (1178767926, 0, nf.SPACE_COMMA, f"1,18{NBSP}G"),
+        (236228658, 0, nf.SPACE_COMMA, f"236{NBSP}M"),
+        (10_000_000, 0, nf.COMMA_DOT, f"10.0{NBSP}M"),
+        (1_000_000, 0, nf.COMMA_DOT, f"1.00{NBSP}M"),
+        (999_999_999, 0, nf.COMMA_DOT, f"1.00{NBSP}G"),     # rounding moves to the next prefix
+        (9_996_000, 0, nf.COMMA_DOT, f"10.0{NBSP}M"),        # rounding up keeps 3 digits
+        (99_960_000, 0, nf.COMMA_DOT, f"100{NBSP}M"),
+        (999_950, 0, nf.COMMA_DOT, "999,950"),              # below a million: decimal()
+        (999_999.6, 0, nf.COMMA_DOT, "1,000,000"),          # decimal() of a value below 1e6
+        (83.14, 1, nf.SPACE_COMMA, "83,1"),
+        (0.0423, 4, nf.SPACE_COMMA, "0,0423"),
+        (0, 0, nf.COMMA_DOT, "0"),
+        (-2.5e9, 0, nf.DOT_COMMA, f"-2,50{NBSP}G"),
+        (-999_999, 0, nf.COMMA_DOT, "-999,999"),
+        (3.2e12, 0, nf.COMMA_DOT, f"3.20{NBSP}T"),
+        (4.56e15, 0, nf.COMMA_DOT, f"4.56{NBSP}P"),
+        (1e27, 0, nf.COMMA_DOT, f"1,000{NBSP}Y"),           # past the last prefix: whole units
+    ]
+    for value, places, style, text in cases:
+        got = nf.compact(value, places, style)
+        check(got == text, f"compact({value!r}, {places}, {style}) -> {text!r} (got {got!r})")
 
 
 def _test_resolve(nf):
@@ -342,6 +373,7 @@ def main():
     if nf is not None:
         _test_whole(nf)
         _test_decimal(nf)
+        _test_compact(nf)
         _test_resolve(nf)
         _test_running_style(nf, dyn)
         _test_app_settings(nf)

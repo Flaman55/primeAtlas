@@ -143,12 +143,13 @@ def series_xs(*series_lists):
     return sorted({x for series in series_lists for s in series for x, _ in s.points})
 
 
-def point_label(places, value, series, show_unknown=False, x=None):
+def point_label(places, value, series, show_unknown=False, x=None, short=False):
     """Value text with `places` decimals, the series tag and the point's note:
-    "1,234 [v5] @ 10^11"."""
+    "1,234 [v5] @ 10^11"; short: the value in number_format.compact() ("1.18 G [v5]")."""
     tag = series.tag or ("unknown" if show_unknown and not series.dashed else "")
     note = (series.notes or {}).get(x, "")
-    return number_format.decimal(value, places) + (" [" + tag + "]" if tag else "") + (" @ " + note if note else "")
+    text = (number_format.compact if short else number_format.decimal)(value, places)
+    return text + (" [" + tag + "]" if tag else "") + (" @ " + note if note else "")
 
 
 class YScale:
@@ -240,11 +241,13 @@ class YScale:
             return ticks
         return [self.lo + (self.hi - self.lo) * i / 5 for i in range(6)]
 
-    def tick_label(self, value, places):
+    def tick_label(self, value, places, short=False):
+        """A tick's text: "3e9" on a log scale, else `value` with `places` decimals, in
+        number_format.compact() when `short`."""
         if self.log:
             exponent = math.floor(math.log10(value) + 1e-9)
             return "%de%d" % (round(value / 10.0 ** exponent), exponent)
-        return number_format.decimal(value, places)
+        return (number_format.compact if short else number_format.decimal)(value, places)
 
 
 def y_scale(series, log=False, pins=None):

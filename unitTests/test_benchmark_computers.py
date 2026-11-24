@@ -245,21 +245,21 @@ def part_d(rows):
     from primeatlas.benchmark import computer_names as cn, computer_table as ct
     t = Translator("en").t
     page = _html(rows)
-    check(f'<a href="#{ct.anchor(PC)}">Ryzen 9 5900X (3f9a0c)</a>' in page,
+    check(f'<a href="#pa-{ct.anchor(PC)}">Ryzen 9 5900X (3f9a0c)</a>' in page,
           "HTML: the cell links to its computer")
-    check(f'id="{ct.anchor(PC)}"' in page and f'id="{ct.anchor(OTHER)}"' in page
-          and f'id="{ct.anchor(UNKNOWN)}"' in page, "HTML: a section anchor per computer")
-    check(t("computer.section_title") in page
-          and page.index(t("computer.section_title")) > page.index("</table>"),
+    check(f'id="pa-{ct.anchor(PC)}"' in page and f'id="pa-{ct.anchor(OTHER)}"' in page
+          and f'id="pa-{ct.anchor(UNKNOWN)}"' in page, "HTML: a section anchor per computer")
+    section = f"<summary><h2>{t('computer.section_title')}</h2></summary>"
+    check(section in page and page.index(section) > page.index("</table>"),
           "HTML: the Computers section after the run tables")
     check(t("computer.no_data") in page, "HTML: a computer without entry says so")
-    links = page.count('href="#pc-')
+    links = page.count('href="#pa-pc-')
     check(links == 5, f"HTML: a link per run with machine_id, in the machine column ({links})")
     kept = _html(rows, selection={"floor": {"29"}})
-    check(f'id="{ct.anchor(OTHER)}"' in kept and f'id="{ct.anchor(PC)}"' not in kept,
+    check(f'id="pa-{ct.anchor(OTHER)}"' in kept and f'id="pa-{ct.anchor(PC)}"' not in kept,
           "HTML: only the computers of the kept runs")
     snippet = _html(rows, kind="snippet")
-    check(f'id="{ct.anchor(PC)}"' in snippet, "snippet: the section too")
+    check(f'id="pa-{ct.anchor(PC)}"' in snippet, "snippet: the section too")
     tricky = [_row("2026-11-10 10:00:00 UTC", PC)]
     machines = {PC: [_entry("2026-11-01 00:00:00 UTC", auto=_auto(cpu_name="A<b>&C"))]}
     cn.annotate(tricky, machines)

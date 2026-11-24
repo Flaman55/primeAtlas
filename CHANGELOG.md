@@ -9,6 +9,35 @@ correction is a new entry. The app shows release, merge count and commit, e.g.
 `1.2.0+24 (f59ce41)`, because Settings → Updates moves every copy along `main` between
 releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA.B.C`.
 
+## Since 1.6.0
+
+### +1 — Benchmark HTML report: collapsed tables, no empty columns, short chart labels
+
+- English: The Benchmark HTML page and snippet are easier to read. A bar under the subtitle links
+  the charts, each table and the Computers section. The tables and the Computers section start
+  collapsed; a click on a title or a link opens one. A column no exported run has a value in is
+  left out, and so is a table left with only floor, run and engine, the Computers section
+  without computers, and a chart without points; the page's own filter hides and brings back
+  columns the same way. Chart labels and ticks write large numbers short (1.18 G), the exact
+  value shows when the pointer rests on a point, and the tables keep exact numbers. The PDF
+  leaves out the same columns, tables and charts and uses the same short labels; the CSV keeps
+  every column. A run that wrote no bytes (a count-only benchmark run) no longer shows 0.0
+  write MB/s in the tables, the exports or the tab's write chart, and a write speed below
+  0.1 MB/s shows two significant digits. Fix: PDF numbers in the Polish notation showed "?"
+  between digit groups.
+- Polski: Strona HTML i fragment HTML raportu Benchmark są czytelniejsze. Pasek pod podtytułem
+  prowadzi do wykresów, każdej tabeli i sekcji Komputery. Tabele i sekcja Komputery są na
+  początku zwinięte; klik w tytuł albo w link rozwija jedną z nich. Kolumna, w której żaden
+  eksportowany przebieg nie ma wartości, znika, tak samo tabela z samym piętrem, przebiegiem i
+  silnikiem, sekcja Komputery bez komputerów i wykres bez punktów; filtr na stronie ukrywa i
+  przywraca kolumny tak samo. Etykiety i podziałka wykresów zapisują duże liczby krótko
+  (1,18 G), dokładna wartość pojawia się po zatrzymaniu wskaźnika na punkcie, a tabele mają
+  dokładne liczby. PDF pomija te same kolumny, tabele i wykresy i ma te same krótkie etykiety;
+  CSV zachowuje wszystkie kolumny. Przebieg, który nie zapisał żadnego bajtu (benchmark tylko
+  liczący), nie pokazuje już 0,0 MB/s zapisu w tabelach, eksportach ani na wykresie zapisu w
+  karcie, a prędkość zapisu poniżej 0,1 MB/s ma dwie cyfry znaczące. Poprawka: liczby w polskiej
+  notacji w PDF miały „?” między grupami cyfr.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

@@ -17,7 +17,11 @@ large and shown at their usual width, so text, markers and lines grow k times. T
 dimension All and its values, clicked like the app's: toggleValue(), selectAll()), the x axis
 (a change shows the whole charts), each chart's point choice, log scale and reference toggles
 redraw the charts, the page headings and the tables (rows of runs the filter
-drops are hidden).
+drops are hidden, and so is a column none of the shown runs has a value in -- with a table left
+with its key columns alone and its link in the navigation bar -- emptyColumns()). A link to
+an anchor inside a closed table section opens it. Chart labels and ticks from a million up
+are short (formatCompact(), number_format.compact()); a point's hover title has the exact
+value.
 
 Pure parts (scale, labels, reduction, zoom, chart drawing) are exported for node; the page
 part runs only in a browser, on the .primeatlas-benchmark element holding this script.
@@ -64,6 +68,24 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     return value.toLocaleString("en-US", {minimumFractionDigits: decimals,
                                           maximumFractionDigits: decimals})
       .replace(/[,.]/g, function (c) { return c === "," ? numberMarks.group : numberMarks.mark; });
+  }
+
+  // number_format.compact(): from a million up 3 significant digits and an SI prefix.
+  var PREFIXES = ["M", "G", "T", "P", "E", "Z", "Y"];
+
+  function intDigits(x) { return String(Math.floor(x)).length; }
+
+  function formatCompact(decimals, value) {
+    if (Math.abs(value) < 1e6) return formatNumber(decimals, value);
+    for (var power = 0; power < PREFIXES.length; power++) {
+      var scaled = Math.abs(value) / Math.pow(10, 6 + 3 * power);
+      var digits = Math.max(0, 3 - intDigits(scaled));
+      // Rounding up to the next power of ten (9.996 -> 10.00) costs one decimal place.
+      if (intDigits(Number(scaled.toFixed(digits))) > intDigits(scaled)) digits = Math.max(0, digits - 1);
+      if (Number(scaled.toFixed(digits)) < 1000 || power === PREFIXES.length - 1) {
+        return (value < 0 ? "-" : "") + formatNumber(digits, scaled) + "\u00a0" + PREFIXES[power];
+      }
+    }
   }
 
   // --- chart_series.YScale ---------------------------------------------------------------
@@ -162,7 +184,7 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
       var exponent = Math.floor(Math.log10(value) + 1e-9);
       return Math.round(value / Math.pow(10, exponent)) + "e" + exponent;
     }
-    return formatNumber(decimals, value);
+    return formatCompact(decimals, value);
   };
 
   function inView(frac) { return -VIEW_EPSILON <= frac && frac <= 1 + VIEW_EPSILON; }
@@ -281,10 +303,11 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     return mode === "width" ? widthLabel(Math.round(Math.pow(10, x))) : String(Math.round(x));
   }
 
-  function pointLabel(decimals, value, series, x) {
+  // chart_series.point_label(); short: the value in formatCompact().
+  function pointLabel(decimals, value, series, x, short) {
     var note = (series.notes || {})[x] || "";
-    return formatNumber(decimals, value) + (series.tag ? " [" + series.tag + "]" : "") +
-      (note ? " @ " + note : "");
+    return (short ? formatCompact : formatNumber)(decimals, value) +
+      (series.tag ? " [" + series.tag + "]" : "") + (note ? " @ " + note : "");
   }
 
   /* One chart as an <svg> element of w x h points, the layout of chart_pdf.chart_ops() on
@@ -415,9 +438,9 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
       pts = pts.filter(function (p) { return inView(scale.frac(p[1])) && onPlot(sx(p[0])); });
       pts.forEach(function (p, i) {
         var cx = sx(p[0]), cy = sy(p[1]);
-        var text = pointLabel(c.decimals, p[1], s, p[0]);
-        ops.push(b.dot(cx, cy, 2.5, s.color,
-                       (xMode === "width" ? "" : "10^") + xLabel(p[0], xMode) + ": " + text));
+        var text = pointLabel(c.decimals, p[1], s, p[0], true);
+        ops.push(b.dot(cx, cy, 2.5, s.color, (xMode === "width" ? "" : "10^") +
+                       xLabel(p[0], xMode) + ": " + pointLabel(c.decimals, p[1], s, p[0])));
         if (s.dashed) ops.push(b.dot(cx, cy, 1.3, "#ffffff"));
         var last = i === pts.length - 1;
         var above = cy + 8, below = cy - 22 - 8;
@@ -577,6 +600,21 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     for (var f = Math.ceil(xMin - margin); f <= Math.floor(xMax + margin); f++) floors.push(f);
     var step = Math.max(1, Math.ceil(floors.length / MAX_X_TICKS));
     return floors.filter(function (f, i) { return i % step === 0; });
+  }
+
+  /* The columns of one table to hide: cells[r][j] is true where run r lacks a value in
+  column j, hidden[r] whether the filter drops run r; a column from `keys` on is hidden when
+  no shown run has a value in it (every one, with no run shown). */
+  function emptyColumns(cells, hidden, keys) {
+    var width = cells.length ? cells[0].length : 0, out = [];
+    for (var j = keys; j < width; j++) {
+      var empty = true;
+      for (var r = 0; r < cells.length && empty; r++) {
+        if (!hidden[r] && !cells[r][j]) empty = false;
+      }
+      if (empty) out.push(j);
+    }
+    return out;
   }
 
   // --- the page -------------------------------------------------------------------------
@@ -801,6 +839,26 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
     this.root.querySelectorAll("tr[data-run]").forEach(function (tr) {
       tr.hidden = !kept[Number(tr.dataset.run)];
     });
+    this.root.querySelectorAll("table[data-keys]").forEach(function (table) {
+      var keys = Number(table.dataset.keys);
+      var rows = Array.prototype.slice.call(table.querySelectorAll("tr[data-run]"));
+      var cells = rows.map(function (tr) {
+        return Array.prototype.map.call(tr.cells, function (td) {
+          return td.classList.contains("pa-none");
+        });
+      });
+      var empty = emptyColumns(cells, rows.map(function (tr) { return tr.hidden; }), keys);
+      var gone = {};
+      empty.forEach(function (j) { gone[j] = true; });
+      Array.prototype.forEach.call(table.rows, function (tr) {
+        Array.prototype.forEach.call(tr.cells, function (cell, j) { cell.hidden = !!gone[j]; });
+      });
+      var section = table.closest("details");
+      var width = table.rows[0].cells.length;
+      section.hidden = empty.length === width - keys;
+      var link = self.root.querySelector('.pa-nav a[href="#' + section.id + '"]');
+      if (link) link.hidden = section.hidden;
+    });
   };
 
   // The pointer in the chart's own units (its viewBox), whatever size the page draws it at.
@@ -848,6 +906,14 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
       self.yLevels[k] = y[1];
       self.render();
     }, {passive: false});
+    // A link into a closed section opens it before the browser scrolls to the anchor.
+    this.root.addEventListener("click", function (e) {
+      var link = e.target.closest && e.target.closest('a[href^="#"]');
+      var target = link && document.getElementById(link.getAttribute("href").slice(1));
+      for (var el = target; el && el !== self.root; el = el.parentElement) {
+        if (el.tagName === "DETAILS") el.open = true;
+      }
+    });
     this.root.addEventListener("pointerdown", function (e) {
       var box = chartOf(e), g = box && self.geometry[key(box)];
       if (e.button === 1 && box) {
@@ -898,7 +964,8 @@ part runs only in a browser, on the .primeatlas-benchmark element holding this s
              chartSvg: chartSvg, keptRuns: keptRuns, reduce: reduce, mixedFloors: mixedFloors,
              pick: pick, widthLabel: widthLabel, xLabel: xLabel,
              filterSummary: filterSummary, toggleValue: toggleValue, selectAll: selectAll, zoomStep: zoomStep, pan: pan, tickFloors: tickFloors,
-             formatNumber: formatNumber};
+             formatNumber: formatNumber, formatCompact: formatCompact,
+             emptyColumns: emptyColumns};
   if (typeof module === "object" && module.exports) module.exports = api;
   if (typeof document !== "undefined" && document.currentScript) {
     var root = document.currentScript.closest(".primeatlas-benchmark");

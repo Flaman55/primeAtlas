@@ -4,7 +4,9 @@ The PDF counterpart of benchmark_tab._draw_growth_chart(): same series, scales a
 layout, in PDF's bottom-left-origin point space (tkinter's anchors and y-down canvas have
 no PDF equivalent, so the two renderers stay separate and share chart_series.py instead).
 A point's value label carries the series tag ("1,234 [v5]"); engine "unknown" gets no
-tag, since every legacy point would repeat it. Labels never overlap: each line's last
+tag, since every legacy point would repeat it. Value labels and linear ticks from a million
+up are short (number_format.compact(): "1.18 G [v5]"); the exact value is the point's hover
+title where the backend has one (SVG), and the report's tables hold it. Labels never overlap: each line's last
 point is labelled first, stacked away from the point when lines end close together, then
 the other points in order, above the point or else below it; such a label with neither
 place free is left out (the report's tables hold every value). A label is kept inside
@@ -30,10 +32,13 @@ class _PdfBackend:
     PDF base fonts."""
     rect = staticmethod(_pdf_rect_op)
     line = staticmethod(_pdf_line_op)
-    dot = staticmethod(_pdf_dot_op)
     text = staticmethod(_pdf_text_op)
     fold = staticmethod(_pdf_ascii_fold)
 
+    @staticmethod
+    def dot(cx, cy, r, rgb=(0, 0, 0), title=None):
+        """A point; a PDF has no hover title, so `title` is dropped."""
+        return _pdf_dot_op(cx, cy, r, rgb)
     @staticmethod
     def dashed(op):
         return "[3 2] 0 d " + op + " [] 0 d"
@@ -113,7 +118,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
     scale1 = y_scale(series1, log_y, pins1).zoomed(y_view) if series1 else None
     scale2 = y_scale(series2, log_y, pins2).zoomed(y_view) if has_secondary else None
     # The left margin fits the longest tick label (7 pt Courier) left of the axis.
-    tick_chars = max((len(scale1.tick_label(v, places1)) for v in scale1.ticks()),
+    tick_chars = max((len(scale1.tick_label(v, places1, short=True)) for v in scale1.ticks()),
                      default=0) if scale1 else 0
     pad_left = max(55, tick_chars * 0.6 * 7 + 10)
     pad_right = 55 if has_secondary else 15
@@ -164,7 +169,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
         for y_val in scale1.ticks():
             y_px = sy(scale1, y_val)
             ops.append(b.line(plot_x0 - 3, y_px, plot_x0, y_px, rgb=_AXIS_GRAY))
-            text = scale1.tick_label(y_val, places1)
+            text = b.fold(scale1.tick_label(y_val, places1, short=True))
             ops.append(b.text(plot_x0 - 5 - len(text) * 0.6 * 7, y_px - 3, 7, "Courier",
                                      text))
     if scale2:
@@ -173,7 +178,7 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
             ops.append(b.line(plot_x0 + plot_w, y_px, plot_x0 + plot_w + 3, y_px,
                                      rgb=_AXIS_GRAY))
             ops.append(b.text(plot_x0 + plot_w + 5, y_px - 3, 7, "Courier",
-                                     scale2.tick_label(y_val, places2)))
+                                     b.fold(scale2.tick_label(y_val, places2, short=True))))
 
     for x_val in x_ticks:
         x_px = sx(x_val)
@@ -227,13 +232,16 @@ def chart_ops(x0, y0, w, h, series1=(), series2=(), translator=None,
                 if secondary:
                     ops.append(b.rect(cx - 2.3, cy - 2.3, 4.6, 4.6, fill_rgb=rgb))
                 else:
-                    ops.append(b.dot(cx, cy, 2.5, rgb=rgb))
+                    exact = point_label(places, y_val, s, x=x_val)
+                    prefix = "" if x_mode == chart_points.X_WIDTH else "10^"
+                    ops.append(b.dot(cx, cy, 2.5, rgb=rgb,
+                                     title=f"{prefix}{chart_points.x_label(x_val, x_mode)}: {exact}"))
                 if s.dashed:
                     ops.append(b.dot(cx, cy, 1.3, rgb=(1, 1, 1)))
                 last = i == len(pts) - 1
                 above, below = cy + label_dy, cy - 22 - label_dy
                 steps = range(_LAST_LABEL_STEPS if last else 1)
-                text = b.fold(point_label(places, y_val, s, x=x_val))
+                text = b.fold(point_label(places, y_val, s, x=x_val, short=True))
                 lx = max(x0 + 2, min(cx - 10, x0 + w - 2 - len(text) * _LABEL_CHAR_W))
                 positions = [(lx, y) for k in steps
                              for y in (above + k * (_LABEL_SIZE + 2),

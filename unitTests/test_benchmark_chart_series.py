@@ -195,8 +195,8 @@ class PdfTests(unittest.TestCase):
         series1 = chart_series.engine_series(benchmark.benchmark_engine_lines(ROWS, "growth"))
         series2 = chart_series.engine_series(benchmark.benchmark_engine_lines(ROWS, "write"))
         ops = "\n".join(chart_pdf.chart_ops(0, 0, 800, 140, series1, series2, places2=1))
-        self.assertIn("350,000,000 [v5]", ops)
-        self.assertIn("50,000,000 [v4.1]", ops)
+        self.assertIn("350 M [v5]", ops)
+        self.assertIn("50.0 M [v4.1]", ops)
         self.assertIn("1.0 [v5]", ops)
         self.assertNotIn("[unknown]", ops)
         self.assertIn("(v4.1) Tj", ops)   # legend
@@ -359,7 +359,7 @@ class LineToggleTests(unittest.TestCase):
             text = path.read_bytes().decode("latin-1")
         self.assertNotIn("(200 [v5] @ 10^2) Tj", text)          # sieve n/s of v5: hidden
         self.assertIn("(0.0500 [v5] @ 10^2) Tj", text)          # its sieve s/window: shown
-        self.assertIn("(350,000,000 [v5] @ 10^2) Tj", text)     # whole-run chart: untouched
+        self.assertIn("(350 M [v5] @ 10^2) Tj", text)     # whole-run chart: untouched
         self.assertNotIn("[" + self.refs[0].tag + "]) Tj", text)
         self.assertIn("[" + self.refs[1].tag + "]) Tj", text)
 
@@ -444,9 +444,9 @@ class PinTests(unittest.TestCase):
         series2 = chart_series.engine_series(benchmark.benchmark_engine_lines(ROWS, "write"))
         ops = "\n".join(chart_pdf.chart_ops(0, 0, 800, 140, series1, series2, places2=1,
                                             pins1=(None, 5e7)))
-        self.assertNotIn("350,000,000 [v5]", ops)
-        self.assertIn("(50,000,000 [v4.1]) Tj", ops)
-        self.assertIn("(50,000,000) Tj", ops)                  # the top tick is the pin
+        self.assertNotIn("350 M [v5]", ops)
+        self.assertIn("(50.0 M [v4.1]) Tj", ops)
+        self.assertIn("(50.0 M) Tj", ops)                  # the top tick is the pin
         self.assertIn("(2.0 [v4.1]) Tj", ops)                  # right axis: not pinned
         self.assertIn("[pinned]", ops)
         plain = "\n".join(chart_pdf.chart_ops(0, 0, 800, 140, series1, series2))
@@ -460,8 +460,8 @@ class PinTests(unittest.TestCase):
                 sieve_points=benchmark.aggregate_benchmark_sieve_nps(ROWS),
                 y_pins={"run": {"primary": (None, 5e7)}})
             text = path.read_bytes().decode("latin-1")
-        self.assertNotIn("(350,000,000 [v5] @ 10^2) Tj", text)
-        self.assertIn("(50,000,000 [v4.1] @ 10^2) Tj", text)
+        self.assertNotIn("(350 M [v5] @ 10^2) Tj", text)
+        self.assertIn("(50.0 M [v4.1] @ 10^2) Tj", text)
         self.assertIn("(200 [v5] @ 10^2) Tj", text)                    # sieve chart: not pinned
 
     def test_locales_have_the_pin_keys(self):
@@ -573,8 +573,8 @@ class TabPinTests(unittest.TestCase):
                 self.assertEqual(points(chart, "primary"), [4e7, 5e7])
                 tab._export_benchmark_pdf()
                 text = Path(pdf_path).read_bytes().decode("latin-1")
-                self.assertNotIn("(350,000,000 [v5] @ 10^2) Tj", text)
-                self.assertIn("(50,000,000 [v4.1] @ 10^2) Tj", text)
+                self.assertNotIn("(350 M [v5] @ 10^2) Tj", text)
+                self.assertIn("(50.0 M [v4.1] @ 10^2) Tj", text)
                 self.assertNotIn("(2.0 [v4.1] @ 10^2) Tj", text)
 
                 # Reset the left axis, then the whole chart.

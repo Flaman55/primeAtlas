@@ -11,11 +11,15 @@ script element.
 Through node (skipped without it): the script's reduction gives the Python Series for several
 selections; its filter clicks follow chart_filter.toggle_value()/select_all() (All or single
 values, there and back) and its summary shows the translated values; its chart drawing is the SVG chart_svg.chart_svg() writes for the same series
-(linear, log and pinned axes), apart from the legend's click groups and the points' hover
-titles; its zoom, pan and zoomed floor ticks match chart_view.py; zoomed
+(linear, log and pinned axes), the points' hover titles with the exact value included,
+apart from the legend's click groups; its short chart numbers are number_format.compact()'s;
+its page filter hides a table column no run it keeps has a value in (and a table left with
+only the floor, the run and the engine), as table_columns.report_tables() of those runs
+would, and shows it again when the runs come back; its zoom, pan and zoomed floor ticks match chart_view.py; zoomed
 charts (both axes, lines cut at every plot edge) match too.
     python unitTests/test_benchmark_report_html.py
 """
+import html
 import json
 from pathlib import Path
 import re
@@ -87,6 +91,8 @@ def _node(task):
               " if (c.kind === 'toggle') { let sel = {}; return c.ops.map(op => {"
               "  sel = op[0] === 'all' ? m.selectAll(sel, op[1]) : m.toggleValue(sel, op[1], op[2]);"
               "  const o = {}; for (const k in sel) o[k] = [...sel[k]].sort(); return o; }); }"
+              " if (c.kind === 'compact') return c.values.map(v => m.formatCompact(v[1], v[0]));"
+              " if (c.kind === 'columns') return m.emptyColumns(c.cells, c.hidden, c.keys);"
               " if (c.kind === 'summary') { const sel = {};"
               "  for (const k in c.selection) sel[k] = new Set(c.selection[k]);"
               "  return m.filterSummary(c.data, sel); } }")
@@ -174,7 +180,7 @@ class DataTests(unittest.TestCase):
         visible = re.findall(r'<tr data-run="(\d+)">', page)
         hidden = re.findall(r'<tr data-run="(\d+)" hidden>', page)
         self.assertEqual(hidden, [], "no dropped run hidden in the tables")
-        self.assertEqual(len(visible), len(kept) * len(table_columns.report_tables()))
+        self.assertEqual(len(visible), len(kept) * len(table_columns.report_tables(kept)))
         self.assertTrue(all(kept[int(i)]["engine"] == "v6" for i in visible))
         whole = report_export.render("html", FIELDNAMES, rows, translator=Translator("en"),
                                      **OPTIONS)
@@ -206,8 +212,8 @@ class DataTests(unittest.TestCase):
 
 
 def _normalize(svg):
-    svg = re.sub(r'<g class="pa-legend" data-line="[^"]*"( opacity="[^"]*")?>', "", svg)
-    return re.sub(r"><title>[^<]*</title></circle>", "/>", svg.replace("</g>", ""))
+    return re.sub(r'<g class="pa-legend" data-line="[^"]*"( opacity="[^"]*")?>', "",
+                  svg).replace("</g>", "")
 
 
 @unittest.skipUnless(NODE, "node not installed")
@@ -244,6 +250,49 @@ class ScriptTests(unittest.TestCase):
                        else chart_filter.toggle_value(sel, op[1], op[2]))
                 want.append({k: sorted(v) for k, v in sel.items()})
             self.assertEqual(got, want, ops)
+
+    def test_compact_numbers_match_python(self):
+        from primeatlas.core import number_format
+        values = [[1178767926, 0], [236228658, 0], [1e7, 0], [1e6, 0], [999_999_999, 0],
+                  [999_950, 0], [999_999.6, 0], [83.14, 1], [0.0423, 4], [0, 0],
+                  [-2.5e9, 0], [-999_999, 0], [3.2e12, 1], [4.56e15, 0], [1e27, 0],
+                  [5e7, 3], [12345678.9, 2], [9_996_000, 0], [99_960_000, 0]]
+        got = _node({"cases": [{"kind": "compact", "values": values}]})[0]
+        self.assertEqual(got, [number_format.compact(v, d, number_format.COMMA_DOT)
+                               for v, d in values])
+
+    def test_page_filter_hides_empty_columns(self):
+        rows = [dict(r, sieving_primes_count="17000000" if r["engine"] == "v5" else "",
+                     max_child_rss_mb="" if r["engine"] == "v4.1" else r["max_child_rss_mb"])
+                for r in ROWS]
+        page = report_export.render("html", FIELDNAMES, rows, translator=Translator("en"),
+                                    **OPTIONS)
+        tables = re.findall(r'<table data-keys="(\d+)"><thead><tr>(.*?)</tr></thead>'
+                            r'<tbody>(.*?)</tbody></table>', page, re.S)
+        headers = [[html.unescape(h) for h in re.findall(r"<th>(.*?)</th>", head)]
+                   for _k, head, _b in tables]
+        cells = [[[c == ' class="pa-none"' for c in re.findall(r"<td( class=\"pa-none\")?>", tr)]
+                  for tr in re.findall(r"<tr data-run=\"\d+\">(.*?)</tr>", body)]
+                 for _k, _h, body in tables]
+        titles = [title for title, _c in table_columns.report_tables(rows)]
+        t = Translator("en").t
+        cases, expected = [], []
+        for selection in SELECTIONS + [{"engine": {"v4.1"}}, {"engine": {"v5"}}]:
+            keep = [chart_filter.keeps(row, selection) for row in rows]
+            kept = [row for row, k in zip(rows, keep) if k]
+            want = dict(table_columns.report_tables(kept))
+            for title, (keys, _h, _b), head, table in zip(titles, tables, headers, cells):
+                cases.append({"kind": "columns", "cells": table, "keys": int(keys),
+                              "hidden": [not k for k in keep]})
+                shown = [t(table_columns.header_key(c)) for c in want.get(title, ())]
+                expected.append([i for i, h in enumerate(head)
+                                 if i >= int(keys) and h not in shown])
+        results = _node({"cases": cases})
+        self.assertEqual(results, expected)
+        self.assertTrue(any(r for r in results), "some selection hides a column")
+        widths = [len(c["cells"][0]) - c["keys"] for c in cases]
+        self.assertTrue(any(len(r) == w for r, w in zip(results, widths)),
+                        "some selection empties a whole table")
 
     def test_summary_shows_labels(self):
         rows = [dict(ROWS[0], run_purpose="benchmark"), dict(ROWS[1], run_purpose="storage")]

@@ -66,7 +66,9 @@ run's), s/window (session, else the run's), numbers (`10^10`), windows (`1000 (0
 status (blank = completed), threads (`2x24 thr, write 4`), computer (below), CPU before and
 CPU during (`cpu_busy_before_pct`, `cpu_busy_during_pct`, shown with `%`); the phases (sieve, sieve with startup,
 write, write MB/s, verify: `proof_seconds` when the row has one, else `verify_seconds`, peak
-RAM); the results (primes, pi(L), L). A log column that
+RAM); the results (primes, pi(L), L). Write MB/s is `bytes_written` / `write_seconds`; a run that
+wrote no bytes (a count-only run still logs its write phase's time) has none, in the table, the CSV
+and on the write chart; from 0.1 MB/s up it has one decimal, below it two significant digits. A log column that
 repeats a shown one under another name or is a quotient of two (`write_files`, `run_purpose`,
 `kind`, `engine_version`, `instance_of_n`, `write_threads`, `target_idx_*`,
 `avg_primes_per_window`, `primes_per_second`, `bytes_written`, `sieve_count_basis`,
@@ -193,8 +195,18 @@ sieve in the chosen measure when there is sieve data or the references are on, R
 measured it), and every format draws them with the tab's view: the runs the Filter window keeps
 (charts and tables), the sieve measure, toggles, hidden lines, pins and the zoom. `chart_pdf.chart_ops()` lays a chart out once and
 draws through a backend, PDF content ops or SVG elements (`chart_svg.py`, y flipped, Unicode text),
-so the PDF and SVG/HTML charts match. The HTML page and the snippet hold the charts inline and the
-run table's four tables (`table_columns.report_tables()`), every cell escaped; the snippet is one
+so the PDF and SVG/HTML charts match. A chart no kept run sets a point on is left out
+(`report_drawn_pages()`; references count, lines hidden in the tab do not, so a chart they empty
+stays as its "no data" box); in the PDF the other chart of its page takes the whole page, and with
+no chart left anywhere the whole-run page stays, saying there is no data. Value labels and linear
+ticks from a million up are short (`number_format.compact()`: `1,18 G`); an SVG/HTML point's
+`<title>` holds the exact value, the tables always do. The HTML page and the snippet hold, under
+the subtitle, a navigation bar (charts, each table, Computers; only the sections the page holds),
+the charts inline and the run table's four tables (`table_columns.report_tables()` of the kept
+runs: no column no run has a value in, never the floor, the run or the engine; no table left with
+those alone), each table and the Computers section a `<details>` closed by default with its title
+in the `<summary>`, every cell escaped and a missing one marked `pa-none`; every id starts with
+`pa-`. The PDF leaves out the same columns and tables; the CSV keeps every column. The snippet is one
 `<div class="primeatlas-benchmark">` whose style rules are all scoped to that class; like the PDF,
 the HTML names the filter under the title, the sieve measure over the sieve charts and the floors of
 mixed widths over a page's charts (`report_mixed_note()`). CSV writes the kept runs in the run
@@ -211,7 +223,8 @@ cursor marks the cell of a run with a `machine_id`; a click opens the Computer w
 entry of the history headed by its `since`, a row per field, or a line saying the file has no data
 of that id. One window at a time; another computer's cell shows that one instead. The HTML page and
 snippet make the cell a link to a "Computers" section after the tables, a table per computer of
-the kept runs under its anchor (`computer_table.anchor()`); the PDF does the same with link
+the kept runs under its anchor (`pa-` + `computer_table.anchor()`; no section when no kept run has a
+computer); the PDF does the same with link
 annotations to named destinations (`pdf_writer.Link`, `pdf_writer.Anchor`, `computer_pdf.py`), a
 computer that does not fit the rest of a page starting the next one. The time model still matches
 runs by `machine_id` (`generation/time_model.py`).
@@ -225,6 +238,10 @@ by the chart's point choice -- and redraws with a port of `chart_ops()`; it star
 view (log scale, references, hidden lines, pins, zoom, x axis, point choices, the selected run)
 with its own filter at All, and has its own x axis and point choice selectors (`width_lines` names
 and shades the width-axis lines as the tab does).
+Its filter also hides the rows of the runs it drops and then a table column none of the shown
+runs has a value in (`emptyColumns()`), a table left with its key columns alone and that table's
+link in the navigation bar; they come back with the runs. A link to an anchor inside a closed
+section opens it.
 The page has the Filter window's dimensions, clicked like the tab's
 (All or single values, `toggleValue()`/`selectAll()`), log scale and reference toggles, "All runs" and
 "All floors", a chart text size (100-200 %, the chart drawn on a canvas 1/k as large and shown at

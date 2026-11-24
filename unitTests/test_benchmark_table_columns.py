@@ -32,6 +32,14 @@ C. The floor summary row: seconds per window of the column itself (the session v
 D. Exports: the CSV has EXPORT_COLUMNS as its header and raw values, only the kept runs; the
    HTML page has one table per group, each led by floor/run/engine, headers translated; the
    PDF renders with the new tables.
+F. Write speed: a run that wrote no bytes (a count-only benchmark run still logs a write
+   phase time) has none -- empty in the CSV, a dash in the tables, no point on the write
+   chart; from 0.1 MB/s up one decimal, below it two significant digits, never 0.0.
+G. Empty columns: report_tables(rows) leaves out a column no run of `rows` has a value in,
+   never the floor, the run or the engine; a table left with only those three goes, and so
+   does every table for no runs; one run decides alone; without rows every column stays.
+   The HTML page and the PDF leave out those columns and tables; the CSV keeps all. A PDF
+   in the Polish notation writes digit groups as spaces (the content stream is ASCII).
 E. The tab (real display): the tree's columns are TREE_COLUMNS with translated headings; a
    run's #0 label is its timestamp alone; a cell shows the shown value.
 
@@ -42,6 +50,7 @@ import csv
 import json
 import math
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -290,8 +299,10 @@ def part_d():
 
     T = Translator("pl")
     page = report_export.render("html", fields, rows, T)
-    check(page.count("<table>") == len(tc.GROUPS), "HTML: one table per group")
-    for column in tc.EXPORT_COLUMNS:
+    check(page.count("<table data-keys") == len(tc.report_tables(rows)),
+          "HTML: one table per group that has a column of values")
+    filled = [c for _title, columns in tc.report_tables(rows) for c in columns]
+    for column in filled:
         check(f"<th>{T.t(tc.header_key(column))}</th>" in page
               or f"<th>{T.t(tc.header_key(column)).replace('&', '&amp;')}</th>" in page,
               f"HTML: translated header of {column}")
@@ -304,6 +315,98 @@ def part_d():
         check(os.path.getsize(path) > 0, "PDF renders with the new tables")
         data = open(path, "rb").read()
         check(b"loop_numbers_per_second" not in data, "PDF: no raw log column header")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def part_f():
+    t = Translator("en").t
+    base = dict(PIPELINE)
+    count_only = dict(base, write_files="0", bytes_written="0", write_seconds="2.277")
+    check(tc.write_mbps(count_only) is None and tc.raw(count_only, "write_mbps") == ""
+          and tc.shown(count_only, "write_mbps", t) == DASH,
+          "0 bytes written with a write time: no write speed (CSV empty, table dash)")
+    tiny = dict(base, bytes_written="156", write_seconds="0.018")
+    check(tc.raw(tiny, "write_mbps") == "0.0087" and tc.shown(tiny, "write_mbps", t) == "0.0087",
+          f"156 B in 0.018 s: two significant digits ({tc.shown(tiny, 'write_mbps', t)!r})")
+    low = dict(base, bytes_written="50000", write_seconds="1")
+    check(tc.raw(low, "write_mbps") == "0.050", f"0.05 MB/s -> 0.050 ({tc.raw(low, 'write_mbps')!r})")
+    edge = dict(base, bytes_written="99960", write_seconds="1")
+    check(tc.raw(edge, "write_mbps") == "0.100", f"0.09996 MB/s -> 0.100 ({tc.raw(edge, 'write_mbps')!r})")
+    tenth = dict(base, bytes_written="100000", write_seconds="1")
+    check(tc.raw(tenth, "write_mbps") == "0.1", f"0.1 MB/s -> 0.1 ({tc.raw(tenth, 'write_mbps')!r})")
+    check(tc.raw(base, "write_mbps") == "25.0" and tc.shown(base, "write_mbps", t) == "25.0",
+          "25 MB/s keeps one decimal")
+    for name, row in (("no bytes column", {k: v for k, v in base.items() if k != "bytes_written"}),
+                      ("zero write time", dict(base, write_seconds="0")),
+                      ("negative bytes", dict(base, bytes_written="-5"))):
+        check(tc.raw(row, "write_mbps") == "", f"{name}: no write speed")
+    floors = [dict(base, base_exponent="20", bytes_written="0", write_seconds="2.3", engine="v4.1"),
+              dict(base, base_exponent="21", engine="v4.1")]
+    points = benchmark.aggregate_benchmark_write_mbps(floors)
+    check(20 not in dict(points) and 21 in dict(points),
+          f"write points leave out the count-only run ({points!r})")
+    _fields, prepared = _prepared(floors)
+    series = benchmark.benchmark_series(prepared, "write")
+    xs = [x for s_ in series for x, _y in s_.points]
+    check(20 not in xs and 21 in xs, f"write chart: no point for 0 bytes written ({xs})")
+
+
+def part_g():
+    fields, rows = _prepared([PIPELINE, NATIVE, VERIFY])
+    tables = dict(tc.report_tables(rows))
+    every = dict(tc.report_tables())
+    check(every == dict(tc.report_tables(None)) and all(
+              columns == tc.KEY_COLUMNS + tuple(c for c in g if c not in tc.KEY_COLUMNS)
+              for (_k, columns), (_k2, g) in zip(tc.report_tables(), tc.GROUPS)),
+          "without rows every column stays")
+    shown = [c for columns in tables.values() for c in columns]
+    check("run_nps_unverified" not in shown and "verify_drop" not in shown,
+          "columns no run fills are left out")
+    check("pi_l" in shown and "write_mbps" in shown and "machine" in shown,
+          "a column one run fills stays")
+    check(all(columns[:3] == tc.KEY_COLUMNS for columns in tables.values()),
+          "every table still starts with floor, run, engine")
+    order = [c for columns in tables.values() for c in columns if c not in tc.KEY_COLUMNS]
+    check(order == [c for c in tc.TREE_COLUMNS if c in order and c != "engine"],
+          "the kept columns keep their order")
+    _f, old = _prepared([OLD])
+    kept = [title for title, _c in tc.report_tables(old)]
+    check(kept == ["bench.pdf_table_run"], f"a table left with the key columns goes ({kept})")
+    check(tc.report_tables([]) == [], "no runs: no tables")
+    _f, one = _prepared([PROVEN])
+    check("verify_drop" in [c for _t, cs in tc.report_tables(one) for c in cs],
+          "one run decides alone (its verification columns stay)")
+
+    T = Translator("en")
+    page = report_export.render("html", fields, rows, T)
+    check(f"<th>{T.t(tc.header_key('run_nps_unverified'))}</th>" not in page
+          and f"<th>{T.t(tc.header_key('pi_l'))}</th>" in page,
+          "HTML leaves out the empty columns")
+    _f2, old_rows = _prepared([OLD])
+    page = report_export.render("html", _f2, old_rows, T)
+    check(page.count("<table") == 1, f"HTML: only the Run table for an old row ({page.count('<table')})")
+    text = report_export.render("csv", fields, rows, T)
+    check(tuple(next(csv.reader(text.splitlines()))) == tc.EXPORT_COLUMNS,
+          "CSV keeps every column")
+    tmp = tempfile.mkdtemp(prefix="primeatlas_table_columns_pdf_")
+    try:
+        path = os.path.join(tmp, "r.pdf")
+        benchmark.render_benchmark_pdf(path, [], fields, rows, translator=T)
+        data = open(path, "rb").read()
+        check(b"without verify" not in data and b"Verify slowdown" not in data,
+              "PDF leaves out the empty columns")
+        check(rb"(pi\(L\))" in data, "PDF keeps a column one run fills")
+        from primeatlas.core import number_format, number_format_dynamic
+        saved = number_format_dynamic.STYLE
+        number_format_dynamic.STYLE = number_format.SPACE_COMMA
+        try:
+            benchmark.render_benchmark_pdf(path, [], fields, rows, translator=Translator("pl"))
+        finally:
+            number_format_dynamic.STYLE = saved
+        data = open(path, "rb").read()
+        check(re.search(rb"\d\?\d", data) is None and b"98 522 167" in data,
+              "PDF in the Polish notation: digit groups are spaces, never '?'")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -353,6 +456,8 @@ def main():
     rows = part_b()
     part_c(*rows)
     part_d()
+    part_f()
+    part_g()
     part_e()
     if failures:
         print(f"\n{len(failures)} FAILED")
