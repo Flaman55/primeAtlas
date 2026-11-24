@@ -1,22 +1,23 @@
 ## English
 
-**PrimeAtlas 1.5.0** — Generation sizes runs for the computer it runs on: a RAM check before every run, a running time and ETA, width and engine proposals, a target planner and a WSL RAM limit you can set from Atlas. New: Constellations → Density against the Hardy-Littlewood prediction, and two more Irreducibility sub-tabs, Primality and Multiplicative counting. Every number field reads any common notation.
+**PrimeAtlas 1.6.0** — Atlas now fits small screens and remembers its layout, writes numbers in the notation of your language, ties every benchmark result to the computer it ran on, and verifies P windows in a width you choose. One thread control caps every thread count at the CPUs WSL has, and About sets both WSL limits, RAM and processors.
 
 PrimeAtlas is an application for generating, browsing and researching prime numbers: a prime and prime-constellation archive, research tabs (Goldbach, squares, polynomials, gaps, π(x) approximations, irreducibility) and GPU-rendered visualizations.
 
 ### What's new
+- **Small screens and layout**
+  - **Every tab down to 800 px wide**, in English and Polish at font size 100 % and 125 %: rows of fields and buttons wrap whole groups onto the next line, descriptions wrap to the width they have, and a narrow window never cuts a control off.
+  - **Height grips** under every terminal, list, table, multi-line field and chart. Grip heights, the window's size and position, and terminals shown or hidden are remembered; Settings → General → Default layout brings the default back.
+  - **Font size** stays the same after Windows reports a display change (a monitor woken from sleep, a new resolution).
+- **Numbers in your language's notation:** every number the app shows is written as 1 234 567,89 in Polish and 1,234,567.89 in English; Settings → General → Number format picks another notation. Number field tips say what the field is for and its range.
+- **One thread control:** the pipeline workers, Section D's Threads, Pseudosquares' Threads and the engines' write threads share one list from 1 to the CPU count WSL reports, with Max showing that count, e.g. "Max (8)"; a larger number becomes Max.
 - **Generation**
-  - **RAM check on Generate:** a run predicted to need more RAM than the budget asks first, naming the predicted GB, the budget and the free RAM. The budget now also respects the RAM free in Windows, not only in WSL.
-  - **Running time and ETA** in the status line, from the time model at launch, then from the run's measured pace.
-  - **Proposals:** an engine proposal and a width proposal, each with a Use button; Auto proposes at most 10^11 numbers per v7 run (wider gains little speed), and in Explore re-splits iterations × width into fewer, wider runs.
-  - **Target planner:** a list of numbers (each with an optional radius) split into the fastest set of Atlas and Pseudosquares runs; Use fills Quick-gen with a planned run.
-  - **Pipeline form** grouped into four frames that fit a 13" Full HD screen at 150 %; a fresh install defaults to one instance, one batch, engine v7 and workers Max (every CPU WSL reports).
-- **Constellations → Density:** hits of each k-tuple variant against the Hardy-Littlewood prediction over exactly the scanned spans, with the ratio, its deviation and a chart per floor.
-- **Research → Irreducibility:** **Primality** decides whether a number is prime from its residues alone (theorem T6); **Multiplicative counting** shows the discrete logarithm and whether a number is a square modulo q (theorem T9). Each has a self-test of 1000 random cases.
-- **Number fields:** all 195 read any common notation, typed or pasted ("1 000 000", "1,000,000", "10^25+3", "3×10^24", "1,5E+25"); an unusable or out-of-range value turns the field red, an ambiguous one ("3,000") offers both readings.
-- **About → This computer:** Windows and WSL hardware, and the WSL RAM limit, with a row to change it (a proposal from the Windows RAM, a warning above it, a backup of `.wslconfig`, and a WSL restart only when no run is active).
-- **Benchmark:** every run records its computer and the CPU load before and during it; the time model calibrates only from this computer's runs. BENCHMARK.md opens with a new engine series (v7.2, v7.4, pt1 against the Pseudosquares Prime Sieve).
-- **Fix:** the bottom progress bar holds the progress a job reports.
+  - **Section D** verifies the floor's first island of P files in windows of a width you choose, with Split into windows, Verify now and Auto (the fewest windows the RAM allows for the v7.3 sieve). Run is greyed out while the floor has no P windows.
+  - **Quick-gen** fills the gaps of a range instead of reporting it as already in storage, and its window counts read the store the selected engine writes into.
+  - **Target planner:** an Insert example button, the file form described in its how-to, and an optional engine per target line.
+- **Benchmark → computers:** each run is tied to the computer it ran on (CPU and RAM read from Windows without admin rights, plus values you type in About → This computer → Fill in details, such as turbo clock and RAM CL). The table's Computer cell opens that computer's details; Filter, the HTML page, the PDF and the CSV export carry it.
+- **About → This computer:** the WSL processor limit sits next to the RAM limit, both saved to `.wslconfig` with one Save (only what changed, one backup, one restart question); the WSL swap is shown with its source.
+- **Fix:** after Run or Generate the mouse wheel scrolls the page under the pointer at once.
 
 The full list is in `CHANGELOG.md`. An existing installation gets this version from **Settings → Updates**; there is no need to reinstall.
 
@@ -39,23 +40,24 @@ License: PolyForm Noncommercial 1.0.0 (noncommercial use). See `LICENSE.md` and 
 
 ## Polski
 
-**PrimeAtlas 1.5.0** — Generowanie dopasowuje przebiegi do komputera, na którym działa: sprawdzenie RAM-u przed każdym przebiegiem, czas trwania i ETA, propozycje szerokości i silnika, planer celów oraz limit RAM-u WSL ustawiany z Atlasu. Nowe: Konstelacje → Gęstość na tle przewidywania Hardy'ego-Littlewooda i dwie kolejne podzakładki Nieredukowalności, Pierwszość i Liczenie multiplikatywne. Każde pole liczbowe czyta dowolny popularny zapis.
+**PrimeAtlas 1.6.0** — Atlas mieści się na małych ekranach i pamięta swój układ, zapisuje liczby w notacji Twojego języka, wiąże każdy wynik benchmarku z komputerem, na którym powstał, i weryfikuje okna P w wybranej przez Ciebie szerokości. Jedna kontrolka wątków ogranicza każdą liczbę wątków do procesorów widocznych w WSL, a O programie ustawia oba limity WSL: RAM i procesory.
 
 PrimeAtlas to aplikacja do generowania, przeglądania i badania liczb pierwszych: magazyn liczb pierwszych i konstelacji, zakładki badawcze (Goldbach, kwadraty, wielomiany, luki, przybliżenia π(x), nieredukowalność) oraz wizualizacje renderowane na GPU.
 
 ### Co nowego
+- **Małe ekrany i układ**
+  - **Każda karta działa już od 800 px szerokości**, po angielsku i po polsku, przy rozmiarze czcionki 100 % i 125 %: wiersze pól i przycisków przenoszą całe grupy do następnej linii, opisy zawijają się do dostępnej szerokości, a wąskie okno nigdy nie ucina kontrolki.
+  - **Uchwyty wysokości** pod każdym terminalem, listą, tabelą, polem wielowierszowym i wykresem. Wysokości uchwytów, rozmiar i położenie okna oraz pokazane lub ukryte terminale są zapamiętywane; Ustawienia → Ogólne → Domyślny układ przywraca układ domyślny.
+  - **Rozmiar czcionki** zostaje taki sam, gdy Windows zgłosi zmianę ekranu (monitor wybudzony z uśpienia, nowa rozdzielczość).
+- **Liczby w notacji Twojego języka:** każda liczba pokazywana w aplikacji ma postać 1 234 567,89 po polsku i 1,234,567.89 po angielsku; Ustawienia → Ogólne → Format liczb pozwala wybrać inną notację. Podpowiedzi pól liczbowych mówią, do czego służy pole, i podają jego zakres.
+- **Jedna kontrolka wątków:** workery pipeline, Wątki w Sekcji D, Wątki Pseudosquares i wątki zapisu silników mają wspólną listę od 1 do liczby procesorów zgłaszanej przez WSL, a Max pokazuje tę liczbę, np. „Max (8)”; większa liczba staje się Max.
 - **Generowanie**
-  - **Sprawdzenie RAM-u przy Generuj:** przebieg, który według przewidywań potrzebuje więcej RAM-u niż budżet, najpierw pyta i podaje przewidywane GB, budżet i wolny RAM. Budżet uwzględnia teraz także RAM wolny w Windows, nie tylko w WSL.
-  - **Czas trwania i ETA** w linii stanu, najpierw z modelu czasu, potem z rzeczywistego tempa przebiegu.
-  - **Propozycje:** propozycja silnika i propozycja szerokości, każda z przyciskiem Użyj; Auto proponuje najwyżej 10^11 liczb na przebieg v7 (szerszy prawie nie przyspiesza), a w Eksploracji przelicza iteracje × szerokość na mniej, szerszych przebiegów.
-  - **Planer celów:** lista liczb (każda z opcjonalnym promieniem) dzielona na najszybszy zestaw przebiegów Atlasa i Pseudosquares; Użyj wypełnia Quick-gen zaplanowanym przebiegiem.
-  - **Formularz pipeline** w czterech ramkach, które mieszczą się na ekranie 13" Full HD przy 150 %; świeża instalacja zaczyna od jednej instancji, jednej partii, silnika v7 i workerów Max (wszystkie procesory widoczne w WSL).
-- **Konstelacje → Gęstość:** trafienia każdego wariantu krotki na tle przewidywania Hardy'ego-Littlewooda, dokładnie na przeskanowanych odcinkach, ze stosunkiem, odchyleniem i wykresem dla każdego piętra.
-- **Badania → Nieredukowalność:** **Pierwszość** rozstrzyga, czy liczba jest pierwsza, wyłącznie z jej reszt (twierdzenie T6); **Liczenie multiplikatywne** pokazuje logarytm dyskretny i czy liczba jest kwadratem modulo q (twierdzenie T9). Każda ma samotest na 1000 losowych przypadkach.
-- **Pola liczbowe:** wszystkie 195 czytają dowolny popularny zapis, wpisany lub wklejony („1 000 000”, „1,000,000”, „10^25+3”, „3×10^24”, „1,5E+25”); nieużyteczna albo spoza zakresu wartość zabarwia pole na czerwono, niejednoznaczna („3,000”) proponuje oba odczyty.
-- **O programie → Ten komputer:** sprzęt Windows i WSL oraz limit RAM-u WSL z wierszem do jego zmiany (propozycja z RAM-u Windows, ostrzeżenie powyżej niej, kopia `.wslconfig` i restart WSL tylko wtedy, gdy nie trwa żaden przebieg).
-- **Benchmark:** każdy przebieg zapisuje swój komputer i obciążenie CPU przed nim i w trakcie; model czasu kalibruje się tylko z przebiegów tego komputera. BENCHMARK.md otwiera nowa seria silników (v7.2, v7.4, pt1 na tle Pseudosquares Prime Sieve).
-- **Poprawka:** dolny pasek postępu trzyma postęp zgłoszony przez zadanie.
+  - **Sekcja D** weryfikuje pierwszą wyspę plików P piętra w oknach wybranej szerokości, z polami Podział na okna, Weryfikuj teraz i przyciskiem Auto (najmniej okien, na ile pozwala RAM, dla sita v7.3). Uruchom jest wyszarzony, dopóki piętro nie ma okien P.
+  - **Quick-gen** uzupełnia luki zakresu zamiast zgłaszać go jako już zapisany, a liczniki okien czytają magazyn, do którego zapisuje wybrany silnik.
+  - **Planer celów:** przycisk Wstaw przykład, opis postaci pliku w instrukcji i opcjonalny silnik w każdej linii celu.
+- **Benchmark → komputery:** każdy przebieg jest powiązany z komputerem, na którym działał (CPU i RAM odczytane z Windows bez uprawnień administratora oraz wartości wpisane w O programie → Ten komputer → Uzupełnij dane, np. zegar turbo i CL pamięci). Komórka Komputer w tabeli otwiera dane tego komputera; uwzględniają go Filtr, strona HTML, PDF i eksport CSV.
+- **O programie → Ten komputer:** limit procesorów WSL stoi obok limitu RAM, oba zapisywane do `.wslconfig` jednym przyciskiem Zapisz (tylko to, co się zmieniło, jedna kopia zapasowa, jedno pytanie o restart); widać też swap WSL i jego źródło.
+- **Poprawka:** po Uruchom lub Generuj kółko myszy od razu przewija stronę pod wskaźnikiem.
 
 Pełna lista jest w pliku `CHANGELOG.md`. Istniejąca instalacja dostaje tę wersję przez **Ustawienia → Aktualizacje**; nie trzeba instalować ponownie.
 
