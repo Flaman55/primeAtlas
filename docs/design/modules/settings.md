@@ -16,7 +16,7 @@ language, and NOTICE.md.
 | Updates and restart | `app_update.py`, `app_restart.py` |
 | First-run setup | `env_setup.py`, `env_setup_wizard.py` |
 | Component versions | `prime_sieve/env_versions.py` (WSL-side probe), `env_versions_view.py` (report text and warnings) |
-| About | `primeatlas/about/about_tab.py`, `system_info.py` (hardware probe), `system_info_text.py` (its lines), `wslconfig_edit.py` (changes `.wslconfig` memory=), `wsl_limit_row.py` (its row), `machine_prompt.py` + `machine_details_window.py` (the values typed for this computer) |
+| About | `primeatlas/about/about_tab.py`, `system_info.py` (hardware probe), `system_info_text.py` (its lines), `wslconfig_edit.py` (changes `.wslconfig` memory= and processors=), `wsl_limit_row.py` (its row), `machine_prompt.py` + `machine_details_window.py` (the values typed for this computer) |
 
 ## Contract
 
@@ -64,18 +64,26 @@ there and the entry was not asked yet; both answers mark it asked, Yes opens the
 and no details read yet: a message instead of the window. A broken file is never changed: a copy
 of it is kept and an error names it (once per session after a reload).
 
-Changing the WSL RAM limit (About → This computer, `wsl_limit_row.WslLimitRow` over
-`wslconfig_edit.py`): a whole-GB field (from WSL's own default, half the Windows RAM, up to the
-whole RAM) shows `memory=` when set, else the proposal, Windows RAM minus max(3 GiB, 25 %) rounded
-to whole GiB (an arbitrary default: it only fills the field). Save is disabled until the Windows
-RAM is known and while a WSL restart runs; with the file's own limit (in any unit, the last
-`memory=` of `[wsl2]` when there are several) it does nothing at all. A limit above the proposal first gets a warning (Yes/No, No by
+Changing the WSL limits (About → This computer, `wsl_limit_row.WslLimitRow` over
+`wslconfig_edit.py`): a whole-GB RAM field (from WSL's own default, half the Windows RAM, up to
+the whole RAM) shows `memory=` when set, else the proposal, Windows RAM minus max(3 GiB, 25 %)
+rounded to whole GiB (an arbitrary default: it only fills the field). A processor field (1 up to
+the Windows threads) shows `processors=` when set, else every Windows thread, which is what WSL
+takes with no `processors=`; a file value above the threads shows as it is, out of range. One
+Save serves both. It is disabled until the Windows RAM and threads are known and while a WSL
+restart runs. Either field unusable: nothing is read or written. A field equal to the file's
+value (RAM in any unit, the last `memory=` of `[wsl2]` when there are several; no
+`processors=` counts as every thread) is left out of the change, and with neither changed Save
+does nothing at all. A changed RAM limit above the proposal first gets a warning (Yes/No, No by
 default): Windows short of RAM can freeze or switch itself off and lose unsaved work; No keeps
-everything as it was. Save then asks with the file's path and the changed lines, then writes: the
-old file is copied next to it as `.wslconfig.bak_<date>_<time>`, the new text replaces it in one
-rename, only `[wsl2]` `memory=` changes (other keys, sections, comments, line ends and a BOM stay;
-a missing line or section is added), and a file edited while the question was open is not
-overwritten. The limit applies when WSL starts again: while a Generation job runs
+everything as it was. A risky limit already in the file is not warned about again. Save then
+asks once with the file's path and the changed lines, then writes both in one change: the old
+file is copied next to it as `.wslconfig.bak_<date>_<time>`, the new text replaces it in one
+rename, only the changed `[wsl2]` keys change (other keys, sections, comments, line ends and a
+BOM stay; a missing line is added after the section's last key, a missing section at the end),
+and a file edited while the question was open is not overwritten. The WSL swap is shown, not
+edited: the size WSL sees (`SwapTotal`) with `swap=` or the WSL default (a quarter of the RAM
+limit), "off" for 0. The limit applies when WSL starts again: while a Generation job runs
 (`close_guard.running_jobs`) WSL is not restarted and a note says so; otherwise Atlas asks to run
 `wsl --shutdown`, which stops every WSL program, then reads the hardware again. No admin rights:
 the file belongs to the user.

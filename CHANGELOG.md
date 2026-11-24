@@ -341,6 +341,21 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   są zapamiętywane; za pierwszym razem aplikacja otwiera się zmaksymalizowana. Ustawienia >
   Ogólne > Domyślny układ od razu przywraca układ domyślny; wartości formularzy zostają.
 
+### +19 — About: WSL processor limit next to the RAM limit, swap shown
+
+- English: About > This computer sets how many CPU threads WSL may use (processors= in
+  .wslconfig, from 1 up to the Windows threads; empty in the file means all of them) next to the
+  RAM limit. One Save writes both: only what changed, with one question, one backup and one
+  WSL restart question. A warning comes only when the RAM limit itself changes to a risky value.
+  The hardware lines show the WSL swap: its size and whether it comes from swap= or the WSL
+  default; 0 reads "off".
+- Polski: O programie > Ten komputer ustawia, ile wątków procesora może użyć WSL (processors= w
+  .wslconfig, od 1 do liczby wątków Windows; brak w pliku oznacza wszystkie), obok limitu RAM.
+  Jeden przycisk Zapisz zapisuje oba: tylko to, co się zmieniło, z jednym pytaniem, jedną kopią
+  zapasową i jednym pytaniem o restart WSL. Ostrzeżenie pojawia się tylko wtedy, gdy sam limit
+  RAM zmienia się na ryzykowny. Linie sprzętu pokazują swap WSL: jego rozmiar i to, czy pochodzi
+  z swap=, czy z domyślnego ustawienia WSL; 0 to „wyłączony”.
+
 ## 1.5.0 — 2026-11-17
 
 ### +1 — Generation: RAM check on Generate, proposal from the run's start, native primesieve without storage

@@ -1,7 +1,9 @@
 """
 system_info_text.py -- the About tab's "This computer" lines from a system_info.SystemInfo:
-Windows (OS, CPU, RAM, the computer's id in benchmark rows), WSL (distro, kernel, what it sees) and the WSL RAM limit as a share
-of the Windows RAM with where it comes from (.wslconfig memory= or the WSL default);
+Windows (OS, CPU, RAM, the computer's id in benchmark rows), WSL (distro, kernel, what it sees), the WSL RAM limit as a share
+of the Windows RAM with where it comes from (.wslconfig memory= or the WSL default) and
+the WSL swap with where it comes from (.wslconfig swap= or the WSL default; shown with WSL
+unreachable too, its size then unknown);
 a CPU details line right under the CPU line and a RAM details line right under the RAM line,
 from the CPU/RAM details (SystemInfo.details) completed by the values typed for this computer
 in benchmark_machines.json (architecture, release year and turbo in the CPU line, CL and
@@ -92,6 +94,7 @@ def _windows_wsl_lines(info, T):
     ]
     if wsl is None:
         lines.append(T("about.system_wsl_unreachable"))
+        lines.append(_swap_line(None, cfg, T))
         return lines
     lines.append(T("about.system_wsl", distro=_known(wsl.distro, T), kernel=_known(wsl.kernel, T)))
     resources = T("about.system_wsl_resources", cpus=_known(wsl.cpus, T),
@@ -107,4 +110,16 @@ def _windows_wsl_lines(info, T):
     else:
         lines.append(T("about.system_wsl_limit_no_share", limit=gib_text(wsl.mem_total, T),
                        source=source))
+    lines.append(_swap_line(wsl.swap_total, cfg, T))
     return lines
+
+
+def _swap_line(swap_total, cfg, T):
+    """The WSL swap: the size WSL sees (`swap_total`, None when unknown) and its source."""
+    if swap_total == 0 or (swap_total is None and cfg.swap_bytes == 0):
+        size = T("about.system_swap_off")
+    else:
+        size = gib_text(swap_total, T)
+    source = (T("about.system_swap_config", swap=cfg.swap_text) if cfg.swap_text
+              else T("about.system_swap_default"))
+    return T("about.system_swap", size=size, source=source)

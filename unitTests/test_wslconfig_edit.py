@@ -1,19 +1,23 @@
 """
 test_wslconfig_edit.py -- primeatlas/about/wslconfig_edit.py, how Atlas changes the WSL RAM
-limit (memory= of the [wsl2] section of %UserProfile%\\.wslconfig).
+and processor limits (memory= and processors= of the [wsl2] section of
+%UserProfile%\\.wslconfig).
 
 A. min_limit_gib(windows_ram_bytes): WSL's own default, half the RAM in whole GiB, at least
    MIN_LIMIT_GIB. proposed_limit_gib: Windows RAM minus max(RESERVE_MIN_GIB, RESERVE_SHARE of
    it), rounded to whole GiB, never below min_limit_gib. max_limit_gib: the whole GiB of
    Windows RAM. All three None for unknown RAM. is_risky(gib, ram): above the proposal.
-B. set_wsl2_memory(text, gib): only memory= of [wsl2] changes, everything else stays byte for
+   max_processors(threads): the Windows thread count, None when unknown; MIN_PROCESSORS 1.
+B. set_wsl2_keys(text, {"memory": "40GB"}): only memory= of [wsl2] changes, everything else stays byte for
    byte (other keys, other sections, comments, an inline comment after the value, blank lines,
    CRLF or LF line ends). Section and key names in any case. Every memory= line of [wsl2] gets
    the value (a repeated key cannot keep the old one). [wsl2] without memory= gets the line
    after its last key; no [wsl2] gets the section at the end; an empty file becomes the
    section alone. A memory= of another section is never touched. The result reads back
    (system_info.parse_wslconfig) as the new limit.
-C. plan_change(path, gib) / apply_change(change): the plan holds the file's text before and
+   B2. The same for processors=, and for both keys at once: each existing line keeps its
+   place, missing ones are added after the last key in the order given; {} changes nothing.
+C. plan_change(path, values) / apply_change(change): the plan holds the file's text before and
    after and diff_lines() names exactly the removed and added lines. Applying writes the new
    text, keeps a UTF-8 BOM the file had, leaves a backup copy of the old file next to it
    (.wslconfig.bak_<date>_<time>) and no temp file; a missing file is created with no backup;
@@ -46,6 +50,22 @@ E. WslLimitRow (primeatlas/about/wsl_limit_row.py) with recorded dialogs and shu
         then the hardware is read again; a failed shutdown -> an error.
    E12. While the restart runs Save is disabled and save() does nothing; it is enabled
         again when the restart ends.
+F. The row's processor field (same Save button):
+   F1. show(info) puts the file's processors= in the field, else the Windows thread count,
+       and a hint names the thread count; unknown threads leave both empty.
+   F2. Save refuses a value outside 1..the Windows threads, a non-number and an empty field
+       (the error names the processor field) before reading or asking anything.
+   F3. A file value above the threads (64 of 16) shows as it is, marked out of range;
+       Save refuses it.
+   F4. Until the Windows threads are known Save is disabled and save() does nothing.
+   F5. Nothing to change (processors= equal to the field, or no processors= and the field
+       at all threads, the WSL default; RAM unchanged): no dialog, no write.
+   F6. Only the processors changed: one question whose diff names only processors=, one
+       backup, the memory= line kept, one restart question.
+   F7. Both changed: one question naming both lines, one backup, one restart question.
+   F8. A risky RAM limit already in the file and only the processors changed: no warning;
+       a risky new RAM limit with the processors changed: the warning first.
+   F9. Either field unusable: nothing is asked or written, even when the other changed.
 
 Usage:
     python unitTests/test_wslconfig_edit.py
@@ -102,18 +122,27 @@ def _test_proposal():
     for gib, risky in ((8, False), (12, False), (13, True), (16, True)):
         check(we.is_risky(gib, 16 * GIB) is risky, f"16 GiB RAM, limit {gib} -> risky {risky}")
     check(we.is_risky(64, None) is False, "unknown RAM -> nothing to compare, not risky")
+    check(we.MIN_PROCESSORS == 1, "the smallest processor limit is 1")
+    for threads in (1, 8, 24):
+        check(we.max_processors(threads) == threads, f"{threads} threads -> at most {threads}")
+    for threads in (None, 0):
+        check(we.max_processors(threads) is None, f"threads {threads!r} -> no largest limit")
 
 
 def _limit(text):
     return system_info.parse_wslconfig(text).memory_bytes
 
 
+def _mem(text, gib):
+    return we.set_wsl2_keys(text, {"memory": f"{gib}GB"})
+
+
 def _test_set_memory():
-    print("\n--- B. set_wsl2_memory ---")
-    check(we.set_wsl2_memory("[wsl2]\nmemory=48GB\n", 40) == "[wsl2]\nmemory=40GB\n",
+    print("\n--- B. set_wsl2_keys (memory) ---")
+    check(_mem("[wsl2]\nmemory=48GB\n", 40) == "[wsl2]\nmemory=40GB\n",
           "the value is replaced")
     crlf = "[wsl2]\r\nmemory=48GB\r\nprocessors=8\r\n"
-    check(we.set_wsl2_memory(crlf, 40) == "[wsl2]\r\nmemory=40GB\r\nprocessors=8\r\n",
+    check(_mem(crlf, 40) == "[wsl2]\r\nmemory=40GB\r\nprocessors=8\r\n",
           "CRLF line ends kept")
     full = ("# my settings\n"
             "[experimental]\n"
@@ -128,39 +157,78 @@ def _test_set_memory():
             "[boot]\n"
             "systemd=true\n")
     want = full.replace("  Memory = 48GB   # half of it", "  Memory = 40GB   # half of it")
-    got = we.set_wsl2_memory(full, 40)
+    got = _mem(full, 40)
     check(got == want, f"only memory= of [wsl2] changes, spaces, case and comment kept ({got!r})")
     check(_limit(got) == 40 * GIB, "it reads back as 40 GiB")
     twice = "[wsl2]\nmemory=8GB\nswap=0\nmemory=16GB\n"
-    got = we.set_wsl2_memory(twice, 20)
+    got = _mem(twice, 20)
     check(got == "[wsl2]\nmemory=20GB\nswap=0\nmemory=20GB\n" and _limit(got) == 20 * GIB,
           f"every memory= of [wsl2] gets the value ({got!r})")
     no_key = "[wsl2]\nprocessors=8\nswap=0\n\n[boot]\nsystemd=true\n"
-    got = we.set_wsl2_memory(no_key, 12)
+    got = _mem(no_key, 12)
     check(got == "[wsl2]\nprocessors=8\nswap=0\nmemory=12GB\n\n[boot]\nsystemd=true\n",
           f"[wsl2] without memory= gets it after its last key ({got!r})")
     empty_section = "[wsl2]\n[boot]\nsystemd=true\n"
-    got = we.set_wsl2_memory(empty_section, 12)
+    got = _mem(empty_section, 12)
     check(got == "[wsl2]\nmemory=12GB\n[boot]\nsystemd=true\n",
           f"an empty [wsl2] gets the line right under it ({got!r})")
     other = "[boot]\r\nsystemd=true\r\n"
-    got = we.set_wsl2_memory(other, 12)
+    got = _mem(other, 12)
     check(got == "[boot]\r\nsystemd=true\r\n\r\n[wsl2]\r\nmemory=12GB\r\n",
           f"no [wsl2] -> the section at the end, same line ends ({got!r})")
     no_end = "[boot]\nsystemd=true"
-    got = we.set_wsl2_memory(no_end, 12)
+    got = _mem(no_end, 12)
     check(got == "[boot]\nsystemd=true\n\n[wsl2]\nmemory=12GB\n" and _limit(got) == 12 * GIB,
           f"a last line with no line end still ends before the new section ({got!r})")
-    check(we.set_wsl2_memory("", 7) == "[wsl2]\nmemory=7GB\n", "empty file -> the section alone")
+    check(_mem("", 7) == "[wsl2]\nmemory=7GB\n", "empty file -> the section alone")
     last = "[wsl2]\nswap=0"
-    check(we.set_wsl2_memory(last, 7) == "[wsl2]\nswap=0\nmemory=7GB\n",
+    check(_mem(last, 7) == "[wsl2]\nswap=0\nmemory=7GB\n",
           "a [wsl2] ending the file with no line end gets the line after its last key")
-    check(we.set_wsl2_memory("[wsl2]\nmemory=40GB\n", 40) == "[wsl2]\nmemory=40GB\n",
+    check(_mem("[wsl2]\nmemory=40GB\n", 40) == "[wsl2]\nmemory=40GB\n",
           "the same value -> the same text")
     commented = "[wsl2]\n# memory=10GB\nmemoryX=3\n"
-    got = we.set_wsl2_memory(commented, 9)
+    got = _mem(commented, 9)
     check(got == "[wsl2]\n# memory=10GB\nmemoryX=3\nmemory=9GB\n",
           f"a commented memory= or a longer key is not the key ({got!r})")
+
+
+def _test_set_processors():
+    print("\n--- B2. set_wsl2_keys (processors, both) ---")
+    cpus = system_info.parse_wslconfig
+    check(we.set_wsl2_keys("[wsl2]\nprocessors=8\n", {"processors": "20"})
+          == "[wsl2]\nprocessors=20\n", "processors= is replaced")
+    full = ("[experimental]\r\nprocessors=2\r\n\r\n[wsl2]\r\nmemory=40GB\r\n"
+            "  Processors = 12  # half\r\nswap=32GB\r\n")
+    got = we.set_wsl2_keys(full, {"processors": "20"})
+    check(got == full.replace("Processors = 12", "Processors = 20"),
+          f"only processors= of [wsl2] changes, CRLF, spaces, case and comment kept ({got!r})")
+    check(cpus(got).processors == 20, "it reads back as 20")
+    got = we.set_wsl2_keys("[wsl2]\nmemory=40GB\nswap=0\n", {"processors": "6"})
+    check(got == "[wsl2]\nmemory=40GB\nswap=0\nprocessors=6\n",
+          f"[wsl2] without processors= gets it after its last key ({got!r})")
+    twice = "[wsl2]\nprocessors=4\nprocessors=6\n"
+    check(we.set_wsl2_keys(twice, {"processors": "8"}) == "[wsl2]\nprocessors=8\nprocessors=8\n",
+          "every processors= of [wsl2] gets the value")
+    both = "[wsl2]\nprocessors=4\nswap=0\nmemory=8GB\n"
+    got = we.set_wsl2_keys(both, {"memory": "40GB", "processors": "20"})
+    check(got == "[wsl2]\nprocessors=20\nswap=0\nmemory=40GB\n",
+          f"both keys: each line keeps its place ({got!r})")
+    got = we.set_wsl2_keys("[wsl2]\nswap=0\n[boot]\nsystemd=true\n",
+                           {"memory": "40GB", "processors": "20"})
+    check(got == "[wsl2]\nswap=0\nmemory=40GB\nprocessors=20\n[boot]\nsystemd=true\n",
+          f"both missing: added after the last key in the order given ({got!r})")
+    got = we.set_wsl2_keys("[wsl2]\nmemory=8GB\n", {"processors": "3", "memory": "9GB"})
+    check(got == "[wsl2]\nmemory=9GB\nprocessors=3\n",
+          f"one present, one missing ({got!r})")
+    check(we.set_wsl2_keys("", {"memory": "8GB", "processors": "4"})
+          == "[wsl2]\nmemory=8GB\nprocessors=4\n", "empty file -> the section with both")
+    got = we.set_wsl2_keys("[boot]\nsystemd=true\n", {"processors": "4"})
+    check(got == "[boot]\nsystemd=true\n\n[wsl2]\nprocessors=4\n",
+          f"no [wsl2] -> the section at the end ({got!r})")
+    check(we.set_wsl2_keys(both, {}) == both, "{} changes nothing")
+    check(we.set_wsl2_keys("[wsl2]\nprocessorsX=3\n# processors=2\n", {"processors": "5"})
+          == "[wsl2]\nprocessorsX=3\nprocessors=5\n# processors=2\n",
+          "a longer key or a commented processors= is not the key")
 
 
 def _files(folder):
@@ -174,7 +242,7 @@ def _test_plan_apply():
         path = os.path.join(folder, ".wslconfig")
         with open(path, "w", encoding="utf-8", newline="") as f:
             f.write("[wsl2]\r\nmemory=48GB\r\nswap=0\r\n")
-        change = we.plan_change(path, 40)
+        change = we.plan_change(path, {"memory": "40GB"})
         check(change.existed and change.changed, "an existing file with another value -> a change")
         check(change.diff_lines() == ["- memory=48GB", "+ memory=40GB"],
               f"the diff names the old and the new line ({change.diff_lines()})")
@@ -187,12 +255,12 @@ def _test_plan_apply():
         check(_files(folder) == [".wslconfig", ".wslconfig.bak_2026-11-16_090507"],
               f"no temp file left ({_files(folder)})")
 
-        same = we.plan_change(path, 40)
+        same = we.plan_change(path, {"memory": "40GB"})
         check(not same.changed and same.diff_lines() == [], "the same value -> nothing to change")
         check(we.apply_change(same, now=when) is None and len(_files(folder)) == 2,
               "applying no change writes nothing and makes no backup")
 
-        stale = we.plan_change(path, 30)
+        stale = we.plan_change(path, {"memory": "30GB"})
         with open(path, "w", encoding="utf-8") as f:
             f.write("[wsl2]\nmemory=20GB\n")
         try:
@@ -209,13 +277,13 @@ def _test_plan_apply():
         path = os.path.join(folder, ".wslconfig")
         with open(path, "wb") as f:
             f.write(b"\xef\xbb\xbf[wsl2]\nmemory=8GB\n")
-        we.apply_change(we.plan_change(path, 6), now=when)
+        we.apply_change(we.plan_change(path, {"memory": "6GB"}), now=when)
         with open(path, "rb") as f:
             check(f.read() == b"\xef\xbb\xbf[wsl2]\nmemory=6GB\n", "a UTF-8 BOM is kept")
 
     with tempfile.TemporaryDirectory() as folder:
         path = os.path.join(folder, ".wslconfig")
-        change = we.plan_change(path, 12)
+        change = we.plan_change(path, {"memory": "12GB"})
         check(not change.existed and change.changed
               and change.diff_lines() == ["+ [wsl2]", "+ memory=12GB"],
               f"a missing file -> created, the diff adds the section ({change.diff_lines()})")
@@ -248,11 +316,15 @@ def _fake_T(key, **kwargs):
     return key + "".join(f"|{k}={kwargs[k]}" for k in sorted(kwargs))
 
 
-def _info(ram_gib, memory_text=None):
-    windows = system_info.WindowsInfo(ram_total=None if ram_gib is None else ram_gib * GIB)
-    cfg = (system_info.parse_wslconfig(f"[wsl2]\nmemory={memory_text}\n") if memory_text
-           else system_info.WslConfig())
-    return system_info.SystemInfo(windows, None, cfg)
+def _info(ram_gib, memory_text=None, threads=16, processors=None):
+    windows = system_info.WindowsInfo(ram_total=None if ram_gib is None else ram_gib * GIB,
+                                      threads=threads)
+    text = "[wsl2]\n"
+    if memory_text:
+        text += f"memory={memory_text}\n"
+    if processors is not None:
+        text += f"processors={processors}\n"
+    return system_info.SystemInfo(windows, None, system_info.parse_wslconfig(text))
 
 
 class _Row:
@@ -288,10 +360,13 @@ class _Row:
     def _saved(self):
         self.saved += 1
 
-    def save(self, value=None):
+    def save(self, value=None, cpus=None):
         if value is not None:
             self.row.value_var.set(value)
+        if cpus is not None:
+            self.row.cpu_var.set(cpus)
         self.row.field.refresh(at_once=True)
+        self.row.cpu_field.refresh(at_once=True)
         self.row.save()
         self._settle()
 
@@ -487,6 +562,8 @@ def _test_row():
 
         with tempfile.TemporaryDirectory() as folder:
             _test_row_edges(root, folder)
+        with tempfile.TemporaryDirectory() as folder:
+            _test_processors(root, folder)
     finally:
         root.destroy()
 
@@ -593,9 +670,133 @@ def _test_row_edges(root, folder):
           "E12: the restart ends -> Save enabled again, the hardware read again")
 
 
+def _test_processors(root, folder):
+    print("\n--- F. the processor field ---")
+    import tkinter.messagebox as messagebox
+    errors = []
+    messagebox.showerror = lambda *a, **k: errors.append(a)
+    path = os.path.join(folder, ".wslconfig")
+    base = "[wsl2]\nmemory=8GB\n"
+
+    def backups():
+        return [n for n in os.listdir(folder) if n.startswith(".wslconfig.bak_")]
+
+    # F1
+    r = _Row(root, path)
+    r.row.show(_info(16, "8GB", processors=8))
+    check(r.row.cpu_var.get() == "8", "F1: the field shows the file's processors=")
+    check(r.row.cpu_hint_label.cget("text") == "about.wsl_cpu_hint|threads=16",
+          f"F1: the hint names the threads ({r.row.cpu_hint_label.cget('text')!r})")
+    r.row.show(_info(16, "8GB"))
+    check(r.row.cpu_var.get() == "16", "F1: no processors= -> all Windows threads")
+    r.row.show(_info(16, "8GB", threads=None))
+    check(r.row.cpu_var.get() == "" and r.row.cpu_hint_label.cget("text") == "",
+          "F1: unknown threads -> empty field, no hint")
+
+    # F4
+    _write(path, base)
+    r = _Row(root, path, answers=[True, True])
+    r.row.show(_info(16, "8GB", threads=None))
+    r.save("10", "4")
+    check(r.row.save_button.instate(["disabled"]) and r.dialogs == [] and _read(path) == base,
+          f"F4: unknown threads -> Save disabled, save() does nothing ({r.kinds()})")
+    r.row.show(_info(16, "8GB"))
+    check(not r.row.save_button.instate(["disabled"]), "F4: threads known -> Save enabled")
+
+    # F2
+    r = _Row(root, path)
+    r.row.show(_info(16, "8GB"))
+    for bad in ("17", "0", "abc"):
+        errors.clear()
+        r.dialogs.clear()
+        r.save("8", bad)
+        check(len(errors) == 1 and r.dialogs == [] and _read(path) == base,
+              f"F2: processors {bad!r} is refused before anything is read or asked")
+    r.dialogs.clear()
+    r.save("8", "")
+    check(r.kinds() == ["error"] and r.dialogs[0][1] == "about.wsl_cpu_empty"
+          and _read(path) == base, f"F2: an empty processor field is refused by name ({r.dialogs})")
+
+    # F3
+    _write(path, base + "processors=64\n")
+    r = _Row(root, path, answers=[True, True])
+    r.row.show(_info(16, "8GB", processors=64))
+    check(r.row.cpu_var.get() == "64" and r.row.cpu_field.problem is not None,
+          "F3: 64 of 16 threads shows as it is, marked out of range")
+    errors.clear()
+    r.save()
+    check(len(errors) == 1 and r.dialogs == [] and _read(path) == base + "processors=64\n",
+          f"F3: Save refuses it ({r.kinds()})")
+
+    # F5
+    for text, processors in ((base + "processors=8\n", 8), (base, None),
+                             (base + "processors=many\n", None)):
+        _write(path, text)
+        r = _Row(root, path, answers=[True, True])
+        r.row.show(_info(16, "8GB", processors=processors))
+        r.save()
+        check(r.dialogs == [] and r.shutdowns == 0 and _read(path) == text,
+              f"F5: nothing to change in {text!r} -> nothing happens ({r.kinds()})")
+    before = len(backups())
+
+    # F6
+    _write(path, base)
+    r = _Row(root, path, answers=[False])
+    r.row.show(_info(16, "8GB"))
+    r.save(None, "12")
+    diff = r.dialogs[0][1] if r.dialogs else ""
+    check(r.kinds() == ["ask"] and "+ processors=12" in diff and "memory" not in diff,
+          f"F6: the question names only processors= ({diff!r})")
+    r = _Row(root, path, answers=[True, False])
+    r.row.show(_info(16, "8GB"))
+    r.save(None, "12")
+    check(_read(path) == base + "processors=12\n" and len(backups()) == before + 1
+          and r.kinds() == ["ask", "ask", "info"] and r.saved == 1,
+          f"F6: Yes -> processors= added, memory= kept, one backup, one restart question "
+          f"({r.kinds()})")
+
+    # F7
+    for name in backups():
+        os.remove(os.path.join(folder, name))
+    _write(path, base + "processors=12\n")
+    r = _Row(root, path, answers=[True, False])
+    r.row.show(_info(16, "8GB", processors=12))
+    r.save("10", "6")
+    diff = r.dialogs[0][1] if r.dialogs else ""
+    check("+ memory=10GB" in diff and "+ processors=6" in diff,
+          f"F7: one question names both lines ({diff!r})")
+    check(_read(path) == "[wsl2]\nmemory=10GB\nprocessors=6\n" and len(backups()) == 1
+          and r.kinds() == ["ask", "ask", "info"],
+          f"F7: one write, one backup, one restart question ({r.kinds()})")
+
+    # F8
+    _write(path, "[wsl2]\nmemory=14GB\n")
+    r = _Row(root, path, answers=[False])
+    r.row.show(_info(16, "14GB"))
+    r.save(None, "4")
+    check(r.kinds() == ["ask"], f"F8: a risky limit already in the file -> no warning ({r.kinds()})")
+    r = _Row(root, path, answers=[False])
+    r.row.show(_info(16, "14GB"))
+    r.save("15", "4")
+    check(r.kinds() == ["warn"] and _read(path) == "[wsl2]\nmemory=14GB\n",
+          f"F8: a risky new limit -> the warning first ({r.kinds()})")
+
+    # F9
+    _write(path, base)
+    for ram, cpus in (("abc", "4"), ("10", "abc"), ("", "4"), ("10", "")):
+        errors.clear()
+        r = _Row(root, path, answers=[True, True])
+        r.row.show(_info(16, "8GB"))
+        r.save(ram, cpus)
+        check(len(errors) + r.kinds().count("error") == 1 and "ask" not in r.kinds()
+              and _read(path) == base,
+              f"F9: RAM {ram!r}, processors {cpus!r} -> refused, nothing written ({r.kinds()})")
+
+
 def main():
     _test_proposal()
     _test_set_memory()
+    _test_set_processors()
     _test_plan_apply()
     _test_shutdown()
     _test_row()

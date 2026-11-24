@@ -5,12 +5,13 @@ A. primeatlas/about/system_info.py parsers:
    parse_size: a .wslconfig size ("56GB", "512mb", "8G", "1.5GB", "1073741824") in bytes,
    1024-based, case and spaces ignored; anything else (empty, negative, unknown unit,
    "abc") is None.
-   parse_wslconfig: memory= and processors= of the [wsl2] section only (keys and section
+   parse_wslconfig: memory=, processors= and swap= of the [wsl2] section only (keys and section
    names in any case, "#"/";" comments and inline "#" comments ignored, the last value of
-   a repeated key wins, values of other sections never leak in); missing keys are None.
-   parse_wsl_probe: the WSL probe's output gives distro, kernel, CPUs, MemTotal and
-   MemAvailable in bytes; missing or broken lines give None for that field only; empty
-   output gives every field None.
+   a repeated key wins, values of other sections never leak in); missing keys are None;
+   swap=0 is a size of 0 (swap off), not a missing key.
+   parse_wsl_probe: the WSL probe's output gives distro, kernel, CPUs, MemTotal,
+   MemAvailable and SwapTotal in bytes; missing or broken lines give None for that field
+   only; empty output gives every field None.
 B. The live Windows probe (primeatlas/core/windows_hardware.py): threads equal
    os.cpu_count(), physical cores are between 1 and the threads, total RAM is positive and
    free RAM is below it, the OS and CPU model are non-empty text. wslconfig_path() is
@@ -20,7 +21,10 @@ C. primeatlas/about/system_info_text.py: system_info_lines(info, T) names the OS
    sees (CPUs, RAM, available) and the WSL RAM limit as a share of Windows RAM with its
    source: .wslconfig memory= when set, else the WSL default of half the Windows RAM; an
    unreachable WSL gives one line saying so and no limit line; unknown values read
-   "unknown", never 0 or a made-up number. The computer's id (the machine_id of its
+   "unknown", never 0 or a made-up number. A WSL swap line follows the limit: the size WSL
+   sees (SwapTotal) with its source, .wslconfig swap= when set, else the WSL default of a
+   quarter of the WSL RAM limit; a swap of 0 reads "off"; with WSL unreachable the size is
+   "unknown" (or "off" for swap=0) and the source is still named. The computer's id (the machine_id of its
    benchmark rows) is shown too; the live probe reads windows_hardware.this_machine_id().
 D. system_info_lines(info, T, machine) with SystemInfo.details (core.hardware_details) adds
    a CPU line (base clock in MHz, L2 and L3 in MB, the family text) and a RAM line (installed
@@ -79,24 +83,37 @@ def _test_parsers():
     bad = si.parse_wslconfig("[wsl2]\nmemory=lots\nprocessors=many\n")
     check(bad.memory_text == "lots" and bad.memory_bytes is None and bad.processors is None,
           f"an unreadable memory= keeps its text, its size is None ({bad})")
+    swap = si.parse_wslconfig("[wsl2]\nswap = 32GB # disk\n[other]\nswap=1GB\n")
+    check(swap.swap_text == "32GB" and swap.swap_bytes == 32 * GIB,
+          f"[wsl2] swap= is read with its size, other sections ignored ({swap})")
+    off = si.parse_wslconfig("[wsl2]\nswap=0\n")
+    check(off.swap_text == "0" and off.swap_bytes == 0, f"swap=0 is a size of 0 ({off})")
+    none_swap = si.parse_wslconfig("[wsl2]\nmemory=8GB\n")
+    check(none_swap.swap_text is None and none_swap.swap_bytes is None,
+          f"no swap= -> None ({none_swap})")
     check(si.parse_wslconfig("memory=8GB\n").memory_text is None,
           "a key outside any section is not [wsl2]'s")
 
     probe = ("nproc=24\nkernel=6.6.87.2-microsoft-standard-WSL2\n"
              "MemTotal:       57585296 kB\nMemAvailable:   55000000 kB\n"
+             "SwapTotal:      33554432 kB\n"
              'PRETTY_NAME="Ubuntu 24.04.1 LTS"\n')
     wsl = si.parse_wsl_probe(probe)
     check(wsl.cpus == 24 and wsl.kernel == "6.6.87.2-microsoft-standard-WSL2"
           and wsl.distro == "Ubuntu 24.04.1 LTS", f"probe: CPUs, kernel, distro ({wsl})")
     check(wsl.mem_total == 57585296 * 1024 and wsl.mem_available == 55000000 * 1024,
           f"probe: MemTotal and MemAvailable in bytes ({wsl})")
+    check(wsl.swap_total == 32 * GIB, f"probe: SwapTotal in bytes ({wsl})")
+    check("SwapTotal" in si.WSL_PROBE, "the probe asks for SwapTotal")
     part = si.parse_wsl_probe("nproc=x\nkernel=\nMemTotal: 1000 kB\n")
     check(part.cpus is None and part.kernel is None and part.distro is None
-          and part.mem_total == 1024000 and part.mem_available is None,
+          and part.mem_total == 1024000 and part.mem_available is None
+          and part.swap_total is None,
           f"broken or missing lines give None for that field only ({part})")
     none = si.parse_wsl_probe("")
     check(all(v is None for v in (none.cpus, none.kernel, none.distro, none.mem_total,
-                                  none.mem_available)), f"empty output: all None ({none})")
+                                  none.mem_available, none.swap_total)),
+          f"empty output: all None ({none})")
 
 
 def _test_live_windows():
@@ -154,8 +171,35 @@ def _test_text():
 
         down = system_info_lines(si.SystemInfo(windows, None, set_cfg), T)
         check(T("about.system_wsl_unreachable") in down
-              and not any("%" in line for line in down),
-              f"[{lang}] unreachable WSL: one line saying so, no limit line ({down})")
+              and not any("75 %" in line or "memory=" in line for line in down),
+              f"[{lang}] unreachable WSL: a line saying so, no limit line ({down})")
+
+        def swap_line(cfg, swap_total, reachable=True):
+            wsl_info = (si.WslInfo(distro="U", kernel="k", cpus=24, mem_total=40 * GIB,
+                                   mem_available=39 * GIB, swap_total=swap_total)
+                        if reachable else None)
+            return system_info_lines(si.SystemInfo(windows, wsl_info, cfg), T)[-1]
+        cfg32 = si.parse_wslconfig("[wsl2]\nmemory=40GB\nswap=32GB\n")
+        line = swap_line(cfg32, 32 * GIB)
+        check("32.0 GiB" in line and "swap=32GB" in line,
+              f"[{lang}] swap= set: the size WSL sees and the file's value ({line!r})")
+        line = swap_line(si.parse_wslconfig("[wsl2]\nmemory=40GB\n"), 10 * GIB)
+        check("10.0 GiB" in line and T("about.system_swap_default") in line
+              and "swap=" not in line,
+              f"[{lang}] no swap=: the size and the WSL default named ({line!r})")
+        line = swap_line(si.parse_wslconfig("[wsl2]\nswap=0\n"), 0)
+        check(T("about.system_swap_off") in line and "swap=0" in line and "0.0 GiB" not in line,
+              f"[{lang}] swap=0: off, the file's value named ({line!r})")
+        line = swap_line(cfg32, None, reachable=False)
+        check(T("about.system_unknown") in line and "swap=32GB" in line,
+              f"[{lang}] WSL unreachable: size unknown, the file's value named ({line!r})")
+        line = swap_line(si.parse_wslconfig("[wsl2]\nswap=0\n"), None, reachable=False)
+        check(T("about.system_swap_off") in line,
+              f"[{lang}] WSL unreachable, swap=0: off ({line!r})")
+        line = swap_line(si.WslConfig(None, None, None), None, reachable=False)
+        check(T("about.system_unknown") in line and T("about.system_swap_default") in line,
+              f"[{lang}] WSL unreachable, no swap=: unknown, the default named ({line!r})")
+        check(not any(k in line for k in ("about.", "{", "}")), f"[{lang}] no raw keys ({line!r})")
 
         blank = si.WindowsInfo(os_name=None, cpu_model=None, cores=None, threads=None,
                                ram_total=None, ram_free=None)
@@ -163,7 +207,8 @@ def _test_text():
         utext = "\n".join(unknown)
         check(T("about.system_unknown") in utext and " 0 " not in utext and "0.0 GiB" not in utext,
               f"[{lang}] unknown values read unknown, never 0 ({unknown})")
-        check(not any("%" in line for line in unknown),
+        check(not any("%" in line for line in unknown
+                      if T("about.system_swap_default") not in line),
               f"[{lang}] no share of an unknown Windows RAM ({unknown})")
 
 

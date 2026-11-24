@@ -1,13 +1,14 @@
 """
-wslconfig_edit.py -- how Atlas changes the WSL RAM limit: memory= of the [wsl2] section of
-%UserProfile%\\.wslconfig (system_info.wslconfig_path()). No admin rights: the file belongs
-to the user. No tkinter.
+wslconfig_edit.py -- how Atlas changes the WSL limits: memory= (RAM) and processors= (CPU
+threads) of the [wsl2] section of %UserProfile%\\.wslconfig (system_info.wslconfig_path()).
+No admin rights: the file belongs to the user. No tkinter.
 
-  - min_limit_gib(ram)          the smallest limit offered: WSL's own default, half the RAM
+  - min_limit_gib(ram)          the smallest RAM limit offered: WSL's own default, half the RAM
   - proposed_limit_gib(ram)     Windows RAM minus a reserve for Windows, whole GiB
-  - max_limit_gib(ram)          the largest limit offered: the whole GiB of Windows RAM
-  - is_risky(gib, ram)          a limit above the proposal, which Save warns about
-  - set_wsl2_memory(text, gib)  the file's text with only [wsl2] memory= changed
+  - max_limit_gib(ram)          the largest RAM limit offered: the whole GiB of Windows RAM
+  - is_risky(gib, ram)          a RAM limit above the proposal, which Save warns about
+  - max_processors(threads)     the largest processor limit: every Windows thread, WSL's default
+  - set_wsl2_keys(text, values) the file's text with only the given [wsl2] keys changed
   - plan_change / apply_change  read, diff, write with a backup next to the file
   - shutdown_wsl()              `wsl.exe --shutdown`: a new limit applies on WSL's next start
 
@@ -21,7 +22,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 GIB = 1024 ** 3
@@ -29,12 +30,13 @@ RESERVE_SHARE = 0.25
 RESERVE_MIN_GIB = 3
 WSL_DEFAULT_SHARE = 0.5  # what WSL takes with no memory= set
 MIN_LIMIT_GIB = 1
+MIN_PROCESSORS = 1
 SHUTDOWN_TIMEOUT_S = 60
 BACKUP_SUFFIX_FORMAT = ".bak_%Y-%m-%d_%H%M%S"
 _BOM = b"\xef\xbb\xbf"
 _SECTION = re.compile(r"^\s*\[\s*([^\]]*?)\s*\]")
 # key, value, trailing spaces/comment, line end; the value is what changes.
-_MEMORY = re.compile(r"^(\s*memory\s*=\s*)([^#\r\n]*?)(\s*(?:#[^\r\n]*)?)(\r?\n)?$", re.I)
+_KEY_LINE = r"^(\s*{key}\s*=\s*)([^#\r\n]*?)(\s*(?:#[^\r\n]*)?)(\r?\n)?$"
 
 
 class FileChangedError(OSError):
@@ -66,20 +68,27 @@ def is_risky(gib, ram_bytes):
     return proposal is not None and gib > proposal
 
 
+def max_processors(threads):
+    return threads or None
+
+
 def _is_key_line(line):
     stripped = line.strip()
     return bool(stripped) and not stripped.startswith(("#", ";", "["))
 
 
-def set_wsl2_memory(text, gib):
-    """`text` with every [wsl2] memory= set to `gib` GB; the line is added when missing."""
+def set_wsl2_keys(text, values):
+    """`text` with every [wsl2] line of each key of `values` (key -> value text) set to its
+    value; a missing key is added after the last key of [wsl2], in the order of `values`."""
+    if not values:
+        return text
     newline = "\r\n" if "\r\n" in text else "\n"
-    value = f"{gib}GB"
+    patterns = {key: re.compile(_KEY_LINE.format(key=re.escape(key)), re.I) for key in values}
     lines = text.splitlines(keepends=True)
     section = None
     header = None      # index of the [wsl2] header line
     last_key = None    # index of the last key line of [wsl2]
-    found = False
+    found = set()
     for i, line in enumerate(lines):
         match = _SECTION.match(line)
         if match:
@@ -89,25 +98,27 @@ def set_wsl2_memory(text, gib):
             continue
         if section != "wsl2":
             continue
-        memory = _MEMORY.match(line)
-        if memory:
-            lines[i] = memory.group(1) + value + memory.group(3) + (memory.group(4) or "")
-            found = True
+        for key, pattern in patterns.items():
+            match = pattern.match(line)
+            if match:
+                lines[i] = match.group(1) + values[key] + match.group(3) + (match.group(4) or "")
+                found.add(key)
         if _is_key_line(line):
             last_key = i
-    if found:
+    new_lines = "".join(f"{key}={value}{newline}" for key, value in values.items()
+                        if key not in found)
+    if not new_lines:
         return "".join(lines)
-    new_line = f"memory={value}{newline}"
     if header is None:
         if not lines:
-            return f"[wsl2]{newline}{new_line}"
+            return f"[wsl2]{newline}{new_lines}"
         if not lines[-1].endswith(("\n", "\r")):
             lines[-1] += newline
-        return "".join(lines) + f"{newline}[wsl2]{newline}{new_line}"
+        return "".join(lines) + f"{newline}[wsl2]{newline}{new_lines}"
     after = last_key if last_key is not None else header
     if not lines[after].endswith(("\n", "\r")):
         lines[after] += newline
-    lines.insert(after + 1, new_line)
+    lines.insert(after + 1, new_lines)
     return "".join(lines)
 
 
@@ -127,6 +138,10 @@ class WslconfigChange:
     def changed(self):
         return not self.existed or self.new_text != self.old_text
 
+    def with_values(self, values):
+        """The change from the same old file to its text with `values` set (set_wsl2_keys)."""
+        return replace(self, new_text=set_wsl2_keys(self.old_text, values))
+
     def diff_lines(self):
         """"- old line" / "+ new line" for each line removed or added, in file order."""
         if not self.changed:
@@ -145,12 +160,13 @@ def _read_bytes(path):
         return None
 
 
-def plan_change(path, gib):
-    """The change setting the limit of the file at `path` to `gib` GB (nothing written)."""
+def plan_change(path, values):
+    """The change setting the [wsl2] keys of the file at `path` to `values` (key -> value
+    text); nothing is written. {} plans no change and reads the file's current text."""
     old = _read_bytes(path)
     bom = old is not None and old.startswith(_BOM)
     text = "" if old is None else old[len(_BOM) if bom else 0:].decode("utf-8")
-    return WslconfigChange(path, old, text, set_wsl2_memory(text, gib), bom)
+    return WslconfigChange(path, old, text, set_wsl2_keys(text, values), bom)
 
 
 def apply_change(change, now=None):
