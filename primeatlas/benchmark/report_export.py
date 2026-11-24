@@ -7,11 +7,19 @@ benchmark.report_chart_pages() (one metric per chart, the sieve in the chosen me
 scale, pinned axes, reference series, the lines hidden in the legends and the zoomed floor
 range (chart_view.py). The HTML names the filter under its title, the sieve measure over the
 sieve charts and, over a page's charts, the floors where they set points of different range
-widths. The charts are chart_svg.chart_svg() drawings, the same layout as the PDF's; the
-tables are the tab's run table (table_columns.report_tables()) in its four groups, each led
-by the floor, the run and the engine, with the tab's headers, every cell in full and
-HTML-escaped. A run's computer cell links to its computer in the "Computers" section after
-the tables (computer_table.py: a table per computer of the kept runs, from `machines`).
+widths. The charts are chart_svg.chart_svg() drawings, the same layout as the PDF's, without
+a chart no kept run sets a point on (benchmark.report_drawn_pages()); the tables are the
+tab's run table (table_columns.report_tables() of the kept runs: no column no run has a value
+in, no table left with only its key columns) in its four groups, each led by the floor, the
+run and the engine, with the tab's headers, every cell in full and HTML-escaped. A run's
+computer cell links to its computer in the "Computers" section after the tables
+(computer_table.py: a table per computer of the kept runs, from `machines`), which a page
+without a computer leaves out.
+
+The page reads top down: the title, the subtitle, a navigation bar linking the charts and
+each table and section the page holds, the charts, then each table and the Computers section
+as a <details> closed by default, its title in the <summary>. Every id starts with "pa-", so
+a snippet pasted into another page keeps clear of that page's ids.
 
   - csv: the kept runs in the run table's columns (table_columns.EXPORT_COLUMNS: the floor,
     the run, then the tab's columns), column keys as the header and raw values (an empty
@@ -37,8 +45,8 @@ from html import escape
 
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
 from . import (chart_filter, chart_points, computer_table, report_html, sieve_measure,
-               table_columns)
-from .benchmark import (report_chart_pages, report_chart_series,
+               table_cells, table_columns)
+from .benchmark import (report_chart_pages, report_chart_series, report_drawn_pages,
                         report_mixed_note, report_references)
 from .chart_series import axis_pins
 from .chart_svg import chart_svg
@@ -49,8 +57,24 @@ EXTENSIONS = {"csv": ".csv", "svg": ".svg", "html": ".html", "snippet": ".html"}
 CHART_WIDTH = 900
 CHART_HEIGHT = 260
 
+# The <details> id of a report table, from its title key.
+SECTION_IDS = {"bench.pdf_table_speed": "pa-table-speed", "bench.pdf_table_run": "pa-table-run",
+               "bench.pdf_table_phases": "pa-table-phases",
+               "bench.pdf_table_results": "pa-table-results"}
+NAV_KEYS = {"bench.pdf_table_speed": "bench.report_nav_speed",
+            "bench.pdf_table_run": "bench.report_nav_run",
+            "bench.pdf_table_phases": "bench.report_nav_phases",
+            "bench.pdf_table_results": "bench.report_nav_results"}
+CHARTS_ID = "pa-charts"
+COMPUTERS_ID = "pa-computers"
+
 _STYLE = """
 .primeatlas-benchmark { font-family: sans-serif; color: #111; background: #fff; }
+.primeatlas-benchmark .pa-nav { font-size: 13px; margin: 0 0 1em; }
+.primeatlas-benchmark .pa-nav a { margin-right: 14px; white-space: nowrap; }
+.primeatlas-benchmark .pa-section { margin: 0.6em 0; }
+.primeatlas-benchmark .pa-section > summary { cursor: pointer; }
+.primeatlas-benchmark .pa-section > summary h2 { display: inline; }
 .primeatlas-benchmark h1 { font-size: 1.4em; margin: 0 0 0.2em; }
 .primeatlas-benchmark h2 { font-size: 1.1em; margin: 1.2em 0 0.4em; }
 .primeatlas-benchmark p { color: #555; margin: 0 0 1em; }
@@ -71,19 +95,26 @@ _STYLE = """
 """
 
 
+def section_id(title_key):
+    """The anchor of the report table titled `title_key`."""
+    return SECTION_IDS[title_key]
+
+
 def report_pages_svg(rows, translator=None, sieve_points=None, references=False, log_y=False,
                      hidden_lines=None, y_pins=None, measure=sieve_measure.DEFAULT,
                      x_view=None, y_views=None, pages=None, point_views=None):
     """[(page heading, [<svg> element])] of the report pages, in report order: the heading
     names the sieve measure on the sieve page and the floors of mixed widths, "" otherwise.
-    pages: the report_chart_pages() to draw, those of `rows` when omitted; point_views: as in
-    benchmark.render_benchmark_pdf()."""
+    pages: the pages to draw, report_drawn_pages() of `rows` when omitted; point_views: as
+    in benchmark.render_benchmark_pdf()."""
     t = (translator or Translator(DEFAULT_LANGUAGE)).t
     y_pins = y_pins or {}
     point_views = point_views or {}
     with_refs = report_references(references, measure)
     if pages is None:
-        pages = report_chart_pages(rows, sieve_points, references, measure)
+        pages = report_drawn_pages(rows, report_chart_pages(rows, sieve_points, references,
+                                                            measure),
+                                   references, measure, point_views)
     out = []
     for kind, charts in pages:
         svgs = []
@@ -113,20 +144,37 @@ def _svg_report(charts):
     return "".join(parts)
 
 
+def _computer_id(machine_id):
+    return "pa-" + computer_table.anchor(machine_id)
+
+
 def _cell_html(row, column, t):
-    text = escape(table_columns.shown(row, column, t))
+    """A table cell; a value the run lacks is marked pa-none for the page's script."""
+    shown = table_columns.shown(row, column, t)
+    if shown == table_cells.MISSING:
+        return f'<td class="pa-none">{escape(shown)}</td>'
+    text = escape(shown)
     machine_id = str(row.get("machine_id") or "").strip()
     if column == "machine" and machine_id:
-        return f'<a href="#{computer_table.anchor(machine_id)}">{text}</a>'
-    return text
+        text = f'<a href="#{_computer_id(machine_id)}">{text}</a>'
+    return f"<td>{text}</td>"
+
+
+def _section(section_id, title, body):
+    return (f'<details class="pa-section" id="{section_id}"><summary><h2>{escape(title)}'
+            f"</h2></summary>{body}</details>")
 
 
 def _computers_html(rows, machines, t):
-    """The Computers section: a table per computer of `rows`, under its anchor."""
-    parts = [f"<h2>{escape(t('computer.section_title'))}</h2>"]
-    for machine_id in computer_table.computers_in(rows):
+    """The Computers section: a table per computer of `rows`, under its anchor; "" when no
+    run has a computer."""
+    machine_ids = computer_table.computers_in(rows)
+    if not machine_ids:
+        return ""
+    parts = []
+    for machine_id in machine_ids:
         history = machines.get(machine_id) or []
-        parts.append(f'<h3 id="{computer_table.anchor(machine_id)}">'
+        parts.append(f'<h3 id="{_computer_id(machine_id)}">'
                      f"{escape(computer_table.heading(machine_id, history, t))}</h3>")
         shown = computer_table.table(history, t)
         if shown is None:
@@ -138,24 +186,38 @@ def _computers_html(rows, machines, t):
                      + "".join("<tr>" + "".join(f"<td>{escape(v)}</td>" for v in line)
                                + "</tr>" for line in body)
                      + "</tbody></table>")
-    return "".join(parts)
+    return _section(COMPUTERS_ID, t("computer.section_title"), "".join(parts))
 
 
-def _tables_html(fieldnames, rows, t):
-    """The tables of `rows` (data-run: a row's index in `rows`, so the page's script hides the
-    runs its filter drops); a value a run lacks is table_cells.MISSING."""
+def _tables_html(tables, rows, t):
+    """The `tables` (table_columns.report_tables()) of `rows`, each in its section (data-run: a
+    row's index in `rows`, so the page's script hides the runs its filter drops; data-keys:
+    the key columns, which the script never hides); a value a run lacks is
+    table_cells.MISSING."""
     parts = []
-    for title_key, columns in table_columns.report_tables():
-        parts.append(f"<h2>{escape(t(title_key))}</h2><table><thead><tr>"
-                     + "".join(f"<th>{escape(t(table_columns.header_key(c)))}</th>"
-                               for c in columns)
-                     + "</tr></thead><tbody>")
+    for title_key, columns in tables:
+        body = [f'<table data-keys="{len(table_columns.KEY_COLUMNS)}"><thead><tr>'
+                + "".join(f"<th>{escape(t(table_columns.header_key(c)))}</th>"
+                          for c in columns)
+                + "</tr></thead><tbody>"]
         for i, row in enumerate(rows):
-            parts.append(f'<tr data-run="{i}">'
-                         + "".join(f"<td>{_cell_html(row, c, t)}</td>"
-                                   for c in columns) + "</tr>")
-        parts.append("</tbody></table>")
+            body.append(f'<tr data-run="{i}">' + "".join(_cell_html(row, c, t) for c in columns)
+                        + "</tr>")
+        body.append("</tbody></table>")
+        parts.append(_section(section_id(title_key), t(title_key), "".join(body)))
     return "".join(parts)
+
+
+def _nav_html(tables, computers, t):
+    """The navigation bar: the charts, each table of `tables`, the Computers section when
+    the page has one."""
+    links = [(CHARTS_ID, t("bench.report_nav_charts"))]
+    links += [(section_id(key), t(NAV_KEYS[key])) for key, _columns in tables]
+    if computers:
+        links.append((COMPUTERS_ID, t("computer.section_title")))
+    return ('<nav class="pa-nav">'
+            + "".join(f'<a href="#{target}">{escape(label)}</a>' for target, label in links)
+            + "</nav>")
 
 
 def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_options,
@@ -166,8 +228,11 @@ def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_opti
     subtitle = t("bench.pdf_subtitle", now=now, runs=len(kept), depths=floors)
     if filter_note:
         subtitle += "  |  " + filter_note
-    pages = report_chart_pages(rows, svg_options["sieve_points"], svg_options["references"],
-                               svg_options["measure"])
+    pages = report_drawn_pages(kept, report_chart_pages(rows, svg_options["sieve_points"],
+                                                        svg_options["references"],
+                                                        svg_options["measure"]),
+                               svg_options["references"], svg_options["measure"],
+                               svg_options["point_views"])
     svg_pages = report_pages_svg(kept, pages=pages, **svg_options)
     data = report_html.report_data(
         kept, pages, t, CHART_WIDTH, CHART_HEIGHT,
@@ -178,12 +243,14 @@ def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_opti
         + "".join(f'<div class="pa-chart" data-page="{i}" data-chart="{j}">{svg}</div>'
                   for j, svg in enumerate(svgs))
         for i, (heading, svgs) in enumerate(svg_pages))
+    tables = table_columns.report_tables(kept)
+    computers = _computers_html(kept, machines, t)
     return (f'<div class="primeatlas-benchmark"><style>{_STYLE}</style>'
             f"<h1>{escape(t('bench.pdf_title'))}</h1>"
-            f'<p class="pa-subtitle">{escape(subtitle)}</p><div class="pa-controls"></div>'
-            + charts
-            + f'<div class="tables">{_tables_html(fieldnames, kept, t)}'
-            + f"{_computers_html(kept, machines, t)}</div>"
+            f'<p class="pa-subtitle">{escape(subtitle)}</p>'
+            + _nav_html(tables, computers, t)
+            + f'<div class="pa-controls"></div><div id="{CHARTS_ID}">{charts}</div>'
+            + f'<div class="tables">{_tables_html(tables, kept, t)}{computers}</div>'
             + report_html.data_script(data) + report_html.chart_script() + "</div>")
 
 

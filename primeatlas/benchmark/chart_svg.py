@@ -37,8 +37,9 @@ class SvgBackend:
         return (f'<line x1="{x1:.2f}" y1="{self._y(y1):.2f}" x2="{x2:.2f}" '
                 f'y2="{self._y(y2):.2f}" stroke="{_color(rgb)}" stroke-width="{width:.2f}"/>')
 
-    def dot(self, cx, cy, r, rgb=(0, 0, 0)):
-        return f'<circle cx="{cx:.2f}" cy="{self._y(cy):.2f}" r="{r:.2f}" fill="{_color(rgb)}"/>'
+    def dot(self, cx, cy, r, rgb=(0, 0, 0), title=None):
+        head = f'<circle cx="{cx:.2f}" cy="{self._y(cy):.2f}" r="{r:.2f}" fill="{_color(rgb)}"'
+        return f"{head}><title>{escape(title)}</title></circle>" if title else head + "/>"
 
     def text(self, x, y, size, font_key, text, rgb=(0, 0, 0)):
         family, weight = _FONTS.get(font_key, ("sans-serif", "normal"))

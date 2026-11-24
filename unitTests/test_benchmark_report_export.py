@@ -7,14 +7,26 @@ the SVG report holds one chart per report metric (four without RAM rows, six wit
 references on) and leaves out a line hidden in the tab; the HTML page is a full document
 with the charts inline and one table per logical table, every cell escaped; the snippet is
 one <div class="primeatlas-benchmark"> with a style scoped to it and no document tags; the
-Benchmark tab's export menu writes each format to the chosen path. Windows, real display
+Benchmark tab's export menu writes each format to the chosen path.
+
+Usability of the page and the snippet: every run table and the Computers section is a
+<details> closed by default with its title in the <summary>; a navigation bar under the
+subtitle links Charts and each table and section the page holds, in page order, never one it
+left out; every anchor starts with "pa-" (a computer cell links to "pa-pc-..."); a cell a run
+lacks is marked for the page's script; a chart no exported run has a point on is left out
+(HTML, SVG and PDF; in the PDF the other chart of the page takes the page), a chart emptied
+by hidden lines stays; with no runs at all the whole-run charts stay with "no data", no table
+and no Computers section. Chart labels and ticks from a million up are short ("350 M"), the
+exact value is the point's <title>; the tables keep exact numbers. Windows, real display
 (the tab part):
     python unitTests/test_benchmark_report_export.py
 """
 import csv
 from html import escape
+import json
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -127,7 +139,7 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(page.split("<script", 1)[0].count("<svg"), 4)   # whole run and RAM; no sieve data
         self.assertGreaterEqual(page.count("<table"), 1)
         t = Translator("en").t
-        for column in table_columns.EXPORT_COLUMNS:
+        for column in [c for _k, cs in table_columns.report_tables(ROWS) for c in cs]:
             self.assertIn(f"<th>{escape(t(table_columns.header_key(column)))}</th>", page)
         self.assertIn("&lt;b&gt;&amp;", page)
         self.assertNotIn("<b>&", page)
@@ -136,7 +148,7 @@ class ExportTests(unittest.TestCase):
         page = self._export("html", NO_RAM)
         tables = page.split('<div class="tables">', 1)[1]
         self.assertNotIn("<td></td>", tables, "no empty cell in the tables")
-        self.assertIn("<td>\u2014</td>", tables, "a value the run lacks is a dash")
+        self.assertIn('<td class="pa-none">\u2014</td>', tables, "a value the run lacks is a dash")
         back = list(csv.DictReader(self._export("csv", NO_RAM).splitlines()))
         self.assertEqual([r["ram_mb"] for r in back], ["", ""], "the CSV keeps the empty values")
 
@@ -157,6 +169,132 @@ class ExportTests(unittest.TestCase):
     def test_kinds_and_extensions(self):
         self.assertEqual(report_export.EXTENSIONS,
                          {"csv": ".csv", "svg": ".svg", "html": ".html", "snippet": ".html"})
+
+
+COUNT_ONLY = [dict(r, bytes_written="0", write_seconds="2.3", write_files="0") for r in NO_RAM]
+MACHINE = [dict(r, machine_id="3f9a0c1d2e4b") for r in ROWS]
+
+
+def _sections(page):
+    """The ids of the page's <details> sections and the hrefs of its navigation bar (None
+    without one)."""
+    details = re.findall(r'<details class="pa-section" id="([^"]+)">', page)
+    nav = re.search(r'<nav class="pa-nav">(.*?)</nav>', page, re.S)
+    hrefs = re.findall(r'href="#([^"]+)"', nav.group(1)) if nav else None
+    return details, hrefs
+
+
+def _before_script(page):
+    return page.split("<script", 1)[0]
+
+
+class UsabilityTests(unittest.TestCase):
+    def _page(self, rows, kind="html", **kw):
+        return report_export.render(kind, list(rows[0]), rows, translator=Translator("en"),
+                                    **kw)
+
+    def test_tables_are_closed_details(self):
+        t = Translator("en").t
+        page = self._page(MACHINE)
+        details, _hrefs = _sections(page)
+        tables = [title for title, _c in table_columns.report_tables(MACHINE)]
+        self.assertEqual(details, [report_export.section_id(k) for k in tables] + ["pa-computers"])
+        self.assertNotIn("<details open", page)
+        self.assertNotIn(" open>", page)
+        for key in tables + ["computer.section_title"]:
+            self.assertIn(f"<summary><h2>{escape(t(key))}</h2></summary>", page)
+        self.assertEqual(page.count("<table"), len(tables), "no machine data: no computer table")
+
+    def test_navigation_bar(self):
+        t = Translator("en").t
+        page = self._page(MACHINE)
+        details, hrefs = _sections(page)
+        self.assertEqual(hrefs, ["pa-charts"] + details)
+        nav = re.search(r'<nav class="pa-nav">(.*?)</nav>', page, re.S).group(1)
+        tables = [k for k, _c in table_columns.report_tables(MACHINE)]
+        labels = re.findall(r'">([^<]*)</a>', nav)
+        self.assertEqual(labels, [escape(t(k)) for k in ["bench.report_nav_charts"]
+                                  + [report_export.NAV_KEYS[k] for k in tables]
+                                  + ["computer.section_title"]])
+        for key in ["bench.report_nav_charts"] + list(report_export.NAV_KEYS.values()):
+            for lang in ("en", "pl"):
+                self.assertNotEqual(Translator(lang).t(key), key, (lang, key))
+        self.assertLess(page.index("pa-subtitle"), page.index('<nav class="pa-nav">'))
+        self.assertLess(page.index('<nav class="pa-nav">'), page.index('id="pa-charts"'))
+        for row_set in (ROWS, NO_RAM):
+            details, hrefs = _sections(self._page(row_set))
+            self.assertNotIn("pa-computers", details + hrefs, "no computer: no section, no link")
+            self.assertEqual(hrefs, ["pa-charts"] + details)
+
+    def test_anchors_carry_the_prefix(self):
+        page = _before_script(self._page(MACHINE, kind="snippet"))
+        ids = re.findall(r'\bid="([^"]+)"', page)
+        self.assertTrue(ids and all(i.startswith("pa-") for i in ids), ids)
+        self.assertEqual(len(ids), len(set(ids)), "ids are unique")
+        links = set(re.findall(r'href="#([^"]+)"', page))
+        self.assertTrue(links <= set(ids), links - set(ids))
+        self.assertIn('href="#pa-pc-3f9a0c1d2e4b"', page)
+
+    def test_empty_cells_are_marked(self):
+        page = self._page(NO_RAM)
+        tables = page.split('id="pa-table-', 1)[1]
+        self.assertNotIn("<td>—</td>", tables)
+        self.assertIn('<td class="pa-none">—</td>', tables)
+        self.assertIn('<table data-keys="3">', page)
+
+    def test_a_chart_without_points_is_left_out(self):
+        t = Translator("en").t
+        page = self._page(COUNT_ONLY)
+        self.assertNotIn(t("bench.axis_write_mbps"), _before_script(page))
+        self.assertIn(t("bench.axis_total_nps"), page)
+        self.assertEqual(_before_script(page).count("<svg"), 1)
+        data = json.loads(re.search(r'class="pa-data">(.*?)</script>', page, re.S).group(1))
+        self.assertEqual([len(p["charts"]) for p in data["pages"]], [1])
+        self.assertEqual(len(_charts(self._page(COUNT_ONLY, kind="svg"))), 1)
+        # Lines hidden in the tab leave the chart in place, as its "no data" box.
+        hidden = self._page(NO_RAM, hidden_lines={"run": {
+            chart_series.line_key("secondary", "v4.1"), chart_series.line_key("secondary", "v5")}})
+        self.assertEqual(_before_script(hidden).count("<svg"), 2)
+        self.assertIn(t("bench.no_data_chart"), _before_script(hidden))
+        self.assertEqual(_before_script(self._page(NO_RAM)).count("<svg"), 2)
+
+    def test_no_runs(self):
+        t = Translator("en").t
+        page = self._page(ROWS, selection={"engine": set()})
+        self.assertEqual(_sections(page), ([], ["pa-charts"]))
+        self.assertNotIn("<table", page)
+        self.assertIn(escape(t("bench.no_data_chart")), page)
+        self.assertEqual(_before_script(page).count("<svg"), 2)
+
+    def test_short_chart_labels_and_exact_titles(self):
+        root = ET.fromstring(self._page(NO_RAM, kind="svg"))
+        texts = [el.text for el in root.iter(f"{SVG_NS}text")]
+        titles = [el.text for el in root.iter(f"{SVG_NS}title")]
+        self.assertIn("350 M [v5] @ 10^2", texts)
+        self.assertNotIn("350,000,000 [v5] @ 10^2", texts)
+        self.assertIn("10^20: 350,000,000 [v5] @ 10^2", titles)
+        self.assertTrue(any(x and x.endswith(" M") and "[" not in x for x in texts),
+                        "a short tick")
+        self.assertFalse(any(x and re.search(r"\d{3},\d{3},\d{3}", x) for x in texts),
+                         "no long number drawn on the chart")
+        tables = self._page(NO_RAM).split('id="pa-table-', 1)[1]
+        self.assertIn("350,000,000", tables, "the tables keep the exact number")
+
+    def test_pdf_follows(self):
+        from primeatlas.benchmark import benchmark
+        t = Translator("en").t
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "r.pdf")
+            benchmark.render_benchmark_pdf(path, [], list(COUNT_ONLY[0]), COUNT_ONLY,
+                                           translator=Translator("en"))
+            data = open(path, "rb").read()
+            self.assertNotIn(t("bench.axis_write_mbps").encode(), data)
+            self.assertIn(t("bench.axis_total_nps").encode(), data)
+            self.assertIn(b"350 M [v5]", data)
+            self.assertNotIn(b"350,000,000 [v5]", data)
+            benchmark.render_benchmark_pdf(path, [], list(NO_RAM[0]), NO_RAM,
+                                           translator=Translator("en"))
+            self.assertIn(t("bench.axis_write_mbps").encode(), open(path, "rb").read())
 
 
 class TabExportTests(unittest.TestCase):

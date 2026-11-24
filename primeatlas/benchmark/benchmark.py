@@ -269,7 +269,9 @@ def _row_write_mbps(row):
         write_seconds = float(row.get("write_seconds", ""))
     except (TypeError, ValueError):
         return None
-    if write_seconds <= 0 or math.isnan(write_seconds) or math.isnan(bytes_written):
+    # A count-only run logs its write phase's time with 0 bytes: it has no write speed.
+    if (write_seconds <= 0 or math.isnan(write_seconds) or math.isnan(bytes_written)
+            or bytes_written <= 0):
         return None
     return bytes_written / write_seconds / 1e6
 
@@ -530,6 +532,24 @@ def report_chart_pages(rows, sieve_points=None, references=False,
     return pages
 
 
+def report_drawn_pages(rows, pages, references=False, measure=sieve_measure.DEFAULT,
+                       point_views=None):
+    """`pages` (report_chart_pages()) without the charts no run of `rows` sets a point on --
+    the reference series count on the sieve page's first chart, lines hidden in the tab do
+    not -- and without the pages left with no chart. With no chart left anywhere the
+    whole-run page stays, its charts saying there is no data."""
+    with_refs = report_references(references, measure)
+    drawn = []
+    for kind, charts in pages:
+        kept = tuple(spec for i, spec in enumerate(charts) if any(
+            s.points for s in report_chart_series(
+                rows, spec, None, reference_series(Translator(DEFAULT_LANGUAGE).t)
+                if kind == "sieve" and with_refs and i == 0 else (), point_views)))
+        if kept:
+            drawn.append((kind, kept))
+    return drawn or [page for page in pages if page[0] == "run"]
+
+
 def report_references(references, measure=sieve_measure.DEFAULT):
     """Whether the reference series go on the sieve page's first chart: the toggle is on and
     the measure is a sieve speed (sieve_measure.chart().references)."""
@@ -573,9 +593,12 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     when sieve_points is non-empty or references is on -- the sieve phase alone (sieve n/s)
     and its seconds per window, then -- when a row measured it -- each run's peak RAM and
     its RAM per window. The tab's two-axis charts are split in two here so that
-    each chart has room for its value labels (chart_pdf.place_labels()).
+    each chart has room for its value labels (chart_pdf.place_labels()). A chart no run
+    sets a point on is left out (report_drawn_pages()); the other chart of its page then
+    takes the whole page.
 
-    Tables: table_columns.report_tables(), the tab's run table in four groups, each starting
+    Tables: table_columns.report_tables(rows), the tab's run table in four groups without
+    the columns no run has a value in, each starting
     on its own page led by the floor, the run and the engine, continuing over as many pages
     as the rows need (core/pdf_table.py), with the tab's translated column headers. A run's
     computer cell links to its computer in the "Computers" section after them
@@ -637,44 +660,42 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
         note = report_mixed_note(rows, charts, t, x_view, point_views)
         return "  |  " + note if note else ""
 
-    pages_charts = dict(report_chart_pages(rows, sieve_points, references, measure))
+    with_refs = report_references(references, measure)
+    drawn = report_drawn_pages(rows, report_chart_pages(rows, sieve_points, references, measure),
+                               references, measure, point_views)
 
-    # --- page 1: title, the whole run's two charts ---
-    ops = []
+    # --- the chart pages: the title over the first, the sieve's references under its charts ---
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ops.append(_pdf_text_op(content_left, content_top - 14, 14, "Helvetica-Bold",
-                             _pdf_ascii_fold(t("bench.pdf_title"))))
-    ops.append(_pdf_text_op(content_left, content_top - 30, 9, "Helvetica",
-                             _pdf_ascii_fold(t("bench.pdf_subtitle", now=now_str,
-                                               runs=len(rows), depths=len(points))
-                                             + ("  |  " + filter_note if filter_note else "")
-                                             + mixed_note(pages_charts["run"]))))
-    chart_pair(ops, content_top - 40, content_bottom, pages_charts["run"])
-    pages = [ops]
-
-    # --- page 2: the sieve's two charts, reference footnotes below them ---
-    if "sieve" in pages_charts:
-        references = report_references(references, measure)
-        ops = [_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
-                            _pdf_ascii_fold(t("bench.pdf_continued", page=2)
-                                            + "  |  " + sieve_measure.heading(measure, t)
-                                            + mixed_note(pages_charts["sieve"])))]
+    pages = []
+    for kind, charts in drawn:
+        if not pages:
+            ops = [_pdf_text_op(content_left, content_top - 14, 14, "Helvetica-Bold",
+                                _pdf_ascii_fold(t("bench.pdf_title"))),
+                   _pdf_text_op(content_left, content_top - 30, 9, "Helvetica",
+                                _pdf_ascii_fold(t("bench.pdf_subtitle", now=now_str,
+                                                  runs=len(rows), depths=len(points))
+                                                + ("  |  " + filter_note if filter_note else "")
+                                                + mixed_note(charts)))]
+            top = content_top - 40
+        else:
+            heading = t("bench.pdf_continued", page=len(pages) + 1)
+            if kind == "sieve":
+                heading += "  |  " + sieve_measure.heading(measure, t)
+            ops = [_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
+                                _pdf_ascii_fold(heading + mixed_note(charts)))]
+            top = content_top - 22
         bottom = content_bottom
-        if references:
+        refs = kind == "sieve" and with_refs
+        if refs:
             for i, ref in enumerate(reversed(REFERENCES)):
                 ops.append(_pdf_text_op(content_left, content_bottom + 8 * i, 6, "Helvetica",
                                         _pdf_ascii_fold(f"{ref.tag}: {ref.name} -- {ref.source}")))
             bottom = content_bottom + 8 * len(REFERENCES) + 4
-        chart_pair(ops, content_top - 22, bottom, pages_charts["sieve"],
-                   extra=reference_series(t) if references else ())
-        pages.append(ops)
-
-    # --- the RAM page: each run's peak RAM and its RAM per window ---
-    if "ram" in pages_charts:
-        ops = [_pdf_text_op(content_left, content_top - 12, 10, "Helvetica-Bold",
-                            _pdf_ascii_fold(t("bench.pdf_continued", page=len(pages) + 1)
-                                            + mixed_note(pages_charts["ram"])))]
-        chart_pair(ops, content_top - 22, content_bottom, pages_charts["ram"])
+        extra = reference_series(t) if refs else ()
+        if len(charts) == 2:
+            chart_pair(ops, top, bottom, charts, extra=extra)
+        else:
+            ops.extend(chart(charts[0], bottom, top - bottom, extra=extra))
         pages.append(ops)
 
     # --- the logical tables, each from a new page; a value a run lacks is a dash ---
@@ -684,11 +705,12 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     headers = {c: _pdf_ascii_fold(t(table_columns.header_key(c)))
                for c in table_columns.EXPORT_COLUMNS}
     machine_ids = computer_table.computers_in(rows)
+    tables = table_columns.report_tables(rows)
     rows = [{headers[c]: table_columns.shown(row, c, t) for c in table_columns.EXPORT_COLUMNS}
             | {_COMPUTER_DEST: _computer_dest(row)} for row in rows]
     keys = [headers[c] for c in table_columns.KEY_COLUMNS]
     links = {headers["machine"]: lambda row: row[_COMPUTER_DEST]}
-    for title_key, columns in table_columns.report_tables():
+    for title_key, columns in tables:
         title = t(title_key)
         layout = TableLayout([headers[c] for c in columns], rows, content_width, 6.5, keys,
                              links=links)

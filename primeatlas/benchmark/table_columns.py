@@ -138,8 +138,24 @@ def _verify_seconds(row):
 
 
 def write_mbps(row):
+    """bytes_written / write_seconds in MB/s; None for a run that wrote no bytes (a count-only
+    run still logs the time of its write phase) or has no write time."""
     written = _float(row, "bytes_written")
-    return None if written is None else _per_second(written / 1e6, _float(row, "write_seconds"))
+    if written is None or written <= 0:
+        return None
+    return _per_second(written / 1e6, _float(row, "write_seconds"))
+
+
+WRITE_MBPS_PLACES = 1
+WRITE_MBPS_SMALL_DIGITS = 2
+
+
+def write_mbps_places(value):
+    """Decimal places of a write speed: WRITE_MBPS_PLACES from 0.1 MB/s up, below it
+    WRITE_MBPS_SMALL_DIGITS significant digits (156 B in 0.018 s: 0.0087), never 0.0."""
+    if value is None or value >= 10 ** -WRITE_MBPS_PLACES:
+        return WRITE_MBPS_PLACES
+    return WRITE_MBPS_SMALL_DIGITS - 1 - math.floor(math.log10(value))
 
 
 def window_count(row):
@@ -199,7 +215,7 @@ _RAW = {
     "status": _status,
     "threads": line_names.threads_label,
     "machine": computer_names.cell_label,
-    "write_mbps": lambda row: _plain_number(write_mbps(row), 1),
+    "write_mbps": lambda row: _plain_number(write_mbps(row), write_mbps_places(write_mbps(row))),
 }
 
 
@@ -215,7 +231,8 @@ _SHOWN = {
     "run_nps": lambda row, t: _number_text(run_nps(row), 0),
     "run_nps_unverified": lambda row, t: _number_text(run_nps_unverified(row), 0),
     "verify_drop": lambda row, t: _number_text(verify_drop(row), 0),
-    "write_mbps": lambda row, t: _number_text(write_mbps(row), 1),
+    "write_mbps": lambda row, t: _number_text(write_mbps(row),
+                                              write_mbps_places(write_mbps(row))),
     "numbers": lambda row, t: line_names.width_label(numbers(row)),
     "purpose": lambda row, t: t(f"bench.purpose_{schema.row_purpose(row)}"),
     "status": lambda row, t: t(f"bench.run_status_{_status(row)}"),
@@ -235,10 +252,19 @@ def shown(row, column, t):
     return raw(row, column)
 
 
-def report_tables():
-    """[(i18n title key, columns)] of the report tables, each led by the key columns."""
-    return [(title, KEY_COLUMNS + tuple(c for c in columns if c not in KEY_COLUMNS))
-            for title, columns in GROUPS]
+def report_tables(rows=None):
+    """[(i18n title key, columns)] of the report tables, each led by the key columns. With
+    `rows`, a column no run of them has a value in is left out (never a key column), and so
+    is a table left with the key columns alone: no runs, no tables."""
+    tables = []
+    for title, columns in GROUPS:
+        columns = tuple(c for c in columns if c not in KEY_COLUMNS)
+        if rows is not None:
+            columns = tuple(c for c in columns if any(raw(row, c) for row in rows))
+            if not columns:
+                continue
+        tables.append((title, KEY_COLUMNS + columns))
+    return tables
 
 
 def stats(rows):

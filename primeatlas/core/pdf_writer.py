@@ -45,6 +45,8 @@ _PDF_ASCII_FOLD_MAP = str.maketrans({
     "ł": "l", "Ł": "L", "ń": "n", "Ń": "N", "ó": "o", "Ó": "O",
     "ś": "s", "Ś": "S", "ź": "z", "Ź": "Z", "ż": "z", "Ż": "Z",
     "\u2014": "-", "\u2013": "-", "\u00b7": "-",
+    # number_format's digit groups and short-form prefix: the content stream is ASCII.
+    "\u00a0": " ",
 })
 
 

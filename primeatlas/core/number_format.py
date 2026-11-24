@@ -57,6 +57,29 @@ def decimal(x, places, style=None):
     return _localise(f"{x:,.{places}f}", style)
 
 
+_PREFIXES = ("M", "G", "T", "P", "E", "Z", "Y")
+COMPACT_FROM = 1e6
+COMPACT_DIGITS = 3
+
+
+def compact(x, places, style=None):
+    """A chart's short form of `x`: from a million up COMPACT_DIGITS significant digits and an
+    SI prefix after a no-break space (1,18 G, 236 M; past Y whole Y units), below it decimal()
+    with `places`."""
+    if abs(x) < COMPACT_FROM:
+        return decimal(x, places, style)
+    for power, prefix in enumerate(_PREFIXES):
+        scaled = abs(x) / 10.0 ** (6 + 3 * power)
+        digits = max(0, COMPACT_DIGITS - len(str(int(scaled))))
+        # Rounding up to the next power of ten (9.996 -> 10.00) costs one decimal place.
+        if len(str(int(float(f"{scaled:.{digits}f}")))) > len(str(int(scaled))):
+            digits = max(0, digits - 1)
+        if float(f"{scaled:.{digits}f}") < 1000 or prefix == _PREFIXES[-1]:
+            sign = "-" if x < 0 else ""
+            return sign + decimal(scaled, digits, style) + " " + prefix
+    raise AssertionError("unreachable")
+
+
 def signed(x, places, style=None):
     """decimal() with an explicit sign, like Python's "+" format flag: +1 234,5, -0,25."""
     text = decimal(x, places, style)

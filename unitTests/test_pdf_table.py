@@ -1,6 +1,7 @@
 """PDF reports: every cell and header printed in full, column bands with repeated key
-columns, pagination, the Benchmark log's logical tables and its one-metric charts whose
-value labels never overlap. Pure checks on pdf_table.py, chart_pdf.py and the two reports
+columns, pagination, the Benchmark log's logical tables (the columns the runs fill) and its
+one-metric charts whose value labels (short from a million up) never overlap. Pure checks on
+pdf_table.py, chart_pdf.py and the two reports
 (Benchmark log, Constellation records):
     python unitTests/test_pdf_table.py
 """
@@ -121,21 +122,24 @@ class BenchmarkReportTests(unittest.TestCase):
         texts = _texts(_bench_pdf(rows))
         printed = {t[5] for t in texts if t[1] == "Courier"}
         for row in rows:
-            for column in table_columns.EXPORT_COLUMNS:
-                self.assertIn(self._shown(row, column), printed, column)
+            for _title, columns in table_columns.report_tables(rows):
+                for column in columns:
+                    self.assertIn(self._shown(row, column), printed, column)
         self.assertFalse([t for t in texts if t[1] == "Courier" and t[5].endswith("...")])
 
     def test_missing_value_prints_a_dash(self):
-        rows = [dict(_bench_row(0), max_child_rss_mb="", engine="")]
+        # The other run keeps the RAM column; this one lacks a value in it.
+        rows = [dict(_bench_row(0), max_child_rss_mb="", engine=""), _bench_row(1)]
         texts = _texts(_bench_pdf(rows))
         printed = [t[5] for t in texts if t[1] == "Courier"]
         self.assertIn("-", printed, "a value the run lacks prints a dash")
         self.assertFalse([s for s in printed if "?" in s], "no unprintable character")
 
     def test_headers_printed_in_full(self):
-        texts = _texts(_bench_pdf([_bench_row(0)]))
+        rows = [_bench_row(0)]
+        texts = _texts(_bench_pdf(rows))
         header_lines = {t[5] for t in texts if t[1] == "Courier-Bold"}
-        for column in table_columns.EXPORT_COLUMNS:
+        for column in {c for _title, cs in table_columns.report_tables(rows) for c in cs}:
             name = _pdf_ascii_fold(TR(table_columns.header_key(column)))
             for n in range(1, 30):
                 if set(pdf_table.wrap_header(name, n)) <= header_lines:
@@ -156,7 +160,7 @@ class BenchmarkReportTests(unittest.TestCase):
         stamps = [t for t in texts if t[1] == "Courier" and t[5].endswith(" UTC")]
         for row in rows:
             self.assertEqual(len([t for t in stamps if t[5] == row["run_timestamp_utc"]]),
-                             len(table_columns.report_tables()), row["run_timestamp_utc"])
+                             len(table_columns.report_tables(rows)), row["run_timestamp_utc"])
 
     def test_each_table_fits_one_band(self):
         rows = [{c: self._shown(_bench_row(0), c) for c in table_columns.EXPORT_COLUMNS}]
@@ -165,8 +169,9 @@ class BenchmarkReportTests(unittest.TestCase):
             self.assertEqual(len(layout.bands), 1, columns)
 
     def test_each_table_starts_a_page_under_its_title(self):
-        texts = _texts(_bench_pdf([_bench_row(i) for i in range(3)]))
-        for title_key, columns in table_columns.report_tables():
+        rows = [_bench_row(i) for i in range(3)]
+        texts = _texts(_bench_pdf(rows))
+        for title_key, columns in table_columns.report_tables(rows):
             title = [t for t in texts if t[5] == TR(title_key)]
             self.assertEqual(len(title), 1, title_key)
             page = title[0][0]
@@ -204,8 +209,9 @@ class ChartTests(unittest.TestCase):
         series = chart_series.engine_series(benchmark.benchmark_engine_lines(rows, "growth"))
         ops = chart_pdf.chart_ops(0, 0, 780, 230, series)
         stream = "stream\n" + "\n".join(ops) + "\nendstream"
+        # Value labels are short ("101 M [v5]"); the y ticks sit left of the plot (x < 55).
         labels = [t for t in _texts(stream.encode("latin-1"))
-                  if t[1] == "Courier" and t[2] == 7 and "," in t[5]]
+                  if t[1] == "Courier" and t[2] == 7 and " M" in t[5] and t[3] >= 55]
         boxes = [(x, y, x + len(s) * 0.6 * 7, y + 7) for _p, _f, _z, x, y, s in labels]
         for x, y, x2, y2 in boxes:              # inside the box, above the x axis (y 30)
             self.assertTrue(0 <= x and x2 <= 780 and 30 < y and y2 < 230, (x, y))
@@ -215,7 +221,8 @@ class ChartTests(unittest.TestCase):
                                  (a, b))
         texts = {t[5] for t in labels}
         for s in series:
-            self.assertIn(chart_series.point_label(0, s.points[-1][1], s), texts)
+            self.assertIn(_pdf_ascii_fold(chart_series.point_label(0, s.points[-1][1], s,
+                                                                   short=True)), texts)
         self.assertLess(len(labels), sum(len(s.points) for s in series))
 
 

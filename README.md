@@ -1419,7 +1419,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               country, powers, superscripts, scientific, pasted
                               forms), exact, no eval; ok / ambiguous (its readings)
                               / invalid (its reason) (unitTests/test_number_text.py)
-  number_format.py              whole(n), decimal(x, places) -- the one formatter of
+  number_format.py              whole(n), decimal(x, places), compact(x, places) (a
+                              chart's short form from a million up: 1,18 G) -- the
+                              one formatter of
                               numbers shown to a person, in the notation of the UI
                               language (pl 1 234,5; en 1,234.5) or the one picked in
                               Settings > General; logs, files and command lines keep
@@ -1537,8 +1539,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               named destination
   pdf_writer.py                 a minimal, dependency-free PDF writer (text, lines,
                               filled rects, basic pagination, links to named
-                              destinations) shared by the Benchmark tab's export and
-                              the Constellations Records table's export
+                              destinations; text folded to ASCII, the no-break space
+                              of digit groups to a space) shared by the Benchmark
+                              tab's export and the Constellations Records table's
+                              export
   progress_bar_owner.py         claim_progress_bar()/owns_progress_bar()/
                               release_progress_bar() -- arbitrates writes to the one
                               shared totals_progress bar across every tab/coordinator
@@ -2362,8 +2366,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               log scale, references, hidden lines, pinned axes,
                               zoom)
   report_export.py              the report as CSV (the log's rows), SVG (every report
-                              chart stacked), a UTF-8 HTML page (charts inline + the
-                              logical tables) or one <div class="primeatlas-benchmark">
+                              chart stacked), a UTF-8 HTML page (a navigation bar,
+                              charts inline, the logical tables and the Computers
+                              section as closed <details>, no empty column, table or
+                              chart, "pa-" anchors) or one
+                              <div class="primeatlas-benchmark">
                               snippet with a style scoped to it; every format holds
                               the runs the Filter window keeps; the page and the
                               snippet are interactive (report_html.py) -- pure, no
@@ -2373,9 +2380,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               labels, per chart the line records, the tab's
                               view as the starting state; inlines report_chart.js
   report_chart.js               the page's script: filter (All or single values, like
-                              the tab's), log/reference toggles,
+                              the tab's; it also hides the table columns and tables
+                              its runs leave empty), log/reference toggles,
                               chart text size, legend toggles, zoom and pan over the
-                              chart pictures; redraws with a port of
+                              chart pictures, links that open closed sections;
+                              redraws with a port of
                               chart_pdf.chart_ops() (docs/adr/0007, 0008;
                               unitTests/test_benchmark_report_html.py, via node)
   chart_svg.py                  SVG backend of chart_pdf.chart_ops(): the same chart
@@ -2404,9 +2413,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               at the plot edge, per-line hide/show keys -- shared by
                               the canvas and the PDF renderer
   chart_pdf.py                  one Benchmark chart's layout (axes, lines,
-                              non-overlapping value labels with engine tags, legend,
-                              pinned axes) drawn through a backend: PDF content ops
-                              by default, SVG via chart_svg.py
+                              non-overlapping value labels with engine tags, short
+                              from a million up, the exact value as a point's hover
+                              title, legend, pinned axes) drawn through a backend:
+                              PDF content ops by default, SVG via chart_svg.py
   benchmark_filter.py           BenchmarkFilter mixin of the tab: the "Filter..." window
                               (run purpose, floor, engine build, sieve threads, write
                               threads, range width: All or values clicked one by
@@ -2468,7 +2478,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               results), each a
                               raw value for the CSV export and a shown one for the
                               tab's tree and the HTML and PDF tables; the four
-                              report groups; the floor summary -- pure, no tkinter
+                              report groups without the columns given runs leave
+                              empty; no write speed for a run that wrote no bytes;
+                              the floor summary -- pure, no tkinter
                               (unitTests/test_benchmark_table_columns.py)
   computer_names.py             a run's computer from benchmark_machines.json: the
                               entry valid at its run time (annotate()), the table cell
