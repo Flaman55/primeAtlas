@@ -1,6 +1,6 @@
 """
 close_guard.py -- closing the main window while a Generation-tab job runs
-(CLOSE_GUARD_PLAN.md sections 1 and 3).
+(docs/design/flows/close-guard.md).
 
 request_close() is the main window's WM_DELETE_WINDOW handler. With no job it closes at
 once. Otherwise a Yes/No dialog (default No) lists each running job with its stage

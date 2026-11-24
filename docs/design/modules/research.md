@@ -82,5 +82,4 @@ None.
 
 ## Known gaps
 
-- Hardy-Littlewood density comparison is planned as a view of the Constellations tab, not a Research
-  sub-tab.
+- None known.

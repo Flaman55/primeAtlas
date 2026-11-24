@@ -78,7 +78,7 @@ wrap. Descriptions and hints are `WrapLabel`s (`core/wrap_label.py`).
 
 | In | Out |
 |---|---|
-| form values, offers from other tabs | WSL runs ([generation-run](../flows/generation-run.md), [constellation-search](../flows/constellation-search.md), [ktuple-sieve](../flows/ktuple-sieve.md)); consoles, progress bar, totals bumps, tree reloads |
+| form values, offers from other tabs | WSL runs ([generation-run](../flows/generation-run.md), [close-guard](../flows/close-guard.md), [constellation-search](../flows/constellation-search.md), [ktuple-sieve](../flows/ktuple-sieve.md)); consoles, progress bar, totals bumps, tree reloads |
 
 Never imports engine code: names and defaults the engines also use are mirrored and kept equal by
 tests (`test_engine_options`). Log lines are parsed by their stable prefixes (`[CONSTELLATIONS v2]`,

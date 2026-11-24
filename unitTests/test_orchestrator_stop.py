@@ -1,6 +1,6 @@
 """
 test_orchestrator_stop.py -- orchestrator_v3.run_orchestrator()'s stop-on-request path
-(CLOSE_GUARD_PLAN.md section 3): a batch that fails while GENERATION_STOP_REQUEST.txt
+(docs/design/flows/close-guard.md): a batch that fails while GENERATION_STOP_REQUEST.txt
 exists is a stop, not an error -- rc True, the window cut by the scanner kill deleted, one
 benchmark row with run_status=stopped over the windows that exist (counts and bytes from
 their headers, no stale scanner handoff metrics). Without the request a failed batch stays

@@ -1,8 +1,8 @@
 """
-run_guard.py -- the tkinter-free half of the close guard (CLOSE_GUARD_PLAN.md): the stage
-label of a job's output tail, the generation stop request the GUI writes, the active-run
-marker every generation launch leaves in .generation_logs/, and the recovery of a run that
-never reported back to the GUI (the app was closed or killed while WSL kept going).
+run_guard.py -- the tkinter-free half of the close guard (docs/design/flows/close-guard.md):
+the stage label of a job's output tail, the generation stop request the GUI writes, the
+active-run marker every generation launch leaves in .generation_logs/, and the recovery of a
+run that never reported back to the GUI (the app was closed or killed while WSL kept going).
 
   - job_stage(lines) -> (key, detail)         stage of a job from its last output lines
   - write_stop_request / clear_stop_request    generation_stop.py's request file
@@ -94,8 +94,9 @@ def active_run_path(portal_folder):
 
 
 def write_active_run(portal_folder, info):
-    """Writes the marker of the generation run being launched (CLOSE_GUARD_PLAN.md
-    section 5); best-effort, a run without a marker just cannot be recovered."""
+    """Writes the marker of the generation run being launched
+    (docs/design/flows/close-guard.md); best-effort, a run without a marker just cannot be
+    recovered."""
     path = active_run_path(portal_folder)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)

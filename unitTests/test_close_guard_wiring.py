@@ -1,5 +1,5 @@
 """
-test_close_guard_wiring.py -- the close guard wired into the real app (CLOSE_GUARD_PLAN.md):
+test_close_guard_wiring.py -- the close guard wired into the real app (docs/design/flows/close-guard.md):
 closing the window with no job closes it at once; with a job it asks (stage shown, default
 No) and No keeps everything; Yes on a pt1 run takes the save point, closes the app once
 the run settled and saves the console log; a stopped row bumps the floor totals; every

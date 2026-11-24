@@ -274,7 +274,7 @@ class PortalBrowserApp(ThemeMixin, PrimesSectionMixin, ConstellationsSectionMixi
         self.reload_constellations_tree()
 
         # Closing while a Generation-tab job runs asks first, and a generation run the
-        # previous session never saw finish is settled now (CLOSE_GUARD_PLAN.md).
+        # previous session never saw finish is settled now (docs/design/flows/close-guard.md).
         self.protocol("WM_DELETE_WINDOW", lambda: close_guard.request_close(
             self, self.generation_tab_widget, _dyn.T))
         self.generation_tab_widget.recover_previous_run(on_done=self.reload_primes_tree)

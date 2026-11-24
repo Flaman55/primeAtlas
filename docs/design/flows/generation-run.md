@@ -28,7 +28,7 @@ Visualization tabs (`generation_offer_coordinator.py`); a restore job (Settings 
 | Recovery (`run_guard.recover_unfinished_run`) | next app start, marker left | `ACTIVE_RUN.json`, WSL process list | rescans the floor's totals, clears the marker |
 
 Only one engine runs at a time: starting one locks every other Run/Generate button
-(`_lock_other_run_buttons`). Closing the app during a run asks first (`close_guard.py`).
+(`_lock_other_run_buttons`). Closing the app during a run asks first (`close_guard.py`, [close-guard](close-guard.md)).
 
 ## What leaves and what is kept
 

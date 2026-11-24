@@ -67,6 +67,23 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   Kalkulator i sekcja k-krotek w karcie Generacja używają tej samej kontrolki wzorca, bez
   zmiany działania.
 
+### +4 — Design docs: close guard flow page, stale notes fixed
+
+- English: Documentation only, the app does not change. The close guard (closing Atlas while a
+  job runs, and settling an unfinished run on the next start) has its own page,
+  docs/design/flows/close-guard.md, which the code comments now point to. The three planning
+  files of finished features at the repository root are removed. The Research page no longer
+  lists the Hardy-Littlewood density as planned (it is the Constellations Density sub-tab), the
+  Benchmark page drops a stale line count, and the prime-sieve page names Hybrid's untuned
+  defaults as a known gap.
+- Polski: Tylko dokumentacja, aplikacja się nie zmienia. Ochrona przy zamykaniu (zamknięcie
+  Atlasu w trakcie zadania i rozliczenie niedokończonego przebiegu przy następnym starcie) ma
+  własną stronę docs/design/flows/close-guard.md, na którą wskazują teraz komentarze w kodzie.
+  Trzy pliki planów ukończonych funkcji w katalogu głównym repozytorium są usunięte. Strona
+  Research nie podaje już gęstości Hardy'ego-Littlewooda jako planowanej (to podkarta Gęstość
+  w Konstelacjach), strona Benchmark nie ma już nieaktualnej liczby linii, a strona prime-sieve
+  wymienia niedostrojone domyślne ustawienia Hybrid jako znaną lukę.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

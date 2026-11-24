@@ -424,6 +424,8 @@ hit pages ([data.md](../data.md)).
 
 ## Known gaps
 
+- Hybrid's defaults (`k_adv`, MAIN boundary, tuple order, workers, window size) are not tuned
+  from full wall-clock timing rows; it is a selectable engine without a measured range where it wins.
 - v7's threshold depends only on the run's width and the knob; its best value also depends on
   the floor and the thread count, so on narrow runs the knob has to be raised by hand.
 - The bucket stage is now the larger part of a floor-19 sieve and nearly all of a floor-25 one.

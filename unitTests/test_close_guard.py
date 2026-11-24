@@ -1,7 +1,8 @@
 """
-test_close_guard.py -- primeatlas/generation/close_guard.py (CLOSE_GUARD_PLAN.md
-sections 1 and 3): closing the main window with no job closes at once; with a job a
-Yes/No dialog (default No) lists each job with its stage, No keeps everything running;
+test_close_guard.py -- primeatlas/generation/close_guard.py
+(docs/design/flows/close-guard.md): closing the main window with no job closes at once;
+with a job a Yes/No dialog (default No) lists each job with its stage, No keeps everything
+running;
 Yes stops every job through the Generation tab's save-point stop, shows a Stopping window
 with the live stage until every runner has finished, saves each stopped job's console
 text to .generation_logs/closed_<job>_<UTC>.log and only then closes; "Close now" hard
