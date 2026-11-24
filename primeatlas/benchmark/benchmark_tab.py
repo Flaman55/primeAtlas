@@ -136,8 +136,8 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     log_y), since the two series differ by orders of magnitude. An engine keeps its color on
     both axes: left-axis points are circles on a thick line, right-axis points squares on a
     thin line, and the axis titles carry the same marker. Named series get one legend entry
-    each along the top edge (_draw_legend); a point's value and series tag show in a hover
-    tooltip.
+    each along the top edge (_draw_legend); a point's exact value and series tag show in a
+    hover tooltip, while a linear axis' ticks from a million up are short ("1.18 G").
 
     hidden: set of chart_series.line_key() left out of the plot and its scales; their
     legend markers stay, so on_toggle (the legend's click callback) can bring them back.
@@ -205,13 +205,13 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
     scale1 = full1.zoomed(y_view) if full1 else None
     scale2 = full2.zoomed(y_view) if full2 else None
 
-    # pad_left/pad_right are measured from the actual tick label strings with the real
-    # font: throughput reaches 10-13 digit n/s figures, which a fixed pad would clip.
+    # Tick texts are short from a million up (number_format.compact()); pad_left/pad_right
+    # are measured from them with the real font, so no tick is clipped.
     tick_font = tkfont.Font(family="Consolas", size=8)
 
     def _max_tick_label_width(scale, places):
-        return max((tick_font.measure(scale.tick_label(v, places)) for v in scale.ticks()),
-                   default=0)
+        return max((tick_font.measure(scale.tick_label(v, places, short=True))
+                    for v in scale.ticks()), default=0)
 
     pad_left = max(50, _max_tick_label_width(scale1, places1) + 24) if scale1 else 24
     pad_right = max(50, _max_tick_label_width(scale2, places2) + 28) if scale2 else 24
@@ -256,14 +256,14 @@ def _draw_growth_chart(canvas, points, width, height, points2=None, translator=N
         for y_val in scale1.ticks():
             y_px = sy(scale1, y_val)
             canvas.create_line(pad_left - 4, y_px, pad_left, y_px, fill=grid_color)
-            canvas.create_text(pad_left - 8, y_px, text=scale1.tick_label(y_val, places1),
+            canvas.create_text(pad_left - 8, y_px, text=scale1.tick_label(y_val, places1, short=True),
                                 anchor="e", font=("Consolas", 8), fill=fg_color)
     if scale2:
         for y_val in scale2.ticks():
             y_px = sy(scale2, y_val)
             canvas.create_line(pad_left + plot_w, y_px, pad_left + plot_w + 4, y_px,
                                 fill=grid_color)
-            canvas.create_text(pad_left + plot_w + 8, y_px, text=scale2.tick_label(y_val, places2),
+            canvas.create_text(pad_left + plot_w + 8, y_px, text=scale2.tick_label(y_val, places2, short=True),
                                 anchor="w", font=("Consolas", 8), fill=fg_color)
 
     for x_val in x_ticks:

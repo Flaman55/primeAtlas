@@ -38,6 +38,17 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   karcie, a prędkość zapisu poniżej 0,1 MB/s ma dwie cyfry znaczące. Poprawka: liczby w polskiej
   notacji w PDF miały „?” między grupami cyfr.
 
+### +2 — Benchmark tab: short tick labels on the chart axes
+
+- English: The Benchmark tab's charts and their separate windows write axis ticks from a million
+  up short (1.18 G), like the report, so the plot gets the width the long numbers took. Below a
+  million and on a log axis the ticks stay as they were; the tooltip and the pin menu keep the
+  exact value.
+- Polski: Wykresy karty Benchmark i ich osobne okna zapisują podziałkę osi od miliona w górę
+  krótko (1,18 G), jak raport, więc wykres zyskuje szerokość, którą zajmowały długie liczby.
+  Poniżej miliona i na osi logarytmicznej podziałka jest jak dotąd; dymek i menu przypinania
+  pokazują dokładną wartość.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs
