@@ -1870,7 +1870,7 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               on Yes the save-point stop of every job, a Stopping
                               window with live stages and Close now, each stopped
                               job's console saved to .generation_logs/closed_*.log,
-                              then the app closes (CLOSE_GUARD_PLAN.md;
+                              then the app closes (docs/design/flows/close-guard.md;
                               unitTests/test_close_guard.py)
   generation_console.py        stacked/detachable live-output console (Clear, Open in
                               new window, a HeightGrip under the output) -- every in-app terminal: the Generation tab's

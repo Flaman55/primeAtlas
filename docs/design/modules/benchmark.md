@@ -275,8 +275,8 @@ None of its own.
 
 ## Known gaps
 
-- `benchmark_tab.py` has 888 lines; a fourth chart needs the three redraw methods folded into
-  one chart table first.
+- A fourth chart needs the three redraw methods of `benchmark_tab.py` folded into one chart
+  table first.
 - The chart layout exists twice, `chart_pdf.chart_ops()` and its port in `report_chart.js`; the
   parity test in `test_benchmark_report_html` holds them together (ADR 0007).
 - Primesieve and cudasieve rows log no RAM, so they have no RAM points.

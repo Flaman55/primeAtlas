@@ -1,5 +1,5 @@
 """
-run_guard_controls.py -- GenerationTab mixin wiring the close guard (CLOSE_GUARD_PLAN.md):
+run_guard_controls.py -- GenerationTab mixin wiring the close guard (docs/design/flows/close-guard.md):
 one launch path for Generation runs (stop request cleared, active-run marker written),
 the save-point stop (stop request + kill of the scanner only, so the orchestrator logs
 what was written; a second Stop, or an engine without the orchestrator, hard stops, on a

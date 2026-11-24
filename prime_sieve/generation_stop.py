@@ -3,8 +3,8 @@
 The GUI stops an orchestrator run with a save point: it writes STOP_REQUEST_FILENAME in
 the storage folder and kills only the scanner processes (scanner_script() of the engine),
 so the orchestrator survives, sees the request and logs what was written
-(CLOSE_GUARD_PLAN.md). The GUI deletes the file after the run exits and before every
-launch; the orchestrators only read it, since parallel instances share it.
+(docs/design/flows/close-guard.md). The GUI deletes the file after the run exits and
+before every launch; the orchestrators only read it, since parallel instances share it.
 
 No tkinter and no primeatlas imports: this module runs inside WSL next to the scanners.
 """

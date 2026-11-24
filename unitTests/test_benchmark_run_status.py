@@ -1,6 +1,6 @@
 """
 test_benchmark_run_status.py -- the run_status column of benchmark_log.csv across every
-writer (CLOSE_GUARD_PLAN.md acceptance criterion 10): orchestrator_v3,
+writer (docs/design/flows/close-guard.md): orchestrator_v3,
 orchestrator_loop_helpers, prime_sieve_primesieve, prime_sieve_cudasieve and hybrid_sieve
 share one header, each one's migration adds run_status to an existing log without changing
 its old rows, and a completed row of every engine is logged with run_status=completed.
