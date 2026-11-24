@@ -24,8 +24,9 @@ D. About -> This computer: building the app reads nothing about the hardware (no
    at launch); showing the About tab reads it once in the background and shows
    system_info_lines() of the result; showing the tab again does not read again; the
    Refresh glyph reads again and shows the new result; the copy glyph puts the shown lines
-   on the clipboard. The frame holds the WSL RAM limit row (wsl_limit_row.WslLimitRow,
-   tested in test_wslconfig_edit.py): after a read it offers the proposal, it sees the
+   on the clipboard. The frame holds the WSL limits row (wsl_limit_row.WslLimitRow,
+   tested in test_wslconfig_edit.py): after a read it offers the RAM proposal and the
+   Windows thread count as the processor limit, it sees the
    Generation tab's running jobs, and a saved limit reads the hardware again.
 
 Usage:
@@ -398,6 +399,9 @@ def _test_system_frame(app, about, reads):
     if row is not None:
         check(row.value_var.get() == "12",
               f"after a read it offers the proposal for 16 GiB, 12 GB ({row.value_var.get()!r})")
+        cpus = getattr(row, "cpu_var", None)
+        check(cpus is not None and cpus.get() == "8",
+              f"and all 8 Windows threads as the processor limit ({cpus and cpus.get()!r})")
         check(row._running_jobs() == [], "it sees no running Generation job")
         count = len(reads)
         row._on_saved()

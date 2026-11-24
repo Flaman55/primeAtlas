@@ -1,7 +1,7 @@
 """
 system_info.py -- what the About tab reads about the computer Atlas runs on: Windows
 (core.windows_hardware) with its CPU/RAM details (core.hardware_details), WSL as the sieve sees it (distro, kernel, CPUs, MemTotal,
-MemAvailable) and the [wsl2] limits of %UserProfile%\\.wslconfig.
+MemAvailable, SwapTotal) and the [wsl2] limits and swap of %UserProfile%\\.wslconfig.
 
 Every probe is best effort and needs no admin rights: a value that cannot be read is
 None, never a guess. read_system_info() starts WSL when it is not running, so callers run
@@ -16,9 +16,9 @@ from primeatlas.core import hardware_details
 from primeatlas.core.windows_hardware import WindowsInfo, read_windows_info
 
 WSL_PROBE_TIMEOUT_S = 20
-# One wsl.exe call: key=value lines, the two /proc/meminfo lines and os-release's name.
+# One wsl.exe call: key=value lines, three /proc/meminfo lines and os-release's name.
 WSL_PROBE = ('echo "nproc=$(nproc)"; echo "kernel=$(uname -r)"; '
-             "grep -E '^(MemTotal|MemAvailable):' /proc/meminfo; "
+             "grep -E '^(MemTotal|MemAvailable|SwapTotal):' /proc/meminfo; "
              "grep '^PRETTY_NAME=' /etc/os-release")
 _SIZE = re.compile(r"(\d+(?:\.\d+)?)\s*([KMGT]?)B?")
 _UNIT = {"": 1, "K": 1024, "M": 1024 ** 2, "G": 1024 ** 3, "T": 1024 ** 4}
@@ -35,6 +35,7 @@ class WslInfo:
     cpus: int = None
     mem_total: int = None
     mem_available: int = None
+    swap_total: int = None
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,8 @@ class WslConfig:
     memory_text: str = None
     memory_bytes: int = None
     processors: int = None
+    swap_text: str = None
+    swap_bytes: int = None  # 0: swap off
 
 
 @dataclass(frozen=True)
@@ -64,7 +67,8 @@ def parse_size(text):
 
 
 def parse_wslconfig(text):
-    """memory= (text and bytes) and processors= of the [wsl2] section of .wslconfig text."""
+    """memory= and swap= (text and bytes) and processors= of the [wsl2] section of .wslconfig
+    text."""
     section = None
     values = {}
     for raw in text.splitlines():
@@ -78,8 +82,10 @@ def parse_wslconfig(text):
             values[key.strip().lower()] = value.strip()
     memory = values.get("memory") or None
     processors = values.get("processors", "")
+    swap = values.get("swap") or None
     return WslConfig(memory_text=memory, memory_bytes=parse_size(memory),
-                     processors=int(processors) if processors.isdigit() else None)
+                     processors=int(processors) if processors.isdigit() else None,
+                     swap_text=swap, swap_bytes=parse_size(swap))
 
 
 def parse_wsl_probe(text):
@@ -91,14 +97,15 @@ def parse_wsl_probe(text):
             fields[key] = value.strip()
         elif line.startswith("PRETTY_NAME="):
             fields["distro"] = line.split("=", 1)[1].strip().strip('"')
-        elif line.startswith(("MemTotal:", "MemAvailable:")):
+        elif line.startswith(("MemTotal:", "MemAvailable:", "SwapTotal:")):
             parts = line.split()
             if len(parts) >= 2 and parts[1].isdigit():
                 fields[parts[0].rstrip(":")] = int(parts[1]) * 1024  # /proc/meminfo is in kB
     cpus = fields.get("nproc", "")
     return WslInfo(distro=fields.get("distro") or None, kernel=fields.get("kernel") or None,
                    cpus=int(cpus) if cpus.isdigit() and int(cpus) > 0 else None,
-                   mem_total=fields.get("MemTotal"), mem_available=fields.get("MemAvailable"))
+                   mem_total=fields.get("MemTotal"), mem_available=fields.get("MemAvailable"),
+                   swap_total=fields.get("SwapTotal"))
 
 
 def wslconfig_path():

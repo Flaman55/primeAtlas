@@ -1,23 +1,27 @@
 """
-wsl_limit_row.py -- WslLimitRow, the About tab's row that changes the WSL RAM limit: a whole-GB
-number field (WSL's default, half the Windows RAM, up to the whole RAM), the proposed limit
-(wslconfig_edit.proposed_limit_gib) and a Save button.
+wsl_limit_row.py -- WslLimitRow, the About tab's row that changes the WSL limits: a whole-GB
+RAM field (WSL's default, half the Windows RAM, up to the whole RAM) with the proposed limit
+(wslconfig_edit.proposed_limit_gib), a processor field (1 up to the Windows threads) with
+the thread count, and one Save button for both.
 
-show(info) fills it from a system_info.SystemInfo: the field gets the .wslconfig memory= in
-whole GB when set, else the proposal. save():
-  1. refuses a field with no usable value; the file's own limit (in any unit) does nothing at
-     all, since nothing would change;
-  2. a limit above the proposal (wslconfig_edit.is_risky) first gets a warning, No by default:
-     Windows short of RAM can freeze or switch off;
-  3. asks with the file's path, the changed lines and the backup it leaves, then writes
-     (wslconfig_edit.apply_change);
-  4. the new limit applies when WSL starts again: while a Generation job runs (running_jobs())
+show(info) fills it from a system_info.SystemInfo: the RAM field gets the .wslconfig memory=
+in whole GB when set, else the proposal; the processor field gets processors= when set, else
+every Windows thread (what WSL takes with no processors=). save():
+  1. refuses when either field has no usable value, before reading the file;
+  2. compares both with the file: a field equal to the file's value (memory= in any unit;
+     no processors= counts as every thread) is left out of the change; when neither
+     changes, nothing at all happens;
+  3. a changed RAM limit above the proposal (wslconfig_edit.is_risky) first gets a warning,
+     No by default: Windows short of RAM can freeze or switch off;
+  4. asks once with the file's path, the changed lines and the backup it leaves, then writes
+     both in one change (wslconfig_edit.apply_change);
+  5. the new limits apply when WSL starts again: while a Generation job runs (running_jobs())
      WSL is not restarted and a note says so; otherwise it asks to restart WSL now (it stops
      every WSL program, Atlas's or not) and runs wslconfig_edit.shutdown_wsl() in the
      background.
 on_saved() (the tab reading the hardware again) follows the write.
-Save is disabled (and save() does nothing) until the Windows RAM is known and while the WSL
-restart runs.
+Save is disabled (and save() does nothing) until the Windows RAM and threads are known and
+while the WSL restart runs.
 
 The dialogs and the shutdown are attributes (ask, warn, info, error, shutdown) a test replaces.
 """
@@ -40,6 +44,7 @@ class WslLimitRow(ttk.Frame):
         self._path = path
         self._on_saved = on_saved or (lambda: None)
         self._ram = None
+        self._threads = None
         self._min_gib = None
         self._max_gib = None
         self._restarting = False
@@ -48,22 +53,33 @@ class WslLimitRow(ttk.Frame):
         self.info = messagebox.showinfo
         self.error = messagebox.showerror
         self.shutdown = wslconfig_edit.shutdown_wsl
+        self.columnconfigure(3, weight=1)
         self.value_var = tk.StringVar(self)
-        ttk.Label(self, text=T("about.wsl_limit_label")).pack(side="left")
-        self.entry = ttk.Entry(self, textvariable=self.value_var, width=6)
-        self.entry.pack(side="left", padx=(6, 2))
-        self.field = number_field.attach(self.entry, T, "field_tip.wsl_ram_limit",
-                                         minimum=lambda: self._min_gib,
-                                         maximum=lambda: self._max_gib)
-        ttk.Label(self, text=T("about.wsl_limit_unit")).pack(side="left")
+        self.entry, self.field, self.proposal_label = self._field_row(
+            0, "about.wsl_limit_label", self.value_var, "about.wsl_limit_unit",
+            "field_tip.wsl_ram_limit", lambda: self._min_gib, lambda: self._max_gib)
+        self.cpu_var = tk.StringVar(self)
+        self.cpu_entry, self.cpu_field, self.cpu_hint_label = self._field_row(
+            1, "about.wsl_cpu_label", self.cpu_var, "about.wsl_cpu_unit",
+            "field_tip.wsl_cpu_limit", wslconfig_edit.MIN_PROCESSORS,
+            lambda: wslconfig_edit.max_processors(self._threads))
         self.save_button = ttk.Button(self, text=T("about.wsl_limit_save"), command=self.save)
-        self.save_button.pack(side="left", padx=(8, 8))
+        self.save_button.grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
         self._update_button()
-        self.proposal_label = WrapLabel(self, text="", style="Hint.TLabel")
-        self.proposal_label.pack(side="left")
+
+    def _field_row(self, row, label, variable, unit, tip, minimum, maximum):
+        """A label, a whole-number field, its unit and a hint on grid row `row`."""
+        ttk.Label(self, text=self.T(label)).grid(row=row, column=0, sticky="w")
+        entry = ttk.Entry(self, textvariable=variable, width=6)
+        entry.grid(row=row, column=1, sticky="w", padx=(6, 2))
+        field = number_field.attach(entry, self.T, tip, minimum=minimum, maximum=maximum)
+        ttk.Label(self, text=self.T(unit)).grid(row=row, column=2, sticky="w")
+        hint = WrapLabel(self, text="", style="Hint.TLabel")
+        hint.grid(row=row, column=3, sticky="w", padx=(8, 0))
+        return entry, field, hint
 
     def _can_save(self):
-        return bool(self._ram) and not self._restarting
+        return bool(self._ram) and bool(self._threads) and not self._restarting
 
     def _update_button(self):
         self.save_button.state(["!disabled"] if self._can_save() else ["disabled"])
@@ -81,34 +97,59 @@ class WslLimitRow(ttk.Frame):
         current = info.wslconfig.memory_bytes
         shown = round(current / GIB) if current else proposal
         self.value_var.set("" if shown is None else str(shown))
+        self._threads = info.windows.threads or None
+        self.cpu_hint_label.configure(
+            text=self.T("about.wsl_cpu_hint", threads=self._threads) if self._threads else "")
+        processors = info.wslconfig.processors
+        shown = processors if processors is not None else self._threads
+        self.cpu_var.set("" if shown is None else str(shown))
         self.field.refresh(at_once=True)
+        self.cpu_field.refresh(at_once=True)
         self._update_button()
+
+    def _values(self, title):
+        """(RAM GB, processors) from the fields, or None after an error naming the field."""
+        T = self.T
+        if number_field.refuse_problem([self.value_var, self.cpu_var], T, title):
+            return None
+        for field, entry, empty in ((self.field, self.entry, "about.wsl_limit_empty"),
+                                    (self.cpu_field, self.cpu_entry, "about.wsl_cpu_empty")):
+            if not isinstance(field.reading.value, int):
+                self.error(title, T(empty))
+                entry.focus_set()
+                return None
+        return self.field.reading.value, self.cpu_field.reading.value
 
     def save(self):
         if not self._can_save():
             return
         T = self.T
         title = T("about.wsl_limit_title")
-        if number_field.refuse_problem([self.value_var], T, title):
+        values = self._values(title)
+        if values is None:
             return
-        gib = self.field.reading.value
-        if not isinstance(gib, int):
-            self.error(title, T("about.wsl_limit_empty"))
-            return
+        gib, cpus = values
         try:
-            change = wslconfig_edit.plan_change(self.path(), gib)
+            current = wslconfig_edit.plan_change(self.path(), {})
         except (OSError, UnicodeDecodeError) as exc:
             self.error(title, T("about.wsl_limit_read_failed", path=self.path(), error=exc))
             return
-        if system_info.parse_wslconfig(change.old_text).memory_bytes == gib * GIB:
+        config = system_info.parse_wslconfig(current.old_text)
+        keys = {}
+        if config.memory_bytes != gib * GIB:
+            keys["memory"] = f"{gib}GB"
+        if (config.processors if config.processors is not None else self._threads) != cpus:
+            keys["processors"] = str(cpus)
+        if not keys:
             return
-        if wslconfig_edit.is_risky(gib, self._ram):
+        if "memory" in keys and wslconfig_edit.is_risky(gib, self._ram):
             ram_gib = round(self._ram / GIB)
             reserve = ram_gib - wslconfig_edit.proposed_limit_gib(self._ram)
             if not self.warn(title, T("about.wsl_limit_risky", gib=gib,
                                       left=max(0, ram_gib - gib), reserve=reserve)):
                 self.entry.focus_set()
                 return
+        change = current.with_values(keys)
         backup = (T("about.wsl_limit_backup_note") if change.existed
                   else T("about.wsl_limit_new_file_note"))
         question = T("about.wsl_limit_confirm", path=change.path,

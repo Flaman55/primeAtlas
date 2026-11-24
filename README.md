@@ -2296,15 +2296,17 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               description, author with e-mail/GitHub/license links,
                               related projects, "This computer" (read in the
                               background when the tab is first shown, Refresh and copy
-                              glyphs, the WSL RAM limit row, Fill in details), and
+                              glyphs, the WSL limits row, Fill in details), and
                               NOTICE.md read-only
   system_info.py              the hardware probe: Windows (core/windows_hardware.py),
-                              one wsl.exe call for distro, kernel, nproc, MemTotal and
-                              MemAvailable, and [wsl2] memory=/processors= of
-                              %UserProfile%\.wslconfig; unreadable values are None
-  system_info_text.py         "This computer" lines: Windows, WSL and the WSL RAM
+                              one wsl.exe call for distro, kernel, nproc, MemTotal,
+                              MemAvailable and SwapTotal, and [wsl2]
+                              memory=/processors=/swap= of %UserProfile%\.wslconfig;
+                              unreadable values are None
+  system_info_text.py         "This computer" lines: Windows, WSL, the WSL RAM
                               limit as a share of Windows RAM with its source
-                              (.wslconfig memory= or the WSL default), the CPU/RAM
+                              (.wslconfig memory= or the WSL default), the WSL swap
+                              with its source (swap= or the default), the CPU/RAM
                               details completed by the values typed for this computer
   machine_prompt.py           MachinePrompt -- this computer's entry on the GUI side:
                               opens the details window, asks once per entry after the
@@ -2313,15 +2315,17 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   machine_details_window.py   MachineDetailsWindow -- the values Windows cannot read
                               (architecture, release year, turbo, RAM CL, XMP/EXPO)
                               with a how-to and a JEDEC hint; Save / Cancel
-  wslconfig_edit.py           changes the WSL RAM limit: proposed limit (Windows RAM
-                              minus max(3 GiB, 25 %)), range from WSL's default (half
-                              the RAM) to the RAM, [wsl2] memory= set with the rest
-                              of .wslconfig kept, backup + one-rename write, refusal
-                              when the file changed meanwhile, wsl --shutdown
-  wsl_limit_row.py            WslLimitRow -- "This computer" row: GB field, proposal,
-                              Save (warns above the proposal, asks with the changed
-                              lines, writes, then offers a
-                              WSL restart unless a Generation job runs)
+  wslconfig_edit.py           changes the WSL limits: proposed RAM limit (Windows RAM
+                              minus max(3 GiB, 25 %)), RAM range from WSL's default
+                              (half the RAM) to the RAM, processors up to the Windows
+                              threads, [wsl2] keys set with the rest of .wslconfig
+                              kept, backup + one-rename write, refusal when the file
+                              changed meanwhile, wsl --shutdown
+  wsl_limit_row.py            WslLimitRow -- "This computer" row: RAM field with the
+                              proposal, processor field with the thread count, one
+                              Save (writes only what changed, warns above the RAM
+                              proposal, asks with the changed lines, writes, then
+                              offers a WSL restart unless a Generation job runs)
 
   primeatlas/benchmark/         "Benchmark" tab
   benchmark_tab.py             BenchmarkTab -- the Benchmark tab (three charts: whole run
