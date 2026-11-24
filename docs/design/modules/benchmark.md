@@ -154,7 +154,9 @@ zero, and the part below the data is empty), so any part can be centred and the 
 the view on either axis. The canvas bindings return "break", so the wheel over a chart does not
 scroll the page. A point's tooltip (`chart_hover.py`) lists every point drawn on the same spot,
 so a right-axis square lying on another line's circle can still be read: one line each in its
-color, ● left axis, ■ right axis. "Open in new window" above each chart
+color, ● left axis, ■ right axis, with the exact value; a linear axis' ticks from a million up
+are short (`number_format.compact()`: `1,18 G`), in the tab and its chart windows alike, and its
+pads are measured from those texts. "Open in new window" above each chart
 (`benchmark_chart_windows.py`) opens a resizable window with a second canvas of that chart, raised
 instead of doubled on another click; `_draw_chart()` draws both canvases with one state, so zoom,
 legend toggles, pins, filter and toggles act on both, and zooming in the window zooms the tab.
@@ -262,7 +264,7 @@ None of its own.
 ## Specs and tests
 
 `test_benchmark_tab`, `test_benchmark_table_columns`, `test_tree_scroll_to_top`, `test_benchmark_point_menu`, `test_benchmark_view_state`, `test_benchmark_table_copy`, `test_benchmark_table_layout`, `test_benchmark_chart_series`, `test_benchmark_report_export`,
-`test_benchmark_report_html` (the script through node), `test_benchmark_chart_zoom`,
+`test_benchmark_report_html` (the script through node), `test_benchmark_chart_zoom`, `test_benchmark_tab_ticks`,
 `test_benchmark_chart_windows`,
 `test_benchmark_actual_range`,
 `test_benchmark_run_status`, `test_benchmark_main_compatibility`, `test_benchmark_log_schema`,

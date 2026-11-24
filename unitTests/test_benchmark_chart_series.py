@@ -541,7 +541,8 @@ class TabPinTests(unittest.TestCase):
                 entries[pin_max][0]()
                 self.assertEqual(points(chart, "primary"), [4e7, 5e7])
                 self.assertEqual(points(chart, "secondary"), [1.0, 2.0, 2.0])
-                self.assertIn("50,000,000", texts(chart))
+                # The pinned edge is the top tick, short on the axis; the menu kept it exact.
+                self.assertIn("50.0 M", texts(chart))
                 self.assertTrue(any(t("bench.axis_pinned") in x for x in texts(chart)))
                 self.assertEqual(points(chart2, "primary"), sieve_before, "other chart untouched")
 
