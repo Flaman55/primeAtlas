@@ -39,6 +39,7 @@ from ...core.number_text import plain_number
 from ...core import storage
 from ..shared.audio import INSTRUMENTS
 from ..shared.viz_tab_base import VizTabBase
+from .pattern_source import PatternSource
 from ...core.widgets import FlowRow
 from ...core.wrap_label import WrapLabel
 
@@ -53,7 +54,7 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
                          sound_low='sine', sound_prime='triangle', sound_lcm='choir',
                          pipe_stdin_commands=False, max_load_count=None, tempo_ms=None,
                          viz_mode="rings", pattern_seed_k=None, pattern_seed_start=None,
-                         pattern_step_mode="manual", pattern_stop_on_match=False,
+                         pattern_offsets=None, pattern_step_mode="manual", pattern_stop_on_match=False,
                          line_axis_curved=False, slide_load_range=False, slide_chunk_size=None):
     """Builds the argv for launching renderer.py against a real archive.
 
@@ -139,7 +140,9 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
     given together, they derive the "line" mode's optional sliding k-tuple
     pattern (see line_geometry.pattern_offsets_from_seed). Not int()-cast
     here for the same reason track_primes isn't above -- renderer.py's own
-    argparse does the real validation.
+    argparse does the real validation. `pattern_offsets` -- a catalog
+    pattern's offsets, sent as --pattern-offsets 0,2,6,8 instead of a seed;
+    None (default) omits it.
 
     `pattern_step_mode` -- "manual" (default, omits --pattern-step-mode
     entirely) always takes a single wheel step per navigation key,
@@ -204,6 +207,8 @@ def build_renderer_argv(portal_folder, upto, python_executable=None,
         argv += ["--pattern-seed-k", str(pattern_seed_k)]
     if pattern_seed_start is not None:
         argv += ["--pattern-seed-start", str(pattern_seed_start)]
+    if pattern_offsets is not None:
+        argv += ["--pattern-offsets", ",".join(str(o) for o in pattern_offsets)]
     if pattern_step_mode != "manual":
         argv += ["--pattern-step-mode", str(pattern_step_mode)]
     if pattern_stop_on_match:
@@ -374,33 +379,19 @@ class RingsTab(VizTabBase):
         # horizontal row of real primes (from Load Range above, which this
         # requires) instead of the default ring-per-modulus display, with an
         # optional k-tuple pattern slid along it by N (see renderer.py's own
-        # --viz-mode/--pattern-seed-* flags and line_geometry.py for the full
-        # design). k/p0 derive the pattern's
-        # offsets from k real consecutive primes >= p0 -- see
-        # pattern_offsets_from_seed's own doc-comment for why that's always
-        # an admissible pattern.
-        # This row and the next wrap their controls whole onto the next line in a narrow
-        # window.
+        # --viz-mode/--pattern-* flags and line_geometry.py for the full
+        # design). The pattern comes from the catalog, from k consecutive primes
+        # >= p0, or is left out -- see pattern_source.py.
+        # This row and the step row wrap their controls whole onto the next line in a
+        # narrow window.
         line_mode_row = FlowRow(position_frame)
         line_mode_row.frame.pack(fill="x", padx=8, pady=(0, 8))
         self.line_mode_var = tk.BooleanVar(value=saved_params.get("line_mode", False))
         self._line_mode_check = ttk.Checkbutton(
             line_mode_row.frame, text=self.T("rings.line_mode_label"), variable=self.line_mode_var)
         line_mode_row.add(self._line_mode_check)
-        k_group = ttk.Frame(line_mode_row.frame)
-        ttk.Label(k_group, text=self.T("rings.pattern_k_label")).pack(side="left")
-        self.pattern_k_entry = ttk.Entry(k_group, width=6)
-        number_field.attach(self.pattern_k_entry, self.T, "field_tip.rings_pattern_k")
-        self.pattern_k_entry.insert(0, saved_params.get("pattern_k", ""))
-        self.pattern_k_entry.pack(side="left", padx=(6, 0))
-        line_mode_row.add(k_group, padx_left=16)
-        p0_group = ttk.Frame(line_mode_row.frame)
-        ttk.Label(p0_group, text=self.T("rings.pattern_p0_label")).pack(side="left")
-        self.pattern_p0_entry = ttk.Entry(p0_group, width=16)
-        number_field.attach(self.pattern_p0_entry, self.T, "field_tip.rings_pattern_p0")
-        self.pattern_p0_entry.insert(0, saved_params.get("pattern_p0", ""))
-        self.pattern_p0_entry.pack(side="left", padx=(6, 0))
-        line_mode_row.add(p0_group, padx_left=16)
+        self.pattern_source = PatternSource(position_frame, self.T, saved_params)
+        self.pattern_source.frame.pack(fill="x", padx=8, pady=(0, 8))
 
         # Manual/Auto step-mode radio + "MATCH!" checkbox: Manual (default) always
         # takes a single wheel
@@ -638,7 +629,6 @@ class RingsTab(VizTabBase):
             self.hud_font_size_entry, self.general_law_theta_entry,
             self.track_primes_entry, self.load_range_from_entry, self.load_range_to_entry,
             self.max_load_count_entry, self.tempo_ms_entry,
-            self.pattern_k_entry, self.pattern_p0_entry,
         ]
         self._launch_param_checkbuttons = [
             self._audio_enable_check, self._bertrand_check, self._legendre_check,
@@ -651,6 +641,10 @@ class RingsTab(VizTabBase):
             self.general_law_mode_combo,
             self.audio_choices['low'], self.audio_choices['prime'], self.audio_choices['lcm'],
         ]
+        pattern_entries, pattern_radios, pattern_dropdowns = self.pattern_source.lock_widgets()
+        self._launch_param_entries += pattern_entries
+        self._launch_param_checkbuttons += pattern_radios
+        self._launch_param_dropdowns += pattern_dropdowns
 
     def _set_launch_params_readonly(self, readonly):
         """Toggles every launch-time-only field
@@ -886,27 +880,20 @@ class RingsTab(VizTabBase):
         # real primes as its dot row -- see renderer.py's own --viz-mode
         # line validation, mirrored here so the error surfaces in this
         # dialog instead of the subprocess's own parser.error() exit).
-        # The pattern (k/p0) itself is optional within line mode -- see
-        # build_line_vertex_data's own empty-offsets case -- but if either
-        # field was filled in, both must parse and satisfy the same k>=2/
-        # p0>2 rule renderer.py's own argparse enforces, so a half-typed
-        # pattern fails loudly here rather than as a confusing subprocess
-        # launch error.
+        # The pattern is optional within line mode (None) -- see
+        # build_line_vertex_data's own empty-offsets case -- but Manual's k/p0
+        # must satisfy the same k>=2/p0>2 rule renderer.py's own argparse
+        # enforces, so a half-typed pattern fails loudly here rather than as a
+        # confusing subprocess launch error. Ring mode sends no pattern.
         line_mode = self.line_mode_var.get()
-        pattern_k_raw = self.pattern_k_entry.get().strip()
-        pattern_p0_raw = self.pattern_p0_entry.get().strip()
-        pattern_k = None
-        pattern_p0 = None
+        pattern = {}
         if line_mode:
             if load_range is None:
                 messagebox.showerror(self.T("rings.error_dialog_title"),
                                       self.T("rings.error_line_mode_needs_range"))
                 return
-            pattern_k = _eval_quick_number(pattern_k_raw) if pattern_k_raw else None
-            pattern_p0 = _eval_quick_number(pattern_p0_raw) if pattern_p0_raw else None
-            if (pattern_k_raw or pattern_p0_raw) and (
-                pattern_k is None or pattern_p0 is None or pattern_k < 2 or pattern_p0 <= 2
-            ):
+            pattern = self.pattern_source.launch_pattern()
+            if pattern is None:
                 messagebox.showerror(self.T("rings.error_dialog_title"), self.T("rings.error_pattern_invalid"))
                 return
 
@@ -925,8 +912,7 @@ class RingsTab(VizTabBase):
                                     max_load_count=max_load_count,
                                     tempo_ms=tempo_ms,
                                     viz_mode="line" if line_mode else "rings",
-                                    pattern_seed_k=pattern_k,
-                                    pattern_seed_start=pattern_p0,
+                                    **pattern,
                                     pattern_step_mode=self.pattern_step_mode_var.get(),
                                     pattern_stop_on_match=self.pattern_stop_on_match_var.get(),
                                     line_axis_curved=self.line_axis_curved_var.get(),
@@ -962,8 +948,7 @@ class RingsTab(VizTabBase):
                 "max_load_count": max_load_count_raw,
                 "slide_load_range": slide_load_range,
                 "line_mode": line_mode,
-                "pattern_k": pattern_k_raw,
-                "pattern_p0": pattern_p0_raw,
+                **self.pattern_source.saved_params(),
                 "pattern_step_mode": self.pattern_step_mode_var.get(),
                 "pattern_stop_on_match": self.pattern_stop_on_match_var.get(),
                 "line_axis_curved": self.line_axis_curved_var.get(),

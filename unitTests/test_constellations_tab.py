@@ -209,10 +209,7 @@ def main():
 
         # === 3. Constellation calculator: compute + search-selected triggers the SAME ===
         # === real search, and (being calculator-initiated) auto-jumps on completion ===
-        calc.k_combo.set(str(k))
-        calc._on_k_changed()
-        calc.variant_combo.current(0)
-        calc._on_variant_changed()
+        calc.picker.select(k=k)
         calc.exp_entry.delete(0, "end")
         calc.exp_entry.insert(0, "3")
         calc.offset_entry.delete(0, "end")

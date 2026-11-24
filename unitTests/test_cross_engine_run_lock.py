@@ -190,8 +190,7 @@ def _test_starting_ktuple_run_locks_loop_and_const_buttons():
         original_runner = _patch_wsl_runner(generation_tab_module)
         try:
             tab._ktuple_vars["base_exponent"].set("12")
-            tab.ktuple_k_combo.current(0)
-            tab.ktuple_variant_combo.current(0)
+            tab.ktuple_picker.select()
             tab._ktuple_vars["n_locations"].set("10")
             tab._ktuple_vars["window_m"].set("1000")
             tab.ktuple_strategy_combo.current(0)

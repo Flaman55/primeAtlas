@@ -220,6 +220,88 @@ def _test_empty_storage_offer(app, tab, rings_tab_module, tmp_portal, shown):
     rings_tab_module.find_highest_populated_floor = lambda portal: 0
 
 
+def _test_line_pattern_source(app, tab, rings_tab_module, shown):
+    """Line mode's pattern choice (From the list / Manual / None) reaches the launched argv,
+    is saved with the launch parameters and locks while paused; ring mode launches no
+    pattern whatever the choice."""
+    from primeatlas.app import app_dynamic
+    from primeatlas.constellations.pattern_picker import PatternPicker
+
+    source = tab.pattern_source
+    check(isinstance(source.picker, PatternPicker), "Rings line mode holds the catalog PatternPicker")
+    tab.mode_var.set("range")
+    tab._on_mode_changed()
+    tab.load_range_from_entry.delete(0, "end")
+    tab.load_range_from_entry.insert(0, "100")
+    tab.load_range_to_entry.delete(0, "end")
+    tab.load_range_to_entry.insert(0, "500")
+    tab.line_mode_var.set(True)
+
+    def launch():
+        script = _write_fake_renderer(0)
+        rings_tab_module.RENDERER_SCRIPT = script
+        shown.clear()
+        argv = _open_and_capture(tab)
+        _pump_until_idle(app, tab)
+        os.remove(script)
+        return argv
+
+    pattern_flags = ("--pattern-offsets", "--pattern-seed-k", "--pattern-seed-start")
+
+    source.source_var.set("list")
+    source.picker.select(k=4, variant_id=1)
+    argv = launch()
+    check("--pattern-offsets" in argv and argv[argv.index("--pattern-offsets") + 1] == "0,2,6,8"
+          and "--pattern-seed-k" not in argv,
+          f"From the list: --pattern-offsets 0,2,6,8, no seed flags (got {argv!r})")
+    saved = app_dynamic.APP_SETTINGS._data.get("ring_viz_params") or {}
+    check(saved.get("pattern_source") == "list" and saved.get("pattern_list_k") == "4"
+          and saved.get("pattern_list_id") == "1",
+          f"the launch saves the mode and the list choice (got {saved})")
+
+    source.source_var.set("manual")
+    source.k_entry.delete(0, "end")
+    source.k_entry.insert(0, "4")
+    source.p0_entry.delete(0, "end")
+    source.p0_entry.insert(0, "5")
+    argv = launch()
+    check(argv[argv.index("--pattern-seed-k") + 1] == "4" and argv[argv.index("--pattern-seed-start") + 1] == "5"
+          and "--pattern-offsets" not in argv,
+          f"Manual: the seed flags as before, no --pattern-offsets (got {argv!r})")
+
+    source.k_entry.delete(0, "end")
+    shown.clear()
+    tab._on_open()
+    check(len(shown) == 1 and shown[0][0] == "error" and tab._runner is None,
+          "Manual with an empty k: the error dialog, no launch")
+
+    source.source_var.set("none")
+    argv = launch()
+    check(argv and not any(f in argv for f in pattern_flags), f"None: no pattern flags (got {argv!r})")
+
+    source.source_var.set("list")
+    tab.line_mode_var.set(False)
+    argv = launch()
+    check(argv and not any(f in argv for f in pattern_flags),
+          f"ring mode: no pattern flags whatever the choice (got {argv!r})")
+
+    tab._set_launch_params_readonly(True)
+    check(all(str(r["state"]) == "disabled" for r in source.radios)
+          and str(source.picker.k_combo["state"]) == "disabled"
+          and str(source.picker.variant_combo["state"]) == "disabled"
+          and str(source.k_entry["state"]) == "disabled",
+          "paused: the mode radios, both dropdowns and the k/p0 fields are locked")
+    tab._set_launch_params_readonly(False)
+    check(all(str(r["state"]) == "normal" for r in source.radios)
+          and str(source.picker.k_combo["state"]) == "readonly"
+          and str(source.picker.variant_combo["state"]) == "readonly"
+          and str(source.k_entry["state"]) == "normal",
+          "unlocked: radios and fields editable, dropdowns read-only again")
+
+    tab.mode_var.set("sequential")
+    tab._on_mode_changed()
+
+
 def main():
 
     import tkinter.messagebox
@@ -846,6 +928,8 @@ def main():
           f"console pane shows the exit-code-1 message (got console text: "
           f"{console_text!r})")
     os.remove(fake_fail_script)
+
+    _test_line_pattern_source(app, tab, rings_tab_module, shown)
 
     # --- error path: portal folder missing -------------------------------------------
     tab._get_portal_folder = lambda: os.path.join(tmp_portal, "does_not_exist")

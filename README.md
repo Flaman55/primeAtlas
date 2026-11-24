@@ -940,10 +940,14 @@ here).
 A second, independent drawing mode (`--viz-mode line`, a "Line mode" checkbox next to
 Load Range in the tab) replaces the ring-per-modulus display with a literal number-line:
 a fixed horizontal row of real primes from the chosen Load Range, plus an optional
-sliding k-tuple pattern -- enter a pattern size `k` and a starting prime `p0` (> 2) and
-the pattern's offsets are derived from `k` real consecutive primes >= `p0`
-(`line_geometry.pattern_offsets_from_seed`, always admissible since it's read off a real
-occurrence). N becomes the pattern's anchor, moved with the exact same playback/scrub
+sliding k-tuple pattern, chosen with a "Pattern" switch (`pattern_source.py`): From the
+list (the default) picks a catalog pattern by k and variant, with its offsets and record
+shown (`--pattern-offsets`); Manual takes a pattern size `k` and a starting prime `p0`
+(> 2), derives the offsets from `k` real consecutive primes >= `p0`
+(`line_geometry.pattern_offsets_from_seed`; admissible when `p0` > `k`, while a smaller
+seed can give a pattern that occurs once only, e.g. k=3, p0=3 -> 0, 2, 4) and
+previews them as you type, naming the catalog pattern they match; None draws the primes
+alone. N becomes the pattern's anchor, moved with the exact same playback/scrub
 controls as ring mode; every member (`n + offset`) is drawn as an oversized marker
 (reusing the existing hit-point-size mechanism), green when it lands on a real prime and
 red when it doesn't, with a full-screen flash and an on-canvas HUD line when every member
@@ -1622,6 +1626,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   constellations_hits_tab.py    ConstellationsHitsTab -- Constellations -> Storage
   constellations_calc_tab.py    ConstellationsCalcTab -- Constellations -> Constellation
                               calculator
+  pattern_picker.py             PatternPicker -- the one catalog pattern control (k
+                              dropdown -> variant dropdown + offsets/record line),
+                              used by the Calculator, Generation's k-tuple section and
+                              Rings' line mode
   constellations_records_tab.py ConstellationsRecordsTab -- Constellations -> Records
                               table
   constellations_density_tab.py ConstellationsDensityTab -- Constellations -> Density
@@ -1786,7 +1794,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               checkpoint-verified auto-retry (its CONSTELLATION_*
                               constants live here)
   ktuple_section.py             KtupleSection mixin: Section C, the ktuple_sieve_v2_2.py
-                              form (pattern, strategy, Advanced), Run/Auto/Stop/finish
+                              form (pattern via PatternPicker, strategy, Advanced),
+                              Run/Auto/Stop/finish
   verify_section.py             VerifySection mixin: Section D, pt1_verify_store.py or
                               v73_verify_store.py (method pt1.1 proof / v7.3 sieve,
                               floor, the window width with Auto and the split into
@@ -2164,6 +2173,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               build_renderer_argv; Start with an empty storage offers
                               the storage fill (offer_generate_storage, injected by the
                               app) and relaunches once it is done
+    pattern_source.py            PatternSource -- line mode's pattern switch: From the
+                              list (PatternPicker -> --pattern-offsets), Manual (k/p0
+                              with a how-to line and a live offsets preview ->
+                              --pattern-seed-*), None; its saved launch values
     ring/                        "rings" viz-mode
       ring_mode.py                 RingMode -- window/tracking config, auto-orbit,
                               cyclic window anchors, resonance log, tracked-ring
@@ -2198,10 +2211,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               wheel-aware navigation, the pattern seek (synchronous, or on
                               the session's background seek when sliding), the
                               pattern-match flash, and its own CLI arguments
-                              (--pattern-seed-*, --pattern-step-mode,
+                              (--pattern-offsets, --pattern-seed-*, --pattern-step-mode,
                               --pattern-stop-on-match, --line-axis-curved)
       line_geometry.py             next_prime_at_or_above/pattern_offsets_from_seed derive
-                              a k-tuple pattern from real primes; line_positions/
+                              a k-tuple pattern from real primes; is_admissible checks
+                              one given by its offsets; line_positions/
                               value_to_line_x place them on a horizontal line;
                               pattern_positions_and_match/clamp_pattern_anchor drive the
                               match check and its scrub clamp; pattern_wheel_residues/
@@ -2209,8 +2223,8 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               so scrub/playback jump straight to the next N that can ever
                               match; resolve_pattern_anchor picks the launch anchor (the
                               seed's own occurrence if the loaded window contains it,
-                              otherwise the first phase-compatible candidate at the
-                              window's lower edge); line_view_bounds/
+                              otherwise -- and always for a catalog pattern -- the first
+                              phase-compatible candidate at the window's lower edge); line_view_bounds/
                               line_positions_windowed pick a local, anchor-centered
                               viewport once the window's span would lose a k-tuple's small
                               offsets to float32 vertex precision; value_to_ring_axis_xy/

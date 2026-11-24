@@ -12,6 +12,7 @@ after renderer.py has already run its own bootstrap, or on its own (e.g.
 directly from a test).
 """
 
+import argparse
 import os
 import sys
 import time
@@ -32,10 +33,18 @@ from primeatlas.visualization.shared.draw_primitives import (
 )
 from primeatlas.visualization.rings.line.line_geometry import (
     pattern_wheel_residues, next_wheel_n, pattern_positions_and_match, DEFAULT_WHEEL_PRIMES,
-    pattern_offsets_from_seed, next_prime_at_or_above, resolve_pattern_anchor,
+    pattern_offsets_from_seed, next_prime_at_or_above, resolve_pattern_anchor, is_admissible,
 )
 from primeatlas.visualization.rings.line.line_draw import build_line_vertex_data, _FLASH_PATTERN_RGB
 from primeatlas.visualization.rings.line.line_hud import pattern_hud_line
+
+
+def _offsets_arg(text):
+    """--pattern-offsets' type: comma-separated integers ("0,2,6,8")."""
+    try:
+        return [int(part) for part in text.split(",")]
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"comma-separated integers expected, got {text!r}")
 
 
 class LineMode(VizMode):
@@ -140,6 +149,10 @@ class LineMode(VizMode):
                                   "--pattern-seed-start as the sliding k-tuple pattern's offsets")
         parser.add_argument("--pattern-seed-start", type=parse_big_int, default=None,
                              help="line mode only: starting prime (must be > 2) for --pattern-seed-k")
+        # A pattern given by its offsets (the Rings tab's catalog list) instead of a seed.
+        parser.add_argument("--pattern-offsets", type=_offsets_arg, default=None,
+                             help="line mode only: the sliding k-tuple pattern's offsets, comma-separated "
+                                  "(0 first, ascending, admissible), e.g. 0,2,6,8; not with --pattern-seed-*")
         # Manual/Auto step-mode radio + "MATCH!" checkbox: "manual" (default) always
         # takes a single wheel step per
         # LEFT/RIGHT/Up/Down/Space, showing every wheel candidate in turn
@@ -179,6 +192,18 @@ class LineMode(VizMode):
                 parser.error(f"--pattern-seed-k must be >= 2, got {args.pattern_seed_k}")
             if args.pattern_seed_start <= 2:
                 parser.error(f"--pattern-seed-start must be > 2, got {args.pattern_seed_start}")
+        offsets = args.pattern_offsets
+        if offsets is not None:
+            if args.viz_mode != cls.name:
+                parser.error("--pattern-offsets requires --viz-mode line")
+            if args.pattern_seed_k is not None:
+                parser.error("--pattern-offsets and --pattern-seed-k/--pattern-seed-start exclude each other")
+            if len(offsets) < 2 or offsets[0] != 0 or any(b <= a for a, b in zip(offsets, offsets[1:])):
+                parser.error(f"--pattern-offsets must be at least two values, 0 first, strictly "
+                             f"ascending, got {offsets}")
+            if not is_admissible(offsets):
+                parser.error(f"--pattern-offsets {offsets} is not admissible: it covers every "
+                             f"residue mod some prime, so it can never repeat")
 
     @classmethod
     def prepare_launch(cls, args, launch):
@@ -198,8 +223,9 @@ class LineMode(VizMode):
 
         # k-tuple pattern-slide seed -- derived from real
         # consecutive primes >= --pattern-seed-start, see
-        # pattern_offsets_from_seed's own doc-comment for why this always yields
-        # an admissible pattern. validate_arguments already
+        # pattern_offsets_from_seed's own doc-comment for when this yields an
+        # admissible pattern (p0 > k) and when it can occur once only (a small
+        # seed whose members include a prime <= k). validate_arguments already
         # guarantees --pattern-seed-k/--pattern-seed-start only appear together
         # and only with --viz-mode line + --load-range, so no further gating is
         # needed here.
@@ -220,7 +246,14 @@ class LineMode(VizMode):
         # wheel-compatible candidate at or past the window's lower edge, so
         # scrubbing from there on is correctly phase-aligned from frame one.
         pattern_offsets = None
-        if args.pattern_seed_k is not None:
+        if args.pattern_offsets is not None:
+            pattern_offsets = list(args.pattern_offsets)
+            print(f"Pattern: offsets={pattern_offsets}")
+            if launch.range_mode and len(launch.range_primes):
+                lo = int(launch.range_primes[0])
+                hi = int(launch.range_primes[-1]) - pattern_offsets[-1]
+                launch.n = resolve_pattern_anchor(None, pattern_offsets, lo, hi)
+        elif args.pattern_seed_k is not None:
             pattern_offsets = pattern_offsets_from_seed(args.pattern_seed_k, args.pattern_seed_start)
             seed_prime = next_prime_at_or_above(args.pattern_seed_start)
             print(f"Pattern seed: k={args.pattern_seed_k} start={args.pattern_seed_start:,} -> "

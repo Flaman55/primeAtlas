@@ -1,7 +1,7 @@
 """
 constellations_calc_tab.py -- ConstellationsCalcTab, the tkinter widgets for the
 Constellations tab's "Constellation calculator" sub-tab: pick a k-tuple pattern from
-pattern_catalog_v1.py (k dropdown -> variant dropdown, showing that variant's offsets
+pattern_catalog_v1.py (pattern_picker.PatternPicker: k -> variant, showing its offsets
 plus its pzktupel.de record info when tracked), enter exp/Offset, and Atlas computes
 N = 10**exp + Offset plus every N + offset_i for the pattern -- shown in a results
 table (not yet checked for primality; this is pure arithmetic, no file I/O, so it's
@@ -40,10 +40,7 @@ This is one of a few files in primeatlas/ that import tkinter -- see
 primes_tab.py's own docstring for the general "pure logic elsewhere" convention this
 package otherwise follows.
 """
-import tkinter as tk
 from tkinter import ttk, messagebox
-
-import pattern_catalog_v1
 
 from ..core import number_field
 from ..core import number_format
@@ -52,8 +49,8 @@ from ..core.base_tab import BaseTab
 from ..core.widgets import HeightGrip, StripedTreeview
 from ..core.storage import digit_count_floor, list_floors
 from ..core.ui_state import remember
-from ..core.wrap_label import WrapLabel
 from .constellations import list_constellation_hits
+from .pattern_picker import PatternPicker
 
 
 # The selected variant's id (the combo shows translated labels of the current k's variants).
@@ -121,26 +118,11 @@ class ConstellationsCalcTab(BaseTab):
         container = ttk.Frame(self)
         container.pack(fill="both", expand=True, padx=12, pady=12)
 
-        pattern_row = ttk.Frame(container)
-        pattern_row.pack(fill="x", pady=(0, 8))
-        ttk.Label(pattern_row, text=T("const_calc.field_k")).pack(side="left")
-        self._k_values = pattern_catalog_v1.all_k()
-        self.k_combo = ttk.Combobox(
-            pattern_row, state="readonly", width=6,
-            values=[str(k) for k in self._k_values])
-        self.k_combo.pack(side="left", padx=(6, 16))
-        self.k_combo.bind("<<ComboboxSelected>>", self._on_k_changed)
-
-        ttk.Label(pattern_row, text=T("const_calc.field_variant")).pack(side="left")
-        self._variants = []
-        self.variant_combo = ttk.Combobox(pattern_row, state="readonly", width=10)
-        self.variant_combo.pack(side="left", padx=(6, 0))
-        self.variant_combo.bind("<<ComboboxSelected>>", self._on_variant_changed)
-
-        self.pattern_info_var = tk.StringVar(value="")
-        WrapLabel(container, textvariable=self.pattern_info_var,
-                  style="Hint.TLabel").pack(
-            anchor="w", pady=(0, 8))
+        self.picker = PatternPicker(
+            container, T, "const_calc.field_k", "const_calc.field_variant",
+            on_change=lambda w: ui_state_dynamic.STORE.set(_VARIANT_KEY, str(w["id"])))
+        self.picker.row.pack(fill="x", pady=(0, 8))
+        self.picker.info_label.pack(anchor="w", pady=(0, 8))
 
         input_row = ttk.Frame(container)
         input_row.pack(fill="x", pady=(0, 8))
@@ -185,59 +167,19 @@ class ConstellationsCalcTab(BaseTab):
                                       # variant-combo change AFTER computing doesn't
                                       # retroactively change what a search believes it's
                                       # looking for
-        if self._k_values:
-            # read before _on_k_changed() selects (and saves) the first variant
+        if self.picker.k_values:
+            # read before select() saves the variant it picks
             saved_variant = ui_state_dynamic.STORE.get(_VARIANT_KEY)
-            self.k_combo.current(0)
-            remember("constellations.calc.k", self.k_combo)
-            self._on_k_changed()
-            self._select_variant_id(saved_variant)
-
-    def _select_variant_id(self, variant_id):
-        """Selects the variant with this id when the current k has one."""
-        for idx, w in enumerate(self._variants):
-            if str(w["id"]) == str(variant_id):
-                self.variant_combo.current(idx)
-                self._on_variant_changed()
-                return
-
-    def _on_k_changed(self, _event=None):
-        k_str = self.k_combo.get()
-        if not k_str:
-            return
-        self._variants = pattern_catalog_v1.patterns_for_k(int(k_str))
-        self.variant_combo.configure(
-            values=[self.T("const_calc.variant_label", id=w["id"]) for w in self._variants])
-        if self._variants:
-            self.variant_combo.current(0)
-        else:
-            self.variant_combo.set("")
-        self._on_variant_changed()
-
-    def _on_variant_changed(self, _event=None):
-        T = self.T
-        idx = self.variant_combo.current()
-        if idx < 0 or idx >= len(self._variants):
-            self.pattern_info_var.set("")
-            return
-        w = self._variants[idx]
-        ui_state_dynamic.STORE.set(_VARIANT_KEY, str(w["id"]))
-        offsets_str = ", ".join(str(o) for o in w["offsets"])
-        if w["record_digits"] is not None:
-            self.pattern_info_var.set(T(
-                "const_calc.pattern_info", offsets=offsets_str,
-                record_digits=w["record_digits"], discoverer=w["discoverer"],
-                date=w["date"]))
-        else:
-            self.pattern_info_var.set(T("const_calc.pattern_info_untracked", offsets=offsets_str))
+            self.picker.k_combo.current(0)
+            remember("constellations.calc.k", self.picker.k_combo)
+            self.picker.select(k=self.picker.k_combo.get(), variant_id=saved_variant)
 
     def _on_compute(self):
         T = self.T
-        idx = self.variant_combo.current()
-        if idx < 0 or idx >= len(self._variants):
+        pattern = self.picker.pattern()
+        if pattern is None:
             messagebox.showerror(T("const_calc.error_dialog_title"), T("const_calc.error_no_pattern"))
             return
-        pattern = self._variants[idx]
         offsets = pattern["offsets"]
         exp = self._eval_quick_number(self.exp_entry.get())
         if exp is None or exp < 0:
