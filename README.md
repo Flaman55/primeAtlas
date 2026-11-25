@@ -1779,9 +1779,12 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               kept in the floor and under the program's stop
                               (~1.73·10^33 / 2^64 - 1); never reads the storage --
                               pure, no tkinter (unitTests/test_native_plan.py)
-  quick_gen_plan.py             QuickGenPlan mixin: Quick-gen fields -> one launch
-                              (_quick_gen_plan_literal_range,
-                              _on_quick_generate_clicked)
+  quick_gen_plan.py             QuickGenPlan mixin: Quick-gen fields -> one launch;
+                              Generate's guards and mode match
+                              (_on_quick_generate_clicked), a planner per mode
+                              (_plan_quick_<mode>), the shared literal-range launch
+                              (_quick_gen_plan_literal_range, _launch_literal_plan)
+                              (unitTests/test_quick_gen_plan_split.py)
   loop_section.py               LoopSection mixin: Section A, the orchestrator_loop_v2.py
                               form (Advanced: four framed groups -- range, parallelism,
                               pi(L_final) counting, sieve engine -- sized for a Full HD

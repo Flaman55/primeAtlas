@@ -372,7 +372,7 @@ class QuickGenRuns:
         normal continue-from-highest logic, unchanged. Returns True (and has ALREADY
         launched something + set quick_status_var) if a gap was found and filled;
         False otherwise -- callers should `return` immediately on True, exactly like
-        any other terminal branch in _on_quick_generate_clicked.
+        any other terminal branch of a mode planner.
 
         Deliberately launches at most width_mult windows into the gap -- ONE
         iteration's worth, never more, even from Exploration mode's own multi-

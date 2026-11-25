@@ -248,9 +248,9 @@ def _floor_window_count(base_power, window=QUICK_GEN_MAX_WINDOW_WIDTH):
     Caps a floor-only/range request's window_count_per_run so target_idx never passes
     the floor's own boundary; otherwise the next floor's numbers would be written into
     this floor's folder, labeled as this floor (e.g. floor 7 past its 9th window). See
-    _quick_gen_plan_literal_range and _on_quick_generate_clicked's blank-starting-point
-    Floor branch for where this is applied -- Exploration mode deliberately does NOT use
-    this (see that branch's own comment)."""
+    _quick_gen_plan_literal_range and _plan_quick_floor's blank-starting-point path for
+    where this is applied -- Exploration mode deliberately does NOT use this (see
+    _plan_quick_explore)."""
     if base_power < LOW_FLOOR_CUTOFF:
         return None
     return (9 * 10 ** base_power) // window
