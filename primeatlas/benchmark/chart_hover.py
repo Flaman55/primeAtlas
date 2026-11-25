@@ -1,5 +1,5 @@
 """The Benchmark charts' hover tooltip on the tab's canvas: which drawn point the pointer is
-over, where its tooltip fits, and the <Motion>/<Leave> bindings. benchmark_tab.py draws the
+over, where its tooltip fits, and the <Motion>/<Leave> bindings. chart_canvas.py draws the
 points and hands their pixel positions here.
 """
 from tkinter import font as tkfont

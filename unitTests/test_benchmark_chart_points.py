@@ -208,12 +208,12 @@ class TabTests(unittest.TestCase):
         import os
         import tempfile
         import tkinter as tk
-        from primeatlas.benchmark import benchmark_tab
+        from primeatlas.benchmark import benchmark_tab, chart_canvas
         from primeatlas.core.theme import palette_for
 
         captured = {}
-        original = benchmark_tab._bind_chart_hover
-        benchmark_tab._bind_chart_hover = (
+        original = chart_canvas._bind_chart_hover
+        chart_canvas._bind_chart_hover = (
             lambda canvas, points, *a: captured.__setitem__(str(canvas), list(points)))
         with tempfile.TemporaryDirectory() as portal:
             with open(os.path.join(portal, "benchmark_log.csv"), "w", newline="") as f:
@@ -238,7 +238,7 @@ class TabTests(unittest.TestCase):
                 body(tab, root, points)
             finally:
                 root.destroy()
-                benchmark_tab._bind_chart_hover = original
+                chart_canvas._bind_chart_hover = original
 
     @staticmethod
     def _row_item(tab, floor, ts):

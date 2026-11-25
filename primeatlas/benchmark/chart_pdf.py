@@ -1,6 +1,6 @@
 """PDF content-stream ops for one Benchmark chart: floor on x, Series on one or two y-axes.
 
-The PDF counterpart of benchmark_tab._draw_growth_chart(): same series, scales and point
+The PDF counterpart of chart_canvas._draw_growth_chart(): same series, scales and point
 layout, in PDF's bottom-left-origin point space (tkinter's anchors and y-down canvas have
 no PDF equivalent, so the two renderers stay separate and share chart_series.py instead).
 A point's value label carries the series tag ("1,234 [v5]"); engine "unknown" gets no

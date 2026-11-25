@@ -1,4 +1,4 @@
-"""Benchmark tab charts write large y tick values short (benchmark_tab._draw_growth_chart, the
+"""Benchmark tab charts write large y tick values short (chart_canvas._draw_growth_chart, the
 same function the chart windows draw with): on a linear axis a tick from a million up is
 number_format.compact() ("1.18 G"), a smaller one number_format.decimal(); every tick on its
 own, so one axis may mix the two. A log axis keeps "3e9". The hover tooltip and the pin menu
@@ -18,7 +18,7 @@ from tkinter import font as tkfont
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [_REPO_ROOT, os.path.join(_REPO_ROOT, "prime_sieve")]
 
-from primeatlas.benchmark import benchmark_tab, chart_series  # noqa: E402
+from primeatlas.benchmark import chart_canvas, chart_series  # noqa: E402
 from primeatlas.benchmark.chart_series import Series, point_label, y_scale  # noqa: E402
 from primeatlas.core import number_format  # noqa: E402
 from primeatlas.core.i18n import Translator  # noqa: E402
@@ -57,13 +57,13 @@ class RecordingCanvas(tk.Canvas):
 def draw(canvas, series1=None, series2=None, **kw):
     """Draws and returns (left ticks, right ticks, hover points); a tick is (x, y, text)."""
     captured = []
-    real = benchmark_tab._bind_chart_hover
-    benchmark_tab._bind_chart_hover = lambda c, points, *a, **k: captured.append(points)
+    real = chart_canvas._bind_chart_hover
+    chart_canvas._bind_chart_hover = lambda c, points, *a, **k: captured.append(points)
     try:
-        benchmark_tab._draw_growth_chart(canvas, None, WIDTH, HEIGHT, translator=Translator("en"),
-                                         series1=series1, series2=series2, **kw)
+        chart_canvas._draw_growth_chart(canvas, None, WIDTH, HEIGHT, translator=Translator("en"),
+                                        series1=series1, series2=series2, **kw)
     finally:
-        benchmark_tab._bind_chart_hover = real
+        chart_canvas._bind_chart_hover = real
     in_plot = [(x, y, k) for x, y, k in canvas.texts
                if PAD_TOP - 0.5 <= y <= HEIGHT - PAD_BOTTOM + 0.5]
     left = [(x, y, k["text"]) for x, y, k in in_plot if k.get("anchor") == "e"]
@@ -168,7 +168,7 @@ def main():
 
     # 9: an empty chart still says so.
     canvas.texts = []
-    benchmark_tab._draw_growth_chart(canvas, [], WIDTH, HEIGHT, translator=Translator("en"))
+    chart_canvas._draw_growth_chart(canvas, [], WIDTH, HEIGHT, translator=Translator("en"))
     check([k["text"] for _x, _y, k in canvas.texts] == [Translator("en").t("bench.no_data_chart")],
           "an empty chart shows only 'no data'")
 

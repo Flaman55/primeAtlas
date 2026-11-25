@@ -35,13 +35,13 @@ class ChartWindowTests(unittest.TestCase):
     def test_windows_mirror_the_tab_charts(self):
         import tkinter as tk
         from tkinter import ttk
-        from primeatlas.benchmark import benchmark_tab
+        from primeatlas.benchmark import benchmark_tab, chart_canvas
         from primeatlas.core.theme import palette_for
 
         t = Translator("en").t
         captured = {}
-        original_hover = benchmark_tab._bind_chart_hover
-        benchmark_tab._bind_chart_hover = (
+        original_hover = chart_canvas._bind_chart_hover
+        chart_canvas._bind_chart_hover = (
             lambda canvas, points, *a: captured.__setitem__(str(canvas), list(points)))
         with tempfile.TemporaryDirectory() as portal:
             with open(os.path.join(portal, "benchmark_log.csv"), "w", newline="") as f:
@@ -124,7 +124,7 @@ class ChartWindowTests(unittest.TestCase):
                 self.assertEqual(len(tab._chart_window_canvases("sieve")), 1)
             finally:
                 root.destroy()
-                benchmark_tab._bind_chart_hover = original_hover
+                chart_canvas._bind_chart_hover = original_hover
 
 
 if __name__ == "__main__":
