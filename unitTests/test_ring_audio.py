@@ -63,7 +63,7 @@ class AudioTests(unittest.TestCase):
         sys.path.insert(0,str(root))
         sys.path.insert(0,str(root/'prime_sieve'))
         sys.path.insert(0,str(root/'constellation'))  # rings_tab -> the pattern catalog
-        from primeatlas.visualization.rings.rings_tab import build_renderer_argv
+        from primeatlas.visualization.rings.rings_argv import build_renderer_argv
         self.assertNotIn('--audio',build_renderer_argv('/tmp',100))
         args=build_renderer_argv('/tmp',100,audio=True,sound_low='mute',sound_prime='bell',sound_lcm='sine')
         self.assertIn('--audio',args)

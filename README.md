@@ -2169,10 +2169,14 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               GL window (frame included) and the empty-storage dialog
                               centered on screen
   rings/                        Visualization > Rings sub-tab (rings and line modes)
-    rings_tab.py                 RingsTab(VizTabBase) -- the sub-tab's launch form and
-                              build_renderer_argv; Start with an empty storage offers
-                              the storage fill (offer_generate_storage, injected by the
-                              app) and relaunches once it is done
+    rings_tab.py                 RingsTab(VizTabBase) -- the sub-tab's launch form, built
+                              one section per method (Position & mode, Window
+                              highlights & tracking, Appearance, Audio); Start with an
+                              empty storage offers the storage fill
+                              (offer_generate_storage, injected by the app) and
+                              relaunches once it is done
+    rings_argv.py                build_renderer_argv (--source archive) and
+                              RENDERER_SCRIPT, the renderer argv Start launches
     pattern_source.py            PatternSource -- line mode's pattern switch: From the
                               list (PatternPicker -> --pattern-offsets), Manual (k/p0
                               with a how-to line and a live offsets preview ->
