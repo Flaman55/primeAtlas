@@ -14,7 +14,7 @@ page.
 ## Decision
 - The page carries every logged run: its floor and filter values, and per chart the records
   (run, line, floor, value, width) of `benchmark.benchmark_line_records()` (`report_html.py`).
-- `report_chart.js`, inlined in the page, repeats the reduction (kept runs, then last row per floor
+- The page's script (`report_js/`), inlined in the page, repeats the reduction (kept runs, then last row per floor
   and line) and draws each chart with a line-by-line port of `chart_pdf.chart_ops()` and
   `chart_series.YScale`. The Python SVG stays in the page as the view without scripts.
 - `unitTests/test_benchmark_report_html.py` runs the script's pure part in node: its reduction gives
@@ -29,6 +29,6 @@ page.
 
 ## Consequences
 The chart layout has two implementations (Python for PDF/SVG, JS for the page); a layout change to
-`chart_ops()` needs the same change in `report_chart.js`, and the parity test fails until both match.
+`chart_ops()` needs the same change in `report_js/report_svg.js`, and the parity test fails until both match.
 The page grows with the log (a record per run and chart). The sieve measure, the pinned axes and the
 set of report pages stay as exported.

@@ -2404,8 +2404,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
   report_html.py                the interactive HTML report's data: the runs it is
                               given (the kept ones) with their filter values and
                               labels, per chart the line records, the tab's
-                              view as the starting state; inlines report_chart.js
-  report_chart.js               the page's script: filter (All or single values, like
+                              view as the starting state; joins the parts of
+                              report_js/ into one script (one function scope,
+                              report_main.js last) and inlines it
+  report_js/                    the page's script, in parts by function: filter (All or single values, like
                               the tab's; it also hides the table columns and tables
                               its runs leave empty), log/reference toggles,
                               chart text size, legend toggles, zoom and pan over the
@@ -2413,6 +2415,15 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               redraws with a port of
                               chart_pdf.chart_ops() (docs/adr/0007, 0008;
                               unitTests/test_benchmark_report_html.py, via node)
+    report_format.js            number notation, width and x labels, point labels
+    report_scale.js             YScale and line clipping (chart_series.py)
+    report_svg.js               one chart as SVG (chart_pdf.chart_ops() port)
+    report_runs.js              page filter and reduction (chart_filter.py,
+                              chart_points.py)
+    report_view.js              zoom and pan (chart_view.py)
+    report_page.js              Report: controls, redraw, tables, gestures
+    report_main.js              exports for node, starts the page
+                              (unitTests/test_benchmark_report_js_split.py)
   chart_svg.py                  SVG backend of chart_pdf.chart_ops(): the same chart
                               layout as the PDF, y flipped, Unicode text
   benchmark.py                  reading/normalizing benchmark_log.csv rows; each row

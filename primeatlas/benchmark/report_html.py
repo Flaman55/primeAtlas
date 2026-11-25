@@ -1,5 +1,5 @@
 """The interactive part of the Benchmark HTML report: the data its script redraws the charts
-from, and the script (report_chart.js). Pure functions, no tkinter.
+from, and the script (the parts in report_js/, joined into one). Pure functions, no tkinter.
 
 The page carries the runs it is given -- report_export passes the ones the tab's Filter
 window keeps: per run its floor and its value in each filter dimension (chart_filter.py, with
@@ -31,7 +31,11 @@ X_MODE_LABEL_KEYS = {chart_points.X_FLOOR: "bench.x_axis_floor",
                      chart_points.X_WIDTH: "bench.x_axis_width"}
 CHART_NAME_KEYS = {"run": "bench.chart_name_run", "sieve": "bench.chart_name_sieve",
                    "ram": "bench.chart_name_ram"}
-SCRIPT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_chart.js")
+SCRIPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_js")
+# The script's parts in join order; they share one function scope, and report_main.js, which
+# starts the page, comes last so every value it reaches is set.
+SCRIPT_PARTS = ("report_format.js", "report_scale.js", "report_svg.js", "report_runs.js",
+                "report_view.js", "report_page.js", "report_main.js")
 
 
 def number_marks():
@@ -164,6 +168,15 @@ def data_script(data):
     return f'<script type="application/json" class="pa-data">{payload}</script>'
 
 
+def chart_source():
+    """The script: the parts of SCRIPT_PARTS in one function wrapper, so their names stay out
+    of the page's global scope."""
+    parts = []
+    for name in SCRIPT_PARTS:
+        with open(os.path.join(SCRIPT_DIR, name), encoding="utf-8") as f:
+            parts.append(f.read())
+    return '(function () {\n"use strict";\n' + "\n".join(parts) + "})();\n"
+
+
 def chart_script():
-    with open(SCRIPT_PATH, encoding="utf-8") as f:
-        return f"<script>{f.read()}</script>"
+    return f"<script>{chart_source()}</script>"

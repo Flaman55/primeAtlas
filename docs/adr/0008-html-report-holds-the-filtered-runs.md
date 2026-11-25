@@ -13,7 +13,7 @@ The Filter window works as All or single values in every dimension.
 - `report_export` passes the page only the runs the tab's filter keeps (`chart_filter.apply()`);
   its tables list exactly those runs. All in every dimension exports the whole log.
 - The page's own filter starts at All over the exported runs and is clicked like the tab's (All or
-  single values: `toggleValue()`/`selectAll()` in `report_chart.js`, matching
+  single values: `toggleValue()`/`selectAll()` in `report_js/report_runs.js`, matching
   `chart_filter.toggle_value()`/`select_all()`, checked through node); the subtitle still names the
   tab's filter.
 
