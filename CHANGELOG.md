@@ -124,6 +124,19 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   którego panel już nie oferuje, niczego teraz nie uruchamia, zamiast przechodzić sprawdzenia
   cudasieve.
 
+### +8 — Benchmark HTML report: script in parts
+
+- English: Internal refactor, no behaviour change. The script of the interactive Benchmark HTML
+  report is split by function into primeatlas/benchmark/report_js/ (number text, y scale, chart
+  drawing, filter and reduction, zoom, the page, start-up), and the export joins the parts into
+  the one script the page and the snippet carry. Exported reports look and work exactly as
+  before.
+- Polski: Wewnętrzny refaktor, bez zmiany działania. Skrypt interaktywnego raportu HTML z
+  Benchmarku jest podzielony według funkcji na pliki w primeatlas/benchmark/report_js/ (tekst
+  liczb, skala y, rysowanie wykresu, filtr i redukcja, zoom, strona, start), a eksport skleja
+  części w jeden skrypt, który niosą strona i snippet. Wyeksportowane raporty wyglądają
+  i działają dokładnie tak jak wcześniej.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

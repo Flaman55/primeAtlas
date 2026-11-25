@@ -1,4 +1,4 @@
-"""The interactive Benchmark HTML report (primeatlas/benchmark/report_html.py, report_chart.js).
+"""The interactive Benchmark HTML report (primeatlas/benchmark/report_html.py, report_js/).
 
 Checks, Python side: the page's data carries every run it is given with its filter values
 (purpose values translated) and floor, and the records of each chart reduce (last row per
@@ -39,7 +39,6 @@ from primeatlas.benchmark.chart_svg import chart_svg  # noqa: E402
 from primeatlas.core.i18n import Translator  # noqa: E402
 
 NODE = shutil.which("node")
-SCRIPT = report_html.SCRIPT_PATH
 
 
 def _row(floor, engine, nps, threads="24", write="8", numbers="10000000000", ram="2048"):
@@ -99,7 +98,9 @@ def _node(task):
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "driver.js"
         path.write_text(driver, encoding="utf-8")
-        done = subprocess.run([NODE, str(path), SCRIPT], input=json.dumps(task), text=True,
+        script = Path(tmp) / "report.js"
+        script.write_text(report_html.chart_source(), encoding="utf-8")
+        done = subprocess.run([NODE, str(path), str(script)], input=json.dumps(task), text=True,
                               capture_output=True, encoding="utf-8", timeout=60)
     if done.returncode:
         raise AssertionError(done.stderr)

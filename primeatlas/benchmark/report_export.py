@@ -30,7 +30,7 @@ a snippet pasted into another page keeps clear of that page's ids.
   - snippet: the page's content as one <div class="primeatlas-benchmark">, with a style
     whose every rule is scoped to that class, so it can be pasted into another page.
 
-The page and the snippet are interactive (report_html.py, report_chart.js): they carry the
+The page and the snippet are interactive (report_html.py, report_js/): they carry the
 runs the tab's filter keeps, so the filter decides what a page holds (All in every dimension
 exports the whole log), and a script redraws the charts with their own filter over those runs
 (starting at All, clicked like the tab's), log scale and reference toggles, legend toggles and

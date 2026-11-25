@@ -8,7 +8,7 @@ a PDF report.
 | Part | Files |
 |---|---|
 | Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_canvas.py` (a chart drawn on its canvas: axes, ticks, lines, points, legend, the right-click bindings), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window), `benchmark_line_colors.py` (a legend entry's color menu), `benchmark_view_state.py` (the view kept across restarts, `view_store.py`; the axis toggles), `benchmark_table_copy.py` (Ctrl+C on the run table), `benchmark_table_layout.py` (the table's heading row and column widths), `computer_cell.py` (the computer cell as a link) and `computer_window.py` (the Computer window) |
-| Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_chart.js` (the interactive HTML), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
+| Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_js/` (the interactive HTML's script, in parts), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
 | Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (the dash of a missing value), `table_columns.py` (the run table's columns), `table_copy.py` (the table's selection as clipboard text), `computer_names.py` (a run's computer: entry, cell, filter value), `computer_table.py` (a computer's entries as a table and as CSV), `computer_pdf.py` (the PDF's Computers section), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `line_colors.py` (each engine's line color), `chart_pdf.py`, `reference_points.py` |
 
 ## Contract
@@ -231,7 +231,7 @@ annotations to named destinations (`pdf_writer.Link`, `pdf_writer.Anchor`, `comp
 computer that does not fit the rest of a page starting the next one. The time model still matches
 runs by `machine_id` (`generation/time_model.py`).
 
-The HTML page and snippet are interactive (`report_html.py`, `report_chart.js`, ADR 0007, 0008). They
+The HTML page and snippet are interactive (`report_html.py`, `report_js/`, ADR 0007, 0008). They
 carry the runs the tab's filter keeps (All everywhere exports the whole log): per run its floor and
 filter values (with the tab's labels), and per chart the records of `benchmark_line_records()`
 (run, line, floor, value, width, log10 of the width); the tables list those runs. The script
@@ -252,6 +252,14 @@ taken only over a chart's picture (the wheel beside it scrolls the page); the
 headings and the subtitle follow, and the tables hide the rows of dropped runs. The sieve measure,
 pins and the set of pages stay as exported. Without scripts the page shows the tab's view as
 exported (the Python SVG, the kept rows).
+
+The script lives in parts by function in `report_js/`: `report_format.js` (number notation and
+labels), `report_scale.js` (`YScale`, line clipping), `report_svg.js` (the `chart_ops()` port),
+`report_runs.js` (page filter, reduction), `report_view.js` (zoom, pan), `report_page.js`
+(`Report`: controls, redraw, tables, gestures) and `report_main.js` (exports for node, page
+start). `report_html.chart_source()` joins them in `SCRIPT_PARTS` order inside one function
+wrapper with `"use strict"`, so they share one scope and add no globals; `report_main.js` comes
+last so every value it reaches is set. A part missing on disk fails the export.
 
 ## Parameters and texts
 
@@ -277,6 +285,6 @@ None of its own.
 
 - A fourth chart needs the three redraw methods of `benchmark_tab.py` folded into one chart
   table first.
-- The chart layout exists twice, `chart_pdf.chart_ops()` and its port in `report_chart.js`; the
+- The chart layout exists twice, `chart_pdf.chart_ops()` and its port in `report_js/report_svg.js`; the
   parity test in `test_benchmark_report_html` holds them together (ADR 0007).
 - Primesieve and cudasieve rows log no RAM, so they have no RAM points.
