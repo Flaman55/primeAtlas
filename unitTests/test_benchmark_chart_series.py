@@ -482,17 +482,17 @@ class TabPinTests(unittest.TestCase):
     def test_right_click_pins_and_resets(self):
         import tkinter as tk
         from tkinter import filedialog, messagebox
-        from primeatlas.benchmark import benchmark_tab
+        from primeatlas.benchmark import benchmark_tab, chart_canvas
         from primeatlas.core.theme import palette_for
 
         t = Translator("en").t
         captured, menus = {}, []
-        original_hover = benchmark_tab._bind_chart_hover
+        original_hover = chart_canvas._bind_chart_hover
         original_save = filedialog.asksaveasfilename
         originals = {name: getattr(messagebox, name) for name in ("showinfo", "showerror")}
         for name in originals:
             setattr(messagebox, name, lambda *a, **k: None)
-        benchmark_tab._bind_chart_hover = (
+        chart_canvas._bind_chart_hover = (
             lambda canvas, points, *a: captured.__setitem__(str(canvas), list(points)))
         with tempfile.TemporaryDirectory() as portal:
             with open(os.path.join(portal, "benchmark_log.csv"), "w", newline="") as f:
@@ -590,7 +590,7 @@ class TabPinTests(unittest.TestCase):
                 self.assertEqual(tab._y_pins, {"run": {}, "sieve": {}, "ram": {}})
             finally:
                 root.destroy()
-                benchmark_tab._bind_chart_hover = original_hover
+                chart_canvas._bind_chart_hover = original_hover
                 filedialog.asksaveasfilename = original_save
                 for name, fn in originals.items():
                     setattr(messagebox, name, fn)
@@ -600,16 +600,16 @@ class TabTests(unittest.TestCase):
     def test_tab_hover_toggles_and_pdf_export(self):
         import tkinter as tk
         from tkinter import filedialog, messagebox
-        from primeatlas.benchmark import benchmark_tab
+        from primeatlas.benchmark import benchmark_tab, chart_canvas
         from primeatlas.core.theme import palette_for
 
         captured = {}
-        original_hover = benchmark_tab._bind_chart_hover
+        original_hover = chart_canvas._bind_chart_hover
         original_save = filedialog.asksaveasfilename
         originals = {name: getattr(messagebox, name) for name in ("showinfo", "showerror")}
         for name in originals:
             setattr(messagebox, name, lambda *a, **k: None)
-        benchmark_tab._bind_chart_hover = (
+        chart_canvas._bind_chart_hover = (
             lambda canvas, points, *a: captured.__setitem__(str(canvas), list(points)))
         with tempfile.TemporaryDirectory() as portal:
             with open(os.path.join(portal, "benchmark_log.csv"), "w", newline="") as f:
@@ -722,7 +722,7 @@ class TabTests(unittest.TestCase):
                 self.assertNotIn("(100 [v4.1] @ 10^2) Tj", text)
             finally:
                 root.destroy()
-                benchmark_tab._bind_chart_hover = original_hover
+                chart_canvas._bind_chart_hover = original_hover
                 filedialog.asksaveasfilename = original_save
                 for name, fn in originals.items():
                     setattr(messagebox, name, fn)
@@ -784,12 +784,12 @@ class RamChartTests(unittest.TestCase):
 
     def test_tab_draws_the_ram_chart(self):
         import tkinter as tk
-        from primeatlas.benchmark import benchmark_tab
+        from primeatlas.benchmark import benchmark_tab, chart_canvas
         from primeatlas.core.theme import palette_for
 
         captured = {}
-        original_hover = benchmark_tab._bind_chart_hover
-        benchmark_tab._bind_chart_hover = (
+        original_hover = chart_canvas._bind_chart_hover
+        chart_canvas._bind_chart_hover = (
             lambda canvas, points, *a: captured.__setitem__(str(canvas), list(points)))
         with tempfile.TemporaryDirectory() as portal:
             fields = sorted({k for r in RAM_ROWS for k in r})
@@ -824,7 +824,7 @@ class RamChartTests(unittest.TestCase):
                 self.assertEqual(tab.mixed_widths_vars["ram"].get(), "")
             finally:
                 root.destroy()
-                benchmark_tab._bind_chart_hover = original_hover
+                chart_canvas._bind_chart_hover = original_hover
 
     def test_ram_chart_names_floors_of_mixed_widths(self):
         # MB per run grows with the range, so points of different widths on one floor are

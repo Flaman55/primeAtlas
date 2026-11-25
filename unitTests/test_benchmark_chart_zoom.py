@@ -162,11 +162,11 @@ def _lines_of(canvas, width):
 
 class TabZoomTests(unittest.TestCase):
     def setUp(self):
-        from primeatlas.benchmark import benchmark_tab
+        from primeatlas.benchmark import chart_canvas
         self.captured = {}
-        self.module = benchmark_tab
-        self.original_hover = benchmark_tab._bind_chart_hover
-        benchmark_tab._bind_chart_hover = (
+        self.module = chart_canvas
+        self.original_hover = chart_canvas._bind_chart_hover
+        chart_canvas._bind_chart_hover = (
             lambda canvas, points, *a: self.captured.__setitem__(str(canvas), list(points)))
 
     def tearDown(self):

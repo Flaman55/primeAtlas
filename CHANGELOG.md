@@ -84,6 +84,17 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   w Konstelacjach), strona Benchmark nie ma już nieaktualnej liczby linii, a strona prime-sieve
   wymienia niedostrojone domyślne ustawienia Hybrid jako znaną lukę.
 
+### +5 — Benchmark charts: drawing in its own module
+
+- English: Internal refactor, no behaviour change. The code that draws a Benchmark chart on the
+  screen (axes, ticks, lines, points, the legend and the right-click menus' bindings) moves out
+  of the Benchmark tab's module into its own, primeatlas/benchmark/chart_canvas.py. The charts
+  in the tab and in their own windows draw exactly as before.
+- Polski: Wewnętrzny refaktor, bez zmiany działania. Kod, który rysuje wykres Benchmark na
+  ekranie (osie, podziałki, linie, punkty, legenda i podpięcie menu prawego przycisku), wychodzi
+  z modułu karty Benchmark do własnego, primeatlas/benchmark/chart_canvas.py. Wykresy w karcie
+  i w osobnych oknach rysują się dokładnie tak jak wcześniej.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

@@ -2,7 +2,7 @@
 benchmark_line_colors.py -- BenchmarkLineColors, the right-click menu of a Benchmark legend
 entry: the color of that line's engine in the app's theme (every line of the engine, every
 chart, line_colors.py), its default back, or every default back. A reference line has no menu
-entry here (benchmark_tab._bind_pin_menu() opens the pin menu for it).
+entry here (chart_canvas._bind_pin_menu() opens the pin menu for it).
 
 A BenchmarkTab mixin: it uses _post_menu() and _redraw_charts() of the tab.
 """

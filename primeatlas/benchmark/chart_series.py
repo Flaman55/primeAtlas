@@ -12,7 +12,7 @@ height, linear from zero or log10 fitted to the data; a pinned bound (pin_bound(
 clip_polyline() cuts the lines at the plot edge (also the left and right edges of a zoomed
 chart, YScale.zoomed() its visible part, chart_view.py). A line is one series on one axis; each one
 can be hidden on its own (line_key(), a set of hidden keys per chart).
-No tkinter here: benchmark_tab.py and benchmark.py both render from these objects.
+No tkinter here: chart_canvas.py and benchmark.py both render from these objects.
 """
 import copy
 import math

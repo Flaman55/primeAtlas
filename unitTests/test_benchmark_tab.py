@@ -354,7 +354,7 @@ def main():
         # font and widens pad_left to fit -- reproduce that exact scenario directly
         # (no need to go through the whole app/CSV path) and check no tick-label text
         # item is left with a negative left edge (i.e. clipped off-canvas).
-        from primeatlas.benchmark.benchmark_tab import _draw_growth_chart
+        from primeatlas.benchmark.chart_canvas import _draw_growth_chart
         probe_canvas = tk.Canvas(app, width=900, height=220)
         probe_canvas.pack()
         app.update()

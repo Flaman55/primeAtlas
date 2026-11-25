@@ -317,12 +317,12 @@ class PureTests(unittest.TestCase):
 class TabTests(unittest.TestCase):
     def test_filter_window_drives_charts_and_pdf(self):
         import tkinter as tk
-        from primeatlas.benchmark import benchmark_tab
+        from primeatlas.benchmark import benchmark_tab, chart_canvas
         from primeatlas.core.theme import palette_for
 
         captured = {}
-        original_hover = benchmark_tab._bind_chart_hover
-        benchmark_tab._bind_chart_hover = (
+        original_hover = chart_canvas._bind_chart_hover
+        chart_canvas._bind_chart_hover = (
             lambda canvas, points, *a: captured.__setitem__(str(canvas), list(points)))
         with tempfile.TemporaryDirectory() as portal:
             with open(os.path.join(portal, "benchmark_log.csv"), "w", newline="") as f:
@@ -367,7 +367,7 @@ class TabTests(unittest.TestCase):
                 window.destroy()
             finally:
                 root.destroy()
-                benchmark_tab._bind_chart_hover = original_hover
+                chart_canvas._bind_chart_hover = original_hover
 
 
 class TableTests(unittest.TestCase):

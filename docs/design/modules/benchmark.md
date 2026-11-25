@@ -7,7 +7,7 @@ a PDF report.
 
 | Part | Files |
 |---|---|
-| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window), `benchmark_line_colors.py` (a legend entry's color menu), `benchmark_view_state.py` (the view kept across restarts, `view_store.py`; the axis toggles), `benchmark_table_copy.py` (Ctrl+C on the run table), `benchmark_table_layout.py` (the table's heading row and column widths), `computer_cell.py` (the computer cell as a link) and `computer_window.py` (the Computer window) |
+| Tab | `primeatlas/benchmark/benchmark_tab.py` and its mixins `benchmark_filter.py` (Filter window), `benchmark_points.py` (x axis, point choices, selected run), `benchmark_ram_chart.py` (RAM chart), `chart_canvas.py` (a chart drawn on its canvas: axes, ticks, lines, points, legend, the right-click bindings), `chart_zoom_controls.py` (zoom and pan), `chart_hover.py` (hover tooltip), `benchmark_chart_windows.py` (a chart in its own window), `benchmark_line_colors.py` (a legend entry's color menu), `benchmark_view_state.py` (the view kept across restarts, `view_store.py`; the axis toggles), `benchmark_table_copy.py` (Ctrl+C on the run table), `benchmark_table_layout.py` (the table's heading row and column widths), `computer_cell.py` (the computer cell as a link) and `computer_window.py` (the Computer window) |
 | Exports | `benchmark_export.py` (tab mixin: Save PDF, Export menu), `report_export.py` (CSV, SVG, HTML page, HTML snippet), `report_html.py` + `report_chart.js` (the interactive HTML), `chart_svg.py` (SVG backend of `chart_pdf.chart_ops()`) |
 | Backend | `benchmark.py` (reading and normalizing rows, D/P kind, PDF report, `report_chart_pages()`, `benchmark_line_records()`), `line_names.py` (a row's line and charts), `chart_filter.py` (which runs the charts compare), `chart_points.py` (which runs become a chart's points and where they sit on x), `proof_rows.py` (a verified pt1 run as two lines), `sieve_measure.py` (which time the sieve chart measures), `table_cells.py` (the dash of a missing value), `table_columns.py` (the run table's columns), `table_copy.py` (the table's selection as clipboard text), `computer_names.py` (a run's computer: entry, cell, filter value), `computer_table.py` (a computer's entries as a table and as CSV), `computer_pdf.py` (the PDF's Computers section), `chart_view.py` (the zoomed part of a chart), `chart_series.py`, `line_colors.py` (each engine's line color), `chart_pdf.py`, `reference_points.py` |
 
@@ -265,7 +265,7 @@ None of its own.
 
 `test_benchmark_tab`, `test_benchmark_table_columns`, `test_tree_scroll_to_top`, `test_benchmark_point_menu`, `test_benchmark_view_state`, `test_benchmark_table_copy`, `test_benchmark_table_layout`, `test_benchmark_chart_series`, `test_benchmark_report_export`,
 `test_benchmark_report_html` (the script through node), `test_benchmark_chart_zoom`, `test_benchmark_tab_ticks`,
-`test_benchmark_chart_windows`,
+`test_benchmark_chart_windows`, `test_benchmark_chart_canvas`,
 `test_benchmark_actual_range`,
 `test_benchmark_run_status`, `test_benchmark_main_compatibility`, `test_benchmark_log_schema`,
 `test_benchmark_line_names`, `test_benchmark_auto_reload`, `test_benchmark_filter`,

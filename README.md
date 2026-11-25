@@ -2353,6 +2353,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               benchmark_export.py; zoom in chart_zoom_controls.py,
                               chart windows in benchmark_chart_windows.py;
                               benchmark.py below is the pure-logic backend)
+  chart_canvas.py               one Benchmark chart drawn on a tk.Canvas: axes, ticks,
+                              lines, points, the legend along the top edge, the
+                              right-click pin and color menu bindings; the tab and
+                              the chart windows draw through it
+                              (unitTests/test_benchmark_chart_canvas.py)
   view_store.py                 the Benchmark view kept across restarts as one value in
                               the remembered-fields store: save, load (each part
                               checked, junk back to its default), prune of filter
