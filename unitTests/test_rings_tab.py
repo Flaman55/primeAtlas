@@ -1,10 +1,10 @@
 """
 test_rings_tab.py -- tests for primeatlas/visualization/rings/rings_tab.py's RingsTab
-widget. build_renderer_argv(), the pure argv construction (no tkinter), is checked in
-test_rings_tab_argv.py.
+widget. build_renderer_argv() (rings_argv.py), the pure argv construction (no tkinter),
+is checked in test_rings_tab_argv.py.
 
 The RingsTab widget itself is exercised against a REAL local subprocess, not a
-mocked LocalLoggedRunner -- monkeypatching primeatlas.visualization.rings.rings_tab.RENDERER_SCRIPT to
+mocked LocalLoggedRunner -- monkeypatching primeatlas.visualization.rings.rings_argv.RENDERER_SCRIPT to
 point at a tiny fixture script (written to a temp file) that just prints a couple
 of lines and exits 0 or 1, instead of the real primeatlas/visualization/shared/renderer.py
 (which imports moderngl/glfw and needs a real GPU/display -- neither exists in
@@ -146,6 +146,7 @@ def _test_empty_storage_offer(app, tab, rings_tab_module, tmp_portal, shown):
     storage-fill offer; once that reports success the visualization starts by itself;
     failure only reports. Cancel launches nothing. Without an offer callable (or with
     data in storage) Start launches directly as before."""
+    import primeatlas.visualization.rings.rings_argv as rings_argv_module
     print("\n--- empty storage: offer to generate ---")
     rings_tab_module.find_highest_populated_floor = lambda portal: None
     tab._get_portal_folder = lambda: tmp_portal
@@ -181,7 +182,7 @@ def _test_empty_storage_offer(app, tab, rings_tab_module, tmp_portal, shown):
           f"the status bar says the storage is being generated (got {tab.status.get()!r})")
 
     fake_ok = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok
+    rings_argv_module.RENDERER_SCRIPT = fake_ok
     rings_tab_module.find_highest_populated_floor = lambda portal: 0
     _LAUNCHED_ARGV.clear()
     offered[0][2](True)
@@ -212,7 +213,7 @@ def _test_empty_storage_offer(app, tab, rings_tab_module, tmp_portal, shown):
     tab._offer_generate_storage = None
     asked.clear()
     fake_ok = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok
+    rings_argv_module.RENDERER_SCRIPT = fake_ok
     argv = _open_and_capture(tab)
     check(not asked and argv, "without an offer callable Start launches directly")
     _pump_until_idle(app, tab)
@@ -224,6 +225,7 @@ def _test_line_pattern_source(app, tab, rings_tab_module, shown):
     """Line mode's pattern choice (From the list / Manual / None) reaches the launched argv,
     is saved with the launch parameters and locks while paused; ring mode launches no
     pattern whatever the choice."""
+    import primeatlas.visualization.rings.rings_argv as rings_argv_module
     from primeatlas.app import app_dynamic
     from primeatlas.constellations.pattern_picker import PatternPicker
 
@@ -239,7 +241,7 @@ def _test_line_pattern_source(app, tab, rings_tab_module, shown):
 
     def launch():
         script = _write_fake_renderer(0)
-        rings_tab_module.RENDERER_SCRIPT = script
+        rings_argv_module.RENDERER_SCRIPT = script
         shown.clear()
         argv = _open_and_capture(tab)
         _pump_until_idle(app, tab)
@@ -312,6 +314,7 @@ def main():
     prime_atlas_v2, _portal = isolate_app()
     from primeatlas.app import app_dynamic
     import primeatlas.visualization.rings.rings_tab as rings_tab_module
+    import primeatlas.visualization.rings.rings_argv as rings_argv_module
     _patch_app_settings(app_dynamic.APP_SETTINGS)
     _stub_app_update_check()
     _install_launch_recorder(rings_tab_module)
@@ -374,7 +377,7 @@ def main():
 
     # --- success path: real subprocess, fake renderer script, exit 0 ----------------
     fake_ok_script = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script
+    rings_argv_module.RENDERER_SCRIPT = fake_ok_script
     tab._get_portal_folder = lambda: tmp_portal
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
@@ -404,7 +407,7 @@ def main():
     # rather than scraping console text, which is cumulative across every
     # _on_open() call in this test and would make substring checks fragile.
     fake_ok_script2 = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script2
+    rings_argv_module.RENDERER_SCRIPT = fake_ok_script2
     tab.track_primes_entry.delete(0, "end")
     tab.track_primes_entry.insert(0, "2, 3, 5")
     tab.auto_orbit_var.set(True)
@@ -457,7 +460,7 @@ def main():
     tab.mode_var.set("range")
     tab._on_mode_changed()
     fake_ok_script3 = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script3
+    rings_argv_module.RENDERER_SCRIPT = fake_ok_script3
     tab.load_range_from_entry.delete(0, "end")
     tab.load_range_from_entry.insert(0, "100")
     tab.load_range_to_entry.delete(0, "end")
@@ -494,7 +497,7 @@ def main():
     tab.mode_var.set("sequential")
     tab._on_mode_changed()
     fake_ok_script3b = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script3b
+    rings_argv_module.RENDERER_SCRIPT = fake_ok_script3b
     tab.load_range_from_entry.configure(state="normal")
     tab.load_range_from_entry.delete(0, "end")
     tab.load_range_from_entry.insert(0, "100")
@@ -531,7 +534,7 @@ def main():
     tab.load_range_to_entry.insert(0, "500")
     tab.slide_load_range_var.set(True)
     fake_ok_script_slide1 = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script_slide1
+    rings_argv_module.RENDERER_SCRIPT = fake_ok_script_slide1
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
@@ -550,7 +553,7 @@ def main():
     tab.mode_var.set("sequential")
     tab._on_mode_changed()
     fake_ok_script_slide2 = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script_slide2
+    rings_argv_module.RENDERER_SCRIPT = fake_ok_script_slide2
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
@@ -603,7 +606,7 @@ def main():
     tab.general_law_mode_combo.set("bertrand")
     tab._on_general_law_mode_changed()
     fake_ok_script_gl = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script_gl
+    rings_argv_module.RENDERER_SCRIPT = fake_ok_script_gl
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     shown.clear()
@@ -627,7 +630,7 @@ def main():
     tab.load_range_to_entry.delete(0, "end")
     tab.load_range_to_entry.insert(0, "500")
     fake_ok_script5 = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script5
+    rings_argv_module.RENDERER_SCRIPT = fake_ok_script5
     tab.max_load_count_entry.delete(0, "end")
     tab.max_load_count_entry.insert(0, "1000")
     tab.n_entry.delete(0, "end")
@@ -645,7 +648,7 @@ def main():
     # renderer.py's own argparse default, same convention as every other
     # empty-or-invalid launch-time field.
     fake_ok_script6 = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script6
+    rings_argv_module.RENDERER_SCRIPT = fake_ok_script6
     tab.max_load_count_entry.delete(0, "end")
     tab.max_load_count_entry.insert(0, "not-a-number")
     tab.n_entry.delete(0, "end")
@@ -665,7 +668,7 @@ def main():
 
     # --- Tempo field wiring -------------------------------------------------
     fake_ok_script7 = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script7
+    rings_argv_module.RENDERER_SCRIPT = fake_ok_script7
     tab.tempo_ms_entry.delete(0, "end")
     tab.tempo_ms_entry.insert(0, "250")
     tab.n_entry.delete(0, "end")
@@ -678,7 +681,7 @@ def main():
     os.remove(fake_ok_script7)
 
     fake_ok_script8 = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_ok_script8
+    rings_argv_module.RENDERER_SCRIPT = fake_ok_script8
     tab.tempo_ms_entry.delete(0, "end")
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
@@ -723,7 +726,7 @@ def main():
             "\"lines\": [\"N = 42\"], \"running\": false, \"tempo_ms\": 120}')\n"
             "sys.exit(0)\n"
         )
-    rings_tab_module.RENDERER_SCRIPT = fake_hud_script
+    rings_argv_module.RENDERER_SCRIPT = fake_hud_script
     tab._get_portal_folder = lambda: tmp_portal
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
@@ -757,7 +760,7 @@ def main():
     # unlocking fields on Reset is intentional, silently discarding what was
     # typed is not -- see _on_reset's own doc-comment in rings_tab.py.
     fake_hud_script2 = _write_fake_renderer(0)
-    rings_tab_module.RENDERER_SCRIPT = fake_hud_script2
+    rings_argv_module.RENDERER_SCRIPT = fake_hud_script2
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "777")
     tab._on_open()
@@ -805,7 +808,7 @@ def main():
             "        break\n"
             "sys.exit(0)\n"
         )
-    rings_tab_module.RENDERER_SCRIPT = fake_pause_script
+    rings_argv_module.RENDERER_SCRIPT = fake_pause_script
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "321")
     tab._on_open()
@@ -895,7 +898,7 @@ def main():
     # __exit__ queue item -- launch fresh, let it pause, then Reset while
     # still paused and check the fields are already editable before any
     # _pump() call processes the exit.
-    rings_tab_module.RENDERER_SCRIPT = fake_pause_script
+    rings_argv_module.RENDERER_SCRIPT = fake_pause_script
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "654")
     tab._on_open()
@@ -913,7 +916,7 @@ def main():
 
     # --- failure path: real subprocess, fake renderer script, exit 1 ----------------
     fake_fail_script = _write_fake_renderer(1)
-    rings_tab_module.RENDERER_SCRIPT = fake_fail_script
+    rings_argv_module.RENDERER_SCRIPT = fake_fail_script
     tab.n_entry.delete(0, "end")
     tab.n_entry.insert(0, "500")
     tab._on_open()

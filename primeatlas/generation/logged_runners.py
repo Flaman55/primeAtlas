@@ -240,7 +240,7 @@ class LocalLoggedRunner:
         # needs a way to send commands INTO the running subprocess (see
         # send_line() below) -- visualization/shared/renderer.py's own PAUSE/RESUME
         # protocol reads them off stdin when launched with
-        # --pipe-stdin-commands (see build_renderer_argv/rings_tab.py).
+        # --pipe-stdin-commands (see build_renderer_argv/rings_argv.py).
         self._pipe_stdin = pipe_stdin
 
     def start(self):

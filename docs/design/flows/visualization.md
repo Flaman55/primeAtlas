@@ -14,7 +14,7 @@ Entry points: Visualization tab, Rings / Tree / Sphere sub-tabs, "Start/Resume"
 
 | Step (module) | Runs when | Reads | Writes / does |
 |---|---|---|---|
-| Argv (`rings_tab.build_renderer_argv` and siblings) | Start | form fields, storage path | renderer command line ([parameters](../parameters/visualization-renderer.md)) |
+| Argv (`rings_argv.build_renderer_argv` and siblings) | Start | form fields, storage path | renderer command line ([parameters](../parameters/visualization-renderer.md)) |
 | Empty-storage offer (`viz_tab_base._offer_storage_fill`) | archive source, nothing stored | storage folder | offers a generation run for the range ([generation-run](generation-run.md)) |
 | Data (`shared/sources.py`, `range_data.py`) | renderer start, sliding window | PGS2 windows (`load_archive`, `load_archive_before`) | prime arrays, chunked for the sliding range window |
 | Mode (`mode_registry.MODES`) | every frame | session state (`shared/session.py`) | rings, line, tree, assembly, sphere, sphere_fibers geometry |

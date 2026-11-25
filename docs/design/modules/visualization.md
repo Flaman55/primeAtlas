@@ -10,7 +10,7 @@ exchange state with it over stdout (HUD JSON) and stdin (RESUME).
 |---|---|
 | Registry | `primeatlas/visualization/mode_registry.py` (`MODES`: rings, line, tree, assembly, sphere, sphere_fibers) |
 | Shared renderer | `shared/renderer.py`, `renderer_cli.py`, `renderer_launch.py`, `renderer_frame.py`, `session.py`, `sources.py`, `range_data.py`, `playback.py`, `hud_text.py`, `draw_primitives.py`, `audio.py`, `stdin_commands.py`, `gl_setup.py`, `viz_tab_base.py` |
-| Rings | `rings/rings_tab.py`, `rings/pattern_source.py` (line mode's pattern switch), `rings/ring/` (geometry, windows, anchors, colors, resonance, tracked, draw, HUD), `rings/line/` (line mode, k-tuple pattern seek) |
+| Rings | `rings/rings_tab.py`, `rings/rings_argv.py` (renderer argv), `rings/pattern_source.py` (line mode's pattern switch), `rings/ring/` (geometry, windows, anchors, colors, resonance, tracked, draw, HUD), `rings/line/` (line mode, k-tuple pattern seek) |
 | Tree and assembly | `tree/`, `assembly/` |
 | Sphere | `sphere/` (rings and fibers modes) |
 
@@ -47,7 +47,7 @@ else From the list.
 
 ## Specs and tests
 
-`test_rings_tab`, `test_rings_tab_argv`, `test_rings_pattern_source`, `test_ring_geometry`, `test_ring_window_colors`,
+`test_rings_tab`, `test_rings_tab_argv`, `test_rings_tab_split`, `test_rings_pattern_source`, `test_ring_geometry`, `test_ring_window_colors`,
 `test_ring_resonance`, `test_ring_viz_sources`, `test_ring_viz_draw`, `test_ring_viz_renderer`,
 `test_ring_viz_session`, `test_ring_viz_pattern_mode`, `test_ring_viz_pattern_offsets`, `test_ring_viz_pattern_seek`,
 `test_ring_viz_pattern_seek_async`, `test_ring_audio`, `test_ring_fullscreen`, `test_tree_*`,

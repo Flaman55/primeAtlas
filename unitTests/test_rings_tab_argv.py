@@ -1,6 +1,6 @@
 """
 test_rings_tab_argv.py -- build_renderer_argv() of
-primeatlas/visualization/rings/rings_tab.py: pure argv construction for the ring
+primeatlas/visualization/rings/rings_argv.py: pure argv construction for the ring
 renderer subprocess, no tkinter, no app, no display. The RingsTab widget itself is in
 test_rings_tab.py.
 
@@ -13,10 +13,10 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 sys.path.insert(0, _REPO_ROOT)
 # primeatlas/__init__.py imports manifest.py, which imports window_sharding --
-# needed even just to import primeatlas.visualization.rings.rings_tab for _test_build_renderer_argv
+# needed even just to import primeatlas.visualization.rings.rings_argv for _test_build_renderer_argv
 # below.
 sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
-# rings_tab's pattern switch reads constellation/pattern_catalog_v1.py.
+# The rings package's pattern switch reads constellation/pattern_catalog_v1.py.
 sys.path.insert(0, os.path.join(_REPO_ROOT, "constellation"))
 
 failures = []
@@ -31,7 +31,7 @@ def check(condition, message):
 
 
 def _test_build_renderer_argv():
-    from primeatlas.visualization.rings.rings_tab import build_renderer_argv, RENDERER_SCRIPT
+    from primeatlas.visualization.rings.rings_argv import build_renderer_argv, RENDERER_SCRIPT
 
     argv = build_renderer_argv("/some/portal", 12345, python_executable="FAKE_PY")
     check(argv[0] == "FAKE_PY", f"argv[0] is the given python_executable (got {argv[0]!r})")

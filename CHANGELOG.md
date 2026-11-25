@@ -95,6 +95,19 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   z modułu karty Benchmark do własnego, primeatlas/benchmark/chart_canvas.py. Wykresy w karcie
   i w osobnych oknach rysują się dokładnie tak jak wcześniej.
 
+### +6 — Rings tab: renderer argv in its own module, form built by section
+
+- English: Internal refactor, no behaviour change. The code that turns the Rings form into the
+  renderer's command line moves out of the Rings tab's module into its own,
+  primeatlas/visualization/rings/rings_argv.py, and the form is built one section at a time
+  (Position & mode, Window highlights & tracking, Appearance, Audio). The form, Start and the
+  saved values work exactly as before.
+- Polski: Wewnętrzny refaktor, bez zmiany działania. Kod, który zamienia formularz Rings na
+  wiersz poleceń renderera, wychodzi z modułu karty Rings do własnego,
+  primeatlas/visualization/rings/rings_argv.py, a formularz jest budowany sekcja po sekcji
+  (Pozycja i tryb, Podświetlenia okien i śledzenie, Wygląd, Dźwięk). Formularz, Start i
+  zapisane wartości działają dokładnie tak jak wcześniej.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs
