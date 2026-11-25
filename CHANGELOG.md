@@ -108,6 +108,22 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   (Pozycja i tryb, Podświetlenia okien i śledzenie, Wygląd, Dźwięk). Formularz, Start i
   zapisane wartości działają dokładnie tak jak wcześniej.
 
+### +7 — Quick generation: one planner per mode
+
+- English: Internal refactor. The Quick generation Generate click hands each mode (Floor only,
+  Range, Exploration, Hybrid, Pseudosquares, primesieve, cudasieve) to its own planner, and the
+  parts the modes share (the range launch and its summary, "already fully in storage", the
+  one-window low floor, the blank From lookup) have one copy. Every mode plans, reports and
+  launches exactly as before. A remembered mode the panel no longer offers now launches nothing
+  instead of running cudasieve's checks.
+- Polski: Wewnętrzny refaktor. Kliknięcie Generuj w szybkim generowaniu przekazuje każdy tryb
+  (Tylko piętro, Zakres, Eksploracja, Hybryda, Pseudosquares, primesieve, cudasieve) do jego
+  własnego planisty, a części wspólne trybów (uruchomienie zakresu i jego podsumowanie, „już
+  w całości w magazynie”, jedno okno niskiego piętra, wyszukanie pustego Od) mają jedną kopię.
+  Każdy tryb planuje, raportuje i uruchamia dokładnie tak jak wcześniej. Zapamiętany tryb,
+  którego panel już nie oferuje, niczego teraz nie uruchamia, zamiast przechodzić sprawdzenia
+  cudasieve.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

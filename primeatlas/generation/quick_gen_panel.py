@@ -405,15 +405,15 @@ class QuickGenPanel:
     def _build_quick_mode_explore(self, container, mode_frames):
         """Exploration maps directly onto orchestrator_loop_v2's own
         run_count/WINDOW_COUNT_PER_RUN loop -- this mode ONLY continues on an EXISTING
-        floor, never creates a new one. Floor can be left blank: the dispatch handler
-        (_on_quick_generate_clicked) then auto-detects the highest 10p{N} folder that
+        floor, never creates a new one. Floor can be left blank: the mode's planner
+        (_plan_quick_explore) then auto-detects the highest 10p{N} folder that
         actually has data (find_highest_populated_floor()) and continues THAT, re-
         detected fresh on every click rather than sticky in the entry field -- so
         repeatedly pressing Generate with nothing typed keeps extending whatever is
         genuinely the deepest generated data right now. Typing a floor explicitly still
         works, to explore a specific one instead -- including a LOW floor (0-6), which
         legitimately reports "already in storage" once its own small, fixed domain is
-        fully covered (see the low-floor guard in _on_quick_generate_clicked) rather
+        fully covered (see the low-floor guard in _plan_quick_explore) rather
         than being treated as some kind of "auto" sentinel value; 0 is a real floor,
           not a placeholder for blank.
 
@@ -775,7 +775,7 @@ class QuickGenPanel:
         """Exploration mode's OWN Floor-Auto button -- fills quick_explore_floor_var
         with find_highest_populated_floor()'s result, the SAME value leaving Floor
         blank and clicking Generate directly already resolves to (see
-        _on_quick_generate_clicked's "explore" branch). This button exists purely for
+        _plan_quick_explore). This button exists purely for
         discoverability: an empty text field as the trigger for "auto-continue the
         deepest floor" is easy to miss, and an explicit "0" is a legitimate floor
         request, not the same as blank (see this mode's docstring). A labeled button

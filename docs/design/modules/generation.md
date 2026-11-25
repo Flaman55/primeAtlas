@@ -162,6 +162,14 @@ Every Quick-gen Floor field (Floor only, Explore, Hybrid, primesieve, CUDASieve)
 arrows and the mouse wheel step the floor through 0 to `QUICK_FLOOR_MAX` (35; primesieve and
 CUDASieve stop at `UINT64_FLOOR_MAX`, 19), and a typed value or expression is not capped.
 
+Generate (`quick_gen_plan.py` `_on_quick_generate_clicked`) refuses while a run is going or while
+a number field of the selected mode is red, then a `match` on the mode hands the click to that
+mode's planner (`_plan_quick_floor`, `_range`, `_explore`, `_hybrid`, `_primesieve`, `_cudasieve`,
+plus the primesieve Native and Pseudosquares planners); a mode the panel does not offer launches
+nothing. The modes share one copy of the literal-range launch and its summary
+(`_launch_literal_plan`), the "already in storage" report, the one-window low-floor run
+(`_run_low_floor_once`) and primesieve/CUDASieve's blank-From lookup (`_sieve_start`).
+
 A literal range (Range mode, Floor mode with a starting point, primesieve and CUDASieve From, the
 search and Goldbach "generate the missing range" offers) is planned by
 `_quick_gen_plan_literal_range()` from its own windows only, in the store the selected engine
