@@ -144,19 +144,19 @@ class DataTests(unittest.TestCase):
         self.assertEqual([c["y_level"] for c in data["pages"][0]["charts"]], [2, 2])
         self.assertEqual(data["selection"], {"engine": ["v6"]}, "report_data keeps a given selection")
         self.assertTrue(data["log"])
-        self.assertFalse(data["refs_on"])
-        self.assertTrue(data["refs_available"])
+        self.assertEqual((data["refs_on"], data["refs_available"], data["refs"]),
+                         (False, False, []), "references off in the tab: not in the page")
         run = data["pages"][0]["charts"]
-        self.assertEqual(run[0]["hidden"], ["v5, 24 thr, write 8"])
-        self.assertEqual(run[1]["hidden"], [], "the hidden line is on the primary axis only")
+        v5 = [line["name"] for line in data["lines"]].index("v5, 24 thr, write 8")
+        self.assertNotIn(v5, {r[1] for r in run[0]["records"]}, "a hidden line is not in the data")
+        self.assertIn(v5, {r[1] for r in run[1]["records"]},
+                      "the hidden line is on the primary axis only")
         _pages, axis_data = _data(references=True,
                                   hidden_lines={"sieve": {chart_series.axis_key("primary")}})
         sieve = axis_data["pages"][1]["charts"]
-        names = ([line["name"] for line in axis_data["lines"]]
-                 + [r["name"] for r in axis_data["refs"]])
-        self.assertEqual(sorted(sieve[0]["hidden"]), sorted(names),
-                         "a hidden axis hides every line the page can draw on it")
-        self.assertEqual(sieve[1]["hidden"], [])
+        self.assertEqual((sieve[0]["records"], axis_data["refs"], sieve[0]["refs"]),
+                         ([], [], False), "a hidden axis keeps no line of it, references included")
+        self.assertTrue(sieve[1]["records"])
         self.assertEqual(run[0]["pins"], [None, 5e8])
         self.assertEqual(data["view"], [19.0, 23.0])
         engine = [d for d in data["dims"] if d["key"] == "engine"][0]

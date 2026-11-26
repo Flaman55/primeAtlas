@@ -10,7 +10,9 @@ per line and x chosen by the chart's point choice, so the page's filter compares
 tab's does, with the same clicks (All or single values, chart_filter.toggle_value()/
 select_all()). The page opens in the tab's view: log scale, references, hidden lines, pinned
 axes, zoomed x range, the x axis (floor or width) and each chart's point choice; the run
-selected in the tab's table stays the selected run. On the width axis a line is a line of the
+selected in the tab's table stays the selected run. The page holds what the tab shows: a line
+hidden in the tab is not in its data (on the width axis only its hidden floor), nor are the
+reference series when the tab has them off. On the width axis a line is a line of the
 floor axis on one floor, named and shaded as benchmark.benchmark_series() does (width_lines).
 The sieve measure, the pinned axes and the set of report pages stay as exported.
 """
@@ -21,10 +23,10 @@ import os
 from ..core import number_format, number_format_dynamic
 from . import chart_filter, sieve_measure
 from . import chart_points
-from . import line_colors, line_names
+from . import line_colors, line_names, proof_rows
 from .benchmark import (benchmark_line_engines, benchmark_line_records, report_references,
                         width_floors)
-from .chart_series import axis_pins, engine_series, hidden_names
+from .chart_series import axis_pins, engine_series, is_hidden
 from .reference_points import reference_series
 
 X_MODE_LABEL_KEYS = {chart_points.X_FLOOR: "bench.x_axis_floor",
@@ -35,7 +37,7 @@ SCRIPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_js
 # The script's parts in join order; they share one function scope, and report_main.js, which
 # starts the page, comes last so every value it reaches is set.
 SCRIPT_PARTS = ("report_format.js", "report_scale.js", "report_svg.js", "report_runs.js",
-                "report_view.js", "report_page.js", "report_main.js")
+                "report_view.js", "report_controls.js", "report_page.js", "report_main.js")
 
 
 def number_marks():
@@ -81,7 +83,15 @@ def report_data(rows, pages, t, width, height, selection=None, references=False,
     views = [point_views.get(key) or chart_points.DEFAULT for key in ("run", "sieve", "ram")]
     x_mode = views[0].x_mode
     selected = next((v.selected for v in views if v.selected is not None), None)
-    engines = benchmark_line_engines(rows)
+    refs_on = report_references(references, measure)
+    refs = [s for s in (reference_series(t) if refs_on else ())
+            if not is_hidden(hidden_lines.get("sieve"), "primary", s.name)]
+    charts_records = [[_shown_records(rows, spec, hidden_lines.get(spec[0]),
+                                      dict(zip(("run", "sieve", "ram"), views))[spec[0]])
+                       for spec in charts] for _kind, charts in pages]
+    shown = {record[1] for charts in charts_records for records in charts
+             for record in records}
+    engines = {name: key for name, key in benchmark_line_engines(rows).items() if name in shown}
     ordered = engine_series({name: [(0, 0)] for name in engines}, engines,
                             theme=line_colors.EXPORT_THEME)
     index = {s.name: i for i, s in enumerate(ordered)}
@@ -92,23 +102,21 @@ def report_data(rows, pages, t, width, height, selection=None, references=False,
         dims.append({"key": dim, "label": t(chart_filter.DIMENSION_KEYS[dim]), "values": values,
                      "labels": [chart_filter.value_label(dim, v, t) for v in values],
                      "of_run": [position[chart_filter.row_value(row, dim)] for row in rows]})
-    refs_available = report_references(True, measure)
-    width_lines = _width_lines(rows, ordered, index)
-    # Every line the page can draw, so a hidden axis hides the lines the page's filter adds.
-    line_names = list(index) + [s.name for s in reference_series(t)]
+    width_lines = _width_lines(rows, ordered, index,
+                               {(index[r[1]], r[2]) for charts in charts_records
+                                for records in charts for r in records})
     out_pages = []
-    for kind, charts in pages:
+    for (kind, charts), records_of in zip(pages, charts_records):
         out_charts = []
-        for i, (chart_key, axis, metric, label_key, places) in enumerate(charts):
+        for i, ((chart_key, axis, metric, label_key, places), shown_records) in enumerate(
+                zip(charts, records_of)):
             records = [[run, index[line], floor, value, width_label,
                         math.log10(numbers) if numbers else None]
-                       for run, line, floor, value, width_label, numbers
-                       in benchmark_line_records(rows, metric) if math.isfinite(value)]
+                       for run, line, floor, value, width_label, numbers in shown_records]
             out_charts.append({
                 "title": t(label_key), "decimals": places,
                 "pins": list(axis_pins(y_pins.get(chart_key), axis)),
-                "hidden": hidden_names(hidden_lines.get(chart_key), axis, line_names),
-                "refs": kind == "sieve" and i == 0 and refs_available,
+                "refs": kind == "sieve" and i == 0 and bool(refs),
                 "y_view": list((y_views or {}).get(chart_key) or ()) or None,
                 "y_level": y_levels.get(chart_key, 0), "key": chart_key,
                 "records": records})
@@ -134,8 +142,8 @@ def report_data(rows, pages, t, width, height, selection=None, references=False,
     return {"runs": len(rows), "floor_of_run": [_floor(row) for row in rows], "dims": dims,
             "selection": {dim: sorted(values) for dim, values in (selection or {}).items()},
             "lines": [{"name": s.name, "tag": s.tag, "color": s.color} for s in ordered],
-            "refs": [series_json(s) for s in reference_series(t)] if refs_available else [],
-            "refs_available": refs_available, "refs_on": bool(references), "log": bool(log_y),
+            "refs": [series_json(s) for s in refs],
+            "refs_available": bool(refs), "refs_on": bool(refs), "log": bool(log_y),
             "view": list(x_view) if x_view is not None else None,
             "x_level": x_level, "x_base": list(x_base) if x_base else None,
             "width": width, "height": height, "pages": out_pages, "text": text,
@@ -145,16 +153,30 @@ def report_data(rows, pages, t, width, height, selection=None, references=False,
             "selected_run": next((i for i, row in enumerate(rows) if row is selected), None)}
 
 
-def _width_lines(rows, ordered, index):
+def _shown_records(rows, chart, hidden, view):
+    """benchmark_line_records() of one report chart without the lines hidden in the tab: on
+    the width axis a line is one floor of a floor-axis line (chart_points.line_name())."""
+    chart_key, axis, metric = chart[:3]
+    width = view.x_mode == chart_points.X_WIDTH
+    return [record for record in benchmark_line_records(rows, metric)
+            if math.isfinite(record[3]) and not is_hidden(
+                hidden, axis, record[1] + chart_points.floor_suffix(record[2]) if width
+                else record[1])]
+
+
+def _width_lines(rows, ordered, index, shown):
     """{"line index/floor": {name, color}}: each floor-axis line on each floor with a known
-    width, named and shaded as on the tab's width axis (benchmark.benchmark_series())."""
+    width among `shown` ({(line index, floor)} the page's records hold), named and shaded as
+    on the tab's width axis (benchmark.benchmark_series())."""
     floors = width_floors(rows)
     out = {}
-    for row in rows:
+    for row in proof_rows.chart_rows(rows):
         floor = chart_points.floor_of(row)
-        if floor is None or chart_points.numbers_of(row) is None:
+        name = line_names.line_name(row)
+        if (floor is None or chart_points.numbers_of(row) is None
+                or (index.get(name), floor) not in shown):
             continue
-        s = ordered[index[line_names.line_name(row)]]
+        s = ordered[index[name]]
         out[f"{index[s.name]}/{floor}"] = {
             "name": chart_points.line_name(row, chart_points.X_WIDTH),
             "color": chart_points.shade(s.color, floors[s.engine].index(floor))}

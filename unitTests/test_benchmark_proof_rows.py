@@ -6,8 +6,8 @@ A. split(): the P copy has total, loop and per-second fields without the proof, 
    row is unchanged; a row without proof_seconds (blank, 0, unreadable) stays one row; a copy
    is never split again.
 B. The charts: the sieve and whole-run charts have both lines with the expected values; the
-   table's row kind of the logged row is D/P; a pt1_verify row (store verification) is on no
-   chart; a pt1 row without a proof stays one P line.
+   table's row kind of the logged row is D/P; a pt1_verify row (store verification) is on the
+   whole-run chart only; a pt1 row without a proof stays one P line.
 C. Selecting the logged row marks the points of both lines.
 D. Breaking attempts: proof_seconds larger than total_seconds leaves the total as it is
    (never a negative time); missing loop fields stay blank.
@@ -101,9 +101,11 @@ class ChartTest(unittest.TestCase):
         growth = benchmark.benchmark_engine_lines(rows[:1], "growth")
         self.assertAlmostEqual(growth["pt1.1 P, 24 thr, write 1"][0][1], N / 2, delta=1)
         self.assertAlmostEqual(growth["pt1.1 D proof, 24 thr, write 1"][0][1], N / 10, delta=1)
-        for metric in ("growth", "sieve", "sieve_spw", "write", "ram"):
+        self.assertEqual(list(benchmark.benchmark_engine_lines(rows[2:], "growth")),
+                         ["pt1_verify pt1.1, 24 thr, write 1"], "pt1_verify: its own whole run")
+        for metric in ("sieve", "sieve_spw", "write", "ram"):
             lines = benchmark.benchmark_engine_lines(rows[2:], metric)
-            self.assertEqual(lines, {}, f"pt1_verify on no chart ({metric})")
+            self.assertEqual(lines, {}, f"pt1_verify not on {metric}")
         engines = benchmark.benchmark_line_engines(rows[:1])
         self.assertEqual(set(engines.values()), {"pt1 P", "pt1 D proof"})
 

@@ -137,6 +137,29 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   części w jeden skrypt, który niosą strona i snippet. Wyeksportowane raporty wyglądają
   i działają dokładnie tak jak wcześniej.
 
+### +9 — Benchmark exports: only what the tab shows; store verification on the run chart
+
+- English: The HTML, PDF and SVG reports hold only what the Benchmark tab shows: a chart with no
+  visible line (no points, its axis hidden, or every line hidden) is left out instead of showing
+  a "no data" or "all lines hidden" box, a line hidden in the tab is no longer in the report at
+  all, and a page without charts has the title and the tables only. The interactive page hides a
+  chart while its filter leaves it no data and shows it again when the data comes back. An SVG
+  export with no visible chart writes no file and says so. A store verification run
+  (pt1_verify, v73_verify) is now its own line on the whole-run chart, at the run speed the
+  table shows (numbers / total seconds), in the color of other engines, which the legend can
+  change. Fixed: exporting a verified pt1 run (D/P) to HTML failed, and the save error always
+  said "PDF".
+- Polski: Raporty HTML, PDF i SVG zawierają tylko to, co widać w zakładce Benchmark: wykres bez
+  widocznej linii (bez punktów, z ukrytą osią albo ze wszystkimi liniami ukrytymi) jest
+  pomijany zamiast ramki „brak danych” lub „wszystkie linie ukryte”, linia ukryta w zakładce
+  w ogóle nie trafia do raportu, a raport bez wykresów ma tylko tytuł i tabele. Strona
+  interaktywna chowa wykres, gdy jej filtr nie zostawia mu danych, i pokazuje go, gdy dane
+  wracają. Eksport SVG bez widocznego wykresu nie zapisuje pliku i mówi o tym. Przebieg
+  weryfikacji magazynu (pt1_verify, v73_verify) jest teraz osobną linią na wykresie całego
+  przebiegu, z prędkością przebiegu z tabeli (liczby / czas całkowity), w kolorze innych
+  silników, który można zmienić w legendzie. Naprawione: eksport do HTML przebiegu pt1
+  z weryfikacją (D/P) kończył się błędem, a komunikat błędu zapisu zawsze mówił „PDF”.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs
