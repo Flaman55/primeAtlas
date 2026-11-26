@@ -173,6 +173,26 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   obok OK przycisk „Otwórz”, który otwiera zapisany plik w domyślnym programie (przy eksporcie
   CSV plik .csv). Plik lub katalog, którego nie da się otworzyć, daje komunikat.
 
+### +11 — Generation: a red field stops every action that reads it
+
+- English: Every action of the Generation tab that reads number fields now stops at a red one
+  with the same message as Quick-gen Generate, naming the reason and putting the cursor in the
+  field: the pipeline Run, Verify Run, the k-tuple Run, Auto and n_locations Auto, the
+  constellation Run and Quick-gen's Auto buttons. A red field of another action does not
+  block. The pipeline form's numbers turn red below their lowest value (floor 0, the others 1),
+  and so do the k-tuple window, step and MR rounds below 1 (0 hung the sieve or confirmed every
+  candidate). Fix: a negative Starting point in Floor mode is red and refused; it no longer
+  fills the Floor field or starts a run at a negative number.
+- Polski: Każda akcja zakładki Generowanie, która czyta pola liczbowe, zatrzymuje się teraz na
+  czerwonym polu z tym samym komunikatem co Generuj w Quick-gen: podaje powód i stawia kursor
+  w polu. Dotyczy to Uruchom w pipeline, Uruchom w weryfikacji, Uruchom, Auto i Auto
+  n_locations w k-tuple, Uruchom w konstelacjach i przycisków Auto w Quick-gen. Czerwone pole
+  innej akcji jej nie blokuje. Liczby formularza pipeline robią się czerwone poniżej najniższej
+  wartości (piętro 0, pozostałe 1), a okno, krok i rundy MR w k-tuple poniżej 1 (0 zawieszało
+  sito albo potwierdzało każdego kandydata). Poprawka: ujemny Punkt startowy w trybie Floor
+  jest czerwony i odrzucany; nie wypełnia już pola Piętro i nie uruchamia przebiegu od liczby
+  ujemnej.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

@@ -120,6 +120,11 @@ class EngineFields:
     def on_engine_change(self, callback):
         self._listeners.append(callback)
 
+    def number_vars(self):
+        """The variables of the selected engine's number knob fields (no checkboxes)."""
+        return [self.knob_vars[key] for key in engine_options.engine_knob_keys(self.engine())
+                if key not in engine_options.CHECKBOX_KNOBS]
+
     def choice(self, windows=None):
         """(EngineChoice, None), or (None, key) naming the first invalid knob field of the
         selected engine; another engine's knobs never block a run. The engine's profile

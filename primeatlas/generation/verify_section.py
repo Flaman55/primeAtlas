@@ -469,6 +469,12 @@ class VerifySection:
             return
         if self._other_engine_is_running("verify"):
             return
+        fields = [self._verify_vars[key] for key in ("base_exponent", "width", "max_windows",
+                                                     "threads")]
+        if self._verify_vars["threads"].get().strip().lower() == verify_plan.THREADS_AUTO.lower():
+            fields.append(self._loop_vars["workers"])  # Auto follows the workers field
+        if number_field.refuse_problem(fields, self.T, self.T("gen.dialog_title")):
+            return
         values = self._verify_values()
         if values is None:
             return

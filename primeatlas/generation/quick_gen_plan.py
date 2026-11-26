@@ -292,12 +292,17 @@ class QuickGenPlan:
         """Floor mode. A Starting point is a literal target of Width windows; a blank one
         continues the floor from its last stored window (or its first gap with "fill gaps
         first"), capped at the floor's own last window."""
+        # A negative start leaves the Floor field blank, so it is reported before the floor.
+        start_value = _eval_quick_number(self.quick_floor_start_var.get().strip())
+        if start_value is not None and start_value < 0:
+            messagebox.showerror(self.T("quick.dialog_title"),
+                                 self.T("quick.error_floor_start_negative"))
+            return
         floor_value = _eval_quick_number(self.quick_floor_var.get().strip())
         if floor_value is None or floor_value < 0:
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_floor_required"))
             return
         width_mult = _eval_quick_number(self.quick_floor_width_var.get()) or 1
-        start_value = _eval_quick_number(self.quick_floor_start_var.get().strip())
         if start_value is not None:
             # Width is a window-count budget here: max_window_count keeps a start off the
             # window grid from adding one window past it.

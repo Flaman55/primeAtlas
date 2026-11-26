@@ -308,11 +308,12 @@ class QuickGenPanel:
         ttk.Button(frame, text=self.T("quick.auto_button"),
                    command=lambda: self._on_quick_auto_width_clicked(
                        self.quick_floor_width_var,
-                       self._quick_floor_of(self.quick_floor_var))).pack(side="left")
+                       self._quick_floor_of(self.quick_floor_var),
+                       floor_var=self.quick_floor_var)).pack(side="left")
         frame = flow_group(row, 20)
         ttk.Label(frame, text=self.T("quick.field_start")).pack(side="left")
         number_field.attach(ttk.Entry(frame, textvariable=self.quick_floor_start_var, width=20), self.T,
-                            "field_tip.quick_start").entry.pack(
+                            "field_tip.quick_start", minimum=0).entry.pack(
             side="left", padx=(6, 0))
         gap_row = ttk.Frame(outer)
         gap_row.grid(row=1, column=0, sticky="w", pady=(4, 0))
@@ -371,8 +372,10 @@ class QuickGenPanel:
         auto-computed "which floor is this number in" display; clearing/blanking it
         (or typing something unparseable) hands control back to the person, since an
         empty starting point means "continue this floor" and the app has no other way
-        to know WHICH floor that is."""
+        to know WHICH floor that is. A negative value is no starting point either."""
         value = _eval_quick_number(self.quick_floor_start_var.get())
+        if value is not None and value < 0:
+            value = None
         new_floor_value = "" if value is None else str(digit_count_floor(value))
         new_state = "normal" if value is None else "readonly"
         self.quick_floor_var.set(new_floor_value)
@@ -398,7 +401,8 @@ class QuickGenPanel:
         # for the person to factor into their own From/To choice.
         row.add(ttk.Button(row.frame, text=self.T("quick.auto_button"),
                            command=lambda: self._on_quick_auto_width_clicked(
-                               None, self._quick_floor_of(self.quick_from_var, is_number=True))),
+                               None, self._quick_floor_of(self.quick_from_var, is_number=True),
+                               floor_var=self.quick_from_var)),
                 padx_left=20)
         mode_frames["range"] = row.frame
 
@@ -468,7 +472,8 @@ class QuickGenPanel:
                    command=lambda: self._on_quick_auto_width_clicked(
                        self.quick_explore_width_var,
                        self._quick_floor_of(self.quick_explore_floor_var),
-                       self.quick_iterations_var)).pack(side="left")
+                       self.quick_iterations_var,
+                       floor_var=self.quick_explore_floor_var)).pack(side="left")
         gap_row = ttk.Frame(outer)
         gap_row.grid(row=1, column=0, sticky="w", pady=(4, 0))
         ttk.Checkbutton(gap_row, text=self.T("quick.field_fill_gaps_first"),
@@ -663,6 +668,9 @@ class QuickGenPanel:
         docstring): a floor this deep can hold hundreds of billions of windows, so
           "where does my data actually stop on floor N" is not something to work out by
         hand."""
+        if number_field.refuse_problem([self.quick_primesieve_floor_var], self.T,
+                                       self.T("quick.dialog_title")):
+            return
         raw_floor = self.quick_primesieve_floor_var.get().strip()
         floor_value = _eval_quick_number(raw_floor)
         if not raw_floor or floor_value is None or floor_value < 0:
@@ -746,6 +754,9 @@ class QuickGenPanel:
         to it instead of silently handing back a value this mode can never actually
         use (prime_sieve_cudasieve.py would just reject it with a RuntimeError anyway;
         better to say so here, before a WSL round-trip)."""
+        if number_field.refuse_problem([self.quick_cudasieve_floor_var], self.T,
+                                       self.T("quick.dialog_title")):
+            return
         raw_floor = self.quick_cudasieve_floor_var.get().strip()
         floor_value = _eval_quick_number(raw_floor)
         if not raw_floor or floor_value is None or floor_value < 0:
@@ -807,7 +818,8 @@ class QuickGenPanel:
 
 
 
-    def _on_quick_auto_width_clicked(self, width_var, base_exponent=None, iterations_var=None):
+    def _on_quick_auto_width_clicked(self, width_var, base_exponent=None, iterations_var=None,
+                                     floor_var=None):
         """Auto button handler, shared by every mode's button (see
         _build_quick_mode_floor/_build_quick_mode_explore/_build_quick_mode_range).
         Queries the free RAM (estimate_free_ram_bytes: the lower of what WSL, where the sieve
@@ -829,7 +841,19 @@ class QuickGenPanel:
         The recommendation follows the engine selected in the pipeline form
         (engine_options.recommend()): v5, v6 and v7 scale the window count with base_exponent
         (None = unknown floor, sized like a shallow one) and, when RAM is short, lower
-        the bucket-memory field to what fits."""
+        the bucket-memory field to what fits.
+
+        floor_var is the field base_exponent was read from; a red one, or a red field the
+        click reads, refuses the click."""
+        fields = [] if floor_var is None else [floor_var]
+        if iterations_var is not None:
+            fields.append(iterations_var)
+            iterations = number_value(iterations_var.get())
+            if not isinstance(iterations, int) or iterations > 1:
+                fields.append(width_var)  # read with more than one iteration only
+        if number_field.refuse_problem(fields + self._engine_fields.number_vars(), self.T,
+                                       self.T("quick.dialog_title")):
+            return
         choice, bad_key = self._engine_fields.choice()
         if choice is None:
             messagebox.showerror(self.T("quick.dialog_title"),

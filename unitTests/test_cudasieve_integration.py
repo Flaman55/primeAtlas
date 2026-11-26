@@ -551,11 +551,19 @@ def section_e():
 
         # --- Auto-from compute: floor comfortably above the min-printable floor, nothing
         # on disk yet -> continuation_point == 10**floor exactly. ---
+        gen.quick_cudasieve_floor_var.set("15")
+        gen._on_cudasieve_auto_from_clicked()
+        check(gen.quick_cudasieve_from_var.get() == str(10 ** 15),
+              f"floor=15 with nothing on disk must compute continuation_point=10**15 "
+              f"exactly (got {gen.quick_cudasieve_from_var.get()!r})")
+
+        # --- Auto-from refuses a floor above the field's maximum (19): the From stays. ---
+        del error_calls[:]
         gen.quick_cudasieve_floor_var.set("50")
         gen._on_cudasieve_auto_from_clicked()
-        check(gen.quick_cudasieve_from_var.get() == str(10 ** 50),
-              f"floor=50 with nothing on disk must compute continuation_point=10**50 "
-              f"exactly (got {gen.quick_cudasieve_from_var.get()!r})")
+        check(gen.quick_cudasieve_from_var.get() == str(10 ** 15) and len(error_calls) == 1,
+              f"floor=50 (red) is refused and leaves From as it was "
+              f"(got {gen.quick_cudasieve_from_var.get()!r}, {error_calls})")
 
         # --- Auto-from no-crash on empty floor field. ---
         gen.quick_cudasieve_floor_var.set("")

@@ -103,9 +103,13 @@ invalid, the reason (a range reason groups its digits too).
 Code that reads plain integers keeps its own checks and messages: it reads the text through
 `number_text.plain_number()` (the plain digits of an ok reading, else the stripped text);
 `number_value()` / `fraction_value()` return the value or None. `number_field.refuse_problem
-(variables, T, title)` shows the reason and puts the cursor in the first red field bound to
-those variables; Quick-gen Generate calls it for the selected mode's fields
-(`_QUICK_MODE_NUMBER_VARS`), so a red field never becomes a default width.
+(variables, T, title)` shows the reason and puts the cursor in the first red field among
+`variables`: Tk variables, or the fields' widgets (a bare entry has no variable; its text is read
+again first, since text set by code reaches it through no event). An action calls it first, after
+its "already running" guard, with exactly the fields it reads, so a red field never becomes a
+default and a red field of another action never blocks it: Quick-gen Generate (the selected
+mode's fields, `_QUICK_MODE_NUMBER_VARS`) and every action of the Generation tab (see
+[generation](generation.md#refused-fields)).
 
 `unitTests/test_number_field_coverage.py` requires every `ttk.Entry` and `ttk.Spinbox` in
 `primeatlas/` to be a number field or marked `# not a number field: <why>` (folder paths,
@@ -116,6 +120,9 @@ live fields.
 
 ## Known gaps
 
+- The actions of the Research, Visualization, Constellations, Primality, Primes and Benchmark tabs
+  do not call `refuse_problem` yet: there a red field is only shown, and the action reads the
+  text with its own checks.
 - Separate dialogs and windows of a fixed size (machine details, chart windows, consent and
   confirmation dialogs) keep texts of a fixed wrap width; they are not resized with the app.
 - Separate windows (a detached terminal, chart windows, the Goldbach and Irreducibility

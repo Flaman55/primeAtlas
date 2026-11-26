@@ -11,7 +11,7 @@ import queue
 
 from tkinter import messagebox
 
-from ..core import number_format
+from ..core import number_field, number_format
 from ..core.storage import digit_count_floor, LOW_FLOOR_CUTOFF
 from ..core.number_text import plain_number
 from . import engine_options, wsl_resources
@@ -298,6 +298,10 @@ class QuickGenRuns:
         if (self._loop_runner is not None and self._loop_runner.is_running()
                 or self._other_engine_is_running("loop")):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
+            return
+        if number_field.refuse_problem(
+                [self._loop_vars["workers"], self._loop_vars["batches_per_worker"]]
+                + self._engine_fields.number_vars(), self.T, self.T("quick.dialog_title")):
             return
         # orchestrator_v3.py run directly still calls prime_sieve_v3/v4/v4_1's own
         # generate_floor_windows(), same granular "[+] Progress: ..." lines as the
