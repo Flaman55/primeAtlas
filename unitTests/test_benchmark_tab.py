@@ -77,6 +77,7 @@ def _patch_messageboxes():
     shown = []
     tkinter.messagebox.showinfo = lambda *a, **k: shown.append(("info", a, k))
     tkinter.messagebox.showerror = lambda *a, **k: shown.append(("error", a, k))
+    open_path.show_saved = lambda parent, title, paths, T: shown.append(("saved", paths, {}))
     return shown
 
 
@@ -91,6 +92,7 @@ def _pump(app, seconds):
 # every aggregate_benchmark_*()/benchmark_row_stats() column at once instead of a
 # stripped-down fixture that would miss a column-name typo.
 from benchmark_log_schema import BENCHMARK_FIELDNAMES as _FIELDNAMES  # noqa: E402
+from primeatlas.core import open_path  # noqa: E402
 
 
 def _row(base_exponent, idx, **overrides):
@@ -270,8 +272,8 @@ def main():
         filedialog.asksaveasfilename = original_dialog
         check(os.path.exists(pdf_path), "_export_benchmark_pdf() actually wrote the PDF file")
         check(os.path.getsize(pdf_path) > 0, "the written PDF is non-empty")
-        check(any(kind == "info" for kind, _a, _k in shown),
-              f"a 'saved' confirmation was shown via messagebox.showinfo (got: {shown})")
+        check(any(kind == "saved" for kind, _a, _k in shown),
+              f"a 'saved' confirmation was shown via open_path.show_saved (got: {shown})")
 
         # --- PDF export: "no data" path never opens the file dialog at all ---------
         real_rows, real_fieldnames = widget._benchmark_rows, widget._benchmark_fieldnames

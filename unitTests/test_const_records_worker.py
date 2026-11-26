@@ -50,6 +50,10 @@ def _patch_messageboxes():
     shown = []
     tkinter.messagebox.showinfo = lambda *a, **k: shown.append(("info", a, k))
     tkinter.messagebox.showerror = lambda *a, **k: shown.append(("error", a, k))
+    # The saved dialog waits for its window: it is recorded as the "info" confirmation.
+    from primeatlas.core import open_path
+    open_path.show_saved = lambda parent, title, paths, T: shown.append(
+        ("info", (title, paths), {}))
     return shown
 
 
@@ -65,10 +69,9 @@ def main():
 
     tmp_portal = tempfile.mkdtemp(prefix="primeatlas_const_records_worker_test_")
     try:
-        shown = _patch_messageboxes()
-
         sys.argv = ["prime_atlas_v2.py"]
         import prime_atlas_v2
+        shown = _patch_messageboxes()
         from app_sandbox import isolate_app
         isolate_app(tmp_portal)
         app_cls = prime_atlas_v2._build_gui()

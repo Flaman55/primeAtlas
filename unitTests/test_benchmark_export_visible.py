@@ -35,6 +35,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation"
 
 from app_sandbox import fresh_ui_store  # noqa: E402
 from benchmark_log_schema import BENCHMARK_FIELDNAMES  # noqa: E402
+from primeatlas.core import open_path  # noqa: E402
 from primeatlas.benchmark import (benchmark, chart_filter, chart_points, chart_series,  # noqa: E402
                                   line_colors, report_export, report_html, sieve_measure,
                                   table_columns)
@@ -430,6 +431,10 @@ class TabTests(unittest.TestCase):
 
         shown, asked = [], []
         originals = {name: getattr(messagebox, name) for name in ("showinfo", "showerror")}
+        # The saved dialog waits for its window: it reports as an info message here.
+        saved_dialog = open_path.show_saved
+        open_path.show_saved = lambda parent, title, paths, T: messagebox.showinfo(
+            title, "\n".join(paths))
         messagebox.showinfo = lambda title, text, **k: shown.append(("info", text))
         messagebox.showerror = lambda title, text, **k: shown.append(("error", text))
         original_save = filedialog.asksaveasfilename
@@ -463,6 +468,7 @@ class TabTests(unittest.TestCase):
             finally:
                 root.destroy()
                 filedialog.asksaveasfilename = original_save
+                open_path.show_saved = saved_dialog
                 for name, fn in originals.items():
                     setattr(messagebox, name, fn)
 

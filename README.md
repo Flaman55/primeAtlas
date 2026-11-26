@@ -1467,6 +1467,11 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               entry_for(), merge() for backups; atomic writes, a
                               broken file is never overwritten
                               (unitTests/test_machines_file.py, test_machines_backup.py)
+  open_path.py                  a file or folder opened in its default program;
+                              open_folder() for the Folder buttons (a missing folder
+                              is a message, never created); SavedDialog/show_saved(),
+                              the "Saved" message after an export with OK and Open
+                              (unitTests/test_open_path.py)
   widgets.py                    small generic tkinter helpers with no
                               application-specific state; FlowRow is the app's one
                               wrapping row: items wrap whole onto the next line where

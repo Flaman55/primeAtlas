@@ -61,6 +61,10 @@ def _patch_messageboxes():
     shown = []
     tkinter.messagebox.showinfo = lambda *a, **k: shown.append(("info", a, k))
     tkinter.messagebox.showerror = lambda *a, **k: shown.append(("error", a, k))
+    # The saved dialog waits for its window: it is recorded as the "info" confirmation.
+    from primeatlas.core import open_path
+    open_path.show_saved = lambda parent, title, paths, T: shown.append(
+        ("info", (title, paths), {}))
     tkinter.messagebox.askyesno = lambda *a, **k: False
     return shown
 

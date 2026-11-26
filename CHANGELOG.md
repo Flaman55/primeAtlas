@@ -160,6 +160,19 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   silników, który można zmienić w legendzie. Naprawione: eksport do HTML przebiegu pt1
   z weryfikacją (D/P) kończył się błędem, a komunikat błędu zapisu zawsze mówił „PDF”.
 
+### +10 — Benchmark: a Folder button and Open after an export
+
+- English: The Benchmark tab has a Folder button next to Filter... that opens the storage folder
+  set in Settings; while the folder does not exist yet the tab says so and creates nothing. The
+  message after a saved export (Benchmark reports, Constellations Records) has an Open button
+  next to OK that opens the saved file in its default program (the .csv of a CSV export). A
+  file or folder that cannot be opened gives a message.
+- Polski: Zakładka Benchmark ma obok „Filtr...” przycisk „Katalog”, który otwiera katalog
+  magazynu ustawiony w Ustawieniach; dopóki katalog nie istnieje, zakładka o tym mówi i niczego
+  nie zakłada. Komunikat po zapisaniu eksportu (raporty Benchmarku, Rekordy konstelacji) ma
+  obok OK przycisk „Otwórz”, który otwiera zapisany plik w domyślnym programie (przy eksporcie
+  CSV plik .csv). Plik lub katalog, którego nie da się otworzyć, daje komunikat.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

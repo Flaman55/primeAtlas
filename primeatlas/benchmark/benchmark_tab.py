@@ -27,7 +27,7 @@ is passed in exactly like SettingsTab's wsl_helpers callables are.
 import tkinter as tk
 from tkinter import ttk
 
-from ..core import number_field
+from ..core import number_field, open_path
 from ..core.number_text import plain_number
 from ..core.base_tab import BaseTab
 from ..core.ui_state import remember
@@ -114,6 +114,9 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
         top.add(export_group)
         top.add(ttk.Button(top.frame, text=T("bench.filter_button"),
                            command=self._open_filter_window), padx_left=6)
+        top.add(ttk.Button(top.frame, text=T("bench.folder_button"),
+                           command=lambda: open_path.open_folder(self, self._get_portal_folder(),
+                                                                 self.T)), padx_left=6)
         top.add(FitLabel(top.frame, textvariable=self.filter_summary_var,
                          style="Status.TLabel"), padx_left=6)
         self.filter_summary_var.trace_add("write", lambda *_a: top.relayout())

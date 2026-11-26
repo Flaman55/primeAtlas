@@ -42,6 +42,7 @@ from tkinter import ttk, messagebox, filedialog
 import pattern_catalog_v1
 
 from ..core import number_format
+from ..core import open_path
 from ..core.number_text import plain_number
 from ..core import number_field
 from ..core import background
@@ -543,7 +544,7 @@ class ConstellationsRecordsTab(BaseTab):
                 return
             path = result_payload
             self.status.set(T("bench.status_saved", path=path))
-            messagebox.showinfo(button_label, T("bench.saved_dialog", path=path))
+            open_path.show_saved(self, button_label, [path], T)
 
     def _show_results(self, k, variant_ids, variant_meta, rows, floor_min, floor_max):
         T = self.T

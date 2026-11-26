@@ -18,6 +18,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "prime_sieve"), str(ROOT / "constellation"
 
 from app_sandbox import fresh_ui_store  # noqa: E402
 
+from primeatlas.core import open_path  # noqa: E402
 from primeatlas.benchmark import benchmark, chart_pdf, chart_series, reference_points
 from primeatlas.core.i18n import Translator
 
@@ -490,6 +491,10 @@ class TabPinTests(unittest.TestCase):
         original_hover = chart_canvas._bind_chart_hover
         original_save = filedialog.asksaveasfilename
         originals = {name: getattr(messagebox, name) for name in ("showinfo", "showerror")}
+        # The saved dialog waits for its window: it reports as an info message here.
+        saved_dialog = open_path.show_saved
+        open_path.show_saved = lambda parent, title, paths, T: messagebox.showinfo(
+            title, "\n".join(paths))
         for name in originals:
             setattr(messagebox, name, lambda *a, **k: None)
         chart_canvas._bind_chart_hover = (
@@ -592,6 +597,7 @@ class TabPinTests(unittest.TestCase):
                 root.destroy()
                 chart_canvas._bind_chart_hover = original_hover
                 filedialog.asksaveasfilename = original_save
+                open_path.show_saved = saved_dialog
                 for name, fn in originals.items():
                     setattr(messagebox, name, fn)
 
@@ -607,6 +613,10 @@ class TabTests(unittest.TestCase):
         original_hover = chart_canvas._bind_chart_hover
         original_save = filedialog.asksaveasfilename
         originals = {name: getattr(messagebox, name) for name in ("showinfo", "showerror")}
+        # The saved dialog waits for its window: it reports as an info message here.
+        saved_dialog = open_path.show_saved
+        open_path.show_saved = lambda parent, title, paths, T: messagebox.showinfo(
+            title, "\n".join(paths))
         for name in originals:
             setattr(messagebox, name, lambda *a, **k: None)
         chart_canvas._bind_chart_hover = (
@@ -724,6 +734,7 @@ class TabTests(unittest.TestCase):
                 root.destroy()
                 chart_canvas._bind_chart_hover = original_hover
                 filedialog.asksaveasfilename = original_save
+                open_path.show_saved = saved_dialog
                 for name, fn in originals.items():
                     setattr(messagebox, name, fn)
 
