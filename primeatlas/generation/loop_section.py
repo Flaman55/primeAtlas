@@ -92,7 +92,9 @@ class LoopSection:
                                      purpose=f"field_tip.loop_{key}")
             else:
                 entry = ttk.Entry(cell, textvariable=var, width=width)
-                number_field.attach(entry, self.T, f"field_tip.loop_{key}")
+                # The lowest values _collect_loop_settings_from_form accepts.
+                number_field.attach(entry, self.T, f"field_tip.loop_{key}",
+                                    minimum=0 if key == "base_exponent" else 1)
             entry.pack(side="left")
             self._loop_vars[key] = var
             remember_generation_field("loop", key, var)
@@ -279,6 +281,10 @@ class LoopSection:
         if (self._loop_runner is not None and self._loop_runner.is_running()
                 or self._other_engine_is_running("loop")):
             messagebox.showerror(self.T("quick.dialog_title"), self.T("quick.error_already_running"))
+            return
+        if number_field.refuse_problem(list(self._loop_vars.values())
+                                       + self._engine_fields.number_vars(),
+                                       self.T, self.T("quick.dialog_title")):
             return
         # The old batched engine (orchestrator_v3.py via orchestrator_loop_v2.py)
         # DOES print granular "[+] Progress: ..." lines -- re-enable and reset the

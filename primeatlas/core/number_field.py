@@ -22,7 +22,8 @@ maximum, or one of at least HELP_FROM; elsewhere one line of the power and scien
 and why the text is invalid; nothing while the popup is
 open. problem_field(variables)
 names a field whose text is not a usable value, so a run can refuse it instead of falling
-back to a default.
+back to a default; refuse_problem() is that refusal, called first by every action that reads
+number fields.
 """
 import tkinter as tk
 import weakref
@@ -54,19 +55,30 @@ def attach(entry, T, purpose, fraction=False, words=(), minimum=None, maximum=No
 
 def problem_field(variables):
     """The first number field bound to one of `variables` whose text is not a usable value
-    (invalid, ambiguous or out of range), or None. An empty field is no problem."""
-    names = {str(v) for v in variables}
-    for field in list(_FIELDS):
-        # A ThreadsField shows a form variable it does not own (`variable`).
-        shown = {field.variable_name, str(getattr(field.entry, "variable", ""))}
-        if shown & names and field.problem is not None:
-            return field
+    (invalid, ambiguous or out of range), or None. An empty field is no problem. An item can
+    also be the field's widget (a bare entry has no variable): its text is read again first,
+    since text set by code with insert() reaches the field through no event."""
+    for item in variables:
+        if isinstance(item, tk.Misc):
+            field = getattr(item, "number_field", None)
+            if field is not None:
+                field.refresh(at_once=True)
+                if field.problem is not None:
+                    return field
+            continue
+        name = str(item)
+        for field in list(_FIELDS):
+            # A ThreadsField shows a form variable it does not own (`variable`).
+            shown = {field.variable_name, str(getattr(field.entry, "variable", ""))}
+            if name in shown and field.problem is not None:
+                return field
     return None
 
 
 def refuse_problem(variables, T, title):
     """True (after an error naming the reason, with the cursor in the field) when one of the
-    number fields bound to `variables` holds no usable value; a run calls it first."""
+    number fields bound to `variables` (variables or the fields' widgets) holds no usable
+    value; every action that reads number fields calls it first."""
     field = problem_field(variables)
     if field is None:
         return False

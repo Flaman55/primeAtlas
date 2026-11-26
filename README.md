@@ -1438,8 +1438,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               when invalid, a "Could be" popup with the readings
                               when ambiguous, red outside its range, a hover tip
                               of its purpose (field_tip.* key), range and accepted
-                              forms; refuse_problem stops a run on a
-                              red field (unitTests/test_number_field.py; every Entry
+                              forms; refuse_problem stops an action on a
+                              red field it reads, given as variables or
+                              widgets (unitTests/test_number_field.py; the
+                              actions: unitTests/test_field_refusal_app.py; every Entry
                               and Spinbox is a number field or marked why not:
                               unitTests/test_number_field_coverage.py; the app's
                               195 fields: unitTests/test_number_fields_app.py)

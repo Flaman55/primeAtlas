@@ -22,7 +22,8 @@ Rules checked, for a field with a StringVar and for a bare entry:
     field is red and the tip names the range; a fraction field takes "1,5"; words ("Auto")
     are fine;
   - problem_field(vars) names the first field bound to one of those variables whose text is
-    not a usable value (invalid, ambiguous or out of range), so a run can refuse it;
+    not a usable value (invalid, ambiguous or out of range), so a run can refuse it; it also
+    takes the fields' widgets (a bare entry has no variable) and reads the text they show now;
   - the tip starts with what the field is for (attach requires a purpose key), then its
     range in grouped digits in the app's notation (also in the range reason); the notation
     help shows only with no maximum or a maximum of at least 10^6, otherwise one short line of
@@ -232,6 +233,61 @@ def options_checks(root, T, nf):
     return passed
 
 
+def widget_checks(root, T, nf):
+    """problem_field / refuse_problem take the fields' widgets too (a bare entry has no
+    variable) and read the text the widget shows now, also text set by code without an event."""
+    from tkinter import messagebox
+    passed = True
+    bare = ttk.Entry(root)
+    bare.pack()
+    field = nf.attach(bare, T, PURPOSE, minimum=1)
+    var = tk.StringVar(root, value="5")
+    other = ttk.Entry(root, textvariable=var)
+    other.pack()
+    other_field = nf.attach(other, T, PURPOSE, minimum=1)
+    root.update()
+    bare.insert(0, "0")  # no event: the field has not refreshed yet
+    passed &= check(nf.problem_field([bare]) is field and field.problem == "range",
+                    "a widget: its current text below the minimum is a problem")
+    passed &= check(nf.problem_field([other]) is None and nf.problem_field([var]) is None,
+                    "another field's problem does not count (widget or variable)")
+    passed &= check(nf.problem_field([var, bare]) is field,
+                    "variables and widgets mix in one list")
+    bare.delete(0, "end")
+    bare.insert(0, "abc")
+    passed &= check(nf.problem_field([bare]) is field and field.problem not in (None, "range"),
+                    "a widget: invalid text set by code is a problem")
+    bare.delete(0, "end")
+    passed &= check(nf.problem_field([bare]) is None, "a widget: an empty field is no problem")
+    bare.insert(0, "1")
+    passed &= check(nf.problem_field([bare]) is None, "a widget: the minimum itself is fine")
+    var.set("0")
+    root.update()
+    passed &= check(nf.problem_field([other]) is other_field,
+                    "a widget with a variable: the variable's value is read")
+    shown = []
+    real = messagebox.showerror
+    messagebox.showerror = lambda *a, **k: shown.append(a)
+    try:
+        refused = nf.refuse_problem([bare, other], T, "Title")
+        passed &= check(refused and len(shown) == 1 and shown[0][0] == "Title"
+                        and shown[0][1] == T("number_field.fix_field",
+                                             reason=other_field.problem_text()),
+                        f"refuse_problem with widgets: one error naming the reason ({shown})")
+        var.set("2")
+        root.update()
+        del shown[:]
+        passed &= check(not nf.refuse_problem([bare, other], T, "Title") and not shown,
+                        "refuse_problem with usable widgets: no error, False")
+        passed &= check(not nf.refuse_problem([ttk.Entry(root)], T, "Title") and not shown,
+                        "a widget that is no number field is no problem")
+    finally:
+        messagebox.showerror = real
+    bare.destroy()
+    other.destroy()
+    return passed
+
+
 def _tip_of(root, nf, T, **options):
     entry = ttk.Entry(root)
     entry.pack()
@@ -346,6 +402,7 @@ def main():
                         and late_field.reading.value == 12, "and its later values too")
         late.destroy()
         passed &= options_checks(root, T, nf)
+        passed &= widget_checks(root, T, nf)
         passed &= purpose_checks(root, nf, {"en": T, "pl": Translator("pl")})
         passed &= check(not errors, f"no callback errors ({errors[:1]})")
     finally:

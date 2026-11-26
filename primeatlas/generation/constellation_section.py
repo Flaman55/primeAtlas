@@ -184,6 +184,9 @@ class ConstellationSection:
         # (see _lock_other_run_buttons()) -- this is the non-button-click backstop.
         if self._other_engine_is_running("const"):
             return
+        if number_field.refuse_problem([self._const_base_exponent_var], self.T,
+                                       self.T("gen.dialog_title")):
+            return
         base_exponent = plain_number(self._const_base_exponent_var.get())
         if base_exponent and not base_exponent.isdigit():
             messagebox.showerror(

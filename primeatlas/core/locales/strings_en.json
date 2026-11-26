@@ -988,6 +988,7 @@
   "quick.hybrid_error_enter_valid_numbers": "Enter integer values for MAIN and the filter.",
   "quick.error_range_required": "Fill in both the From and To fields.",
   "quick.error_range_negative": "The From field cannot be less than 0.",
+  "quick.error_floor_start_negative": "The Starting point cannot be less than 0.",
   "quick.error_range_order": "The From field must be less than the To field.",
   "quick.error_floor_required": "Enter a floor (or type a starting point to compute one).",
   "quick.error_already_running": "Generation is already running -- wait for it to finish or stop it.",

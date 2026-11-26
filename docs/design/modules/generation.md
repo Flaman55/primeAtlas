@@ -195,6 +195,29 @@ largest known pi(10^n) with the seed) at `SECONDS_PER_PRIME`, and [Enable] / [Le
 [Leave disabled] and closing the window untick both boxes. With counting off, or on a floor that
 has its cache, nothing shows.
 
+## Refused fields
+
+Every action of the tab that reads number fields first refuses a red one
+(`number_field.refuse_problem`), with exactly the fields it reads:
+
+| Action | Fields |
+|---|---|
+| Quick-gen Generate | the selected mode's fields (`_QUICK_MODE_NUMBER_VARS`); a Floor or Explore run then goes through the pipeline Run below |
+| Quick-gen Auto (Floor, Range, Exploration) | the floor it sizes for (Floor, From, Explore's Floor); Exploration's Iterations, and its Width with more than one iteration; the selected engine's knobs |
+| primesieve / CUDASieve From Auto | that mode's Floor |
+| pipeline Run (`_on_run_loop`) | the form's numbers and workers, the selected engine's knobs (`EngineFields.number_vars()`) |
+| direct orchestrator launch (a range past 2^64 - 1) | workers, batches per worker, the selected engine's knobs |
+| Verify Run | floor, Width, Max windows, Threads; the workers too with Threads Auto |
+| k-tuple Run and Auto | the form's nine numbers (`_KTUPLE_NUMBER_KEYS`) |
+| k-tuple n_locations Auto | floor and window |
+| constellation Run | its floor |
+
+A field's minimum is the lowest value its action accepts: the pipeline form's floor 0 and its other
+numbers 1; the k-tuple window, step and MR rounds 1 (0 hangs the sieve or confirms every
+candidate; the run checks it too), its other numbers 0; Floor mode's Starting point 0. A negative
+Starting point is no starting point: the Floor field stays editable and empty, the engine
+proposal ignores it, and `_plan_quick_floor` itself refuses it before it reads the floor.
+
 ## Pipeline form
 
 Section A's Advanced settings are four framed groups stacked top to bottom: Range (floor, window
@@ -433,7 +456,8 @@ is copied in once), `.generation_logs/` (logs, exit codes, `ACTIVE_RUN.json`),
 `test_pi_count_notice_controls`, `test_engine_advisor`, `test_engine_advice_gui`, `test_native_plan`,
 `test_primesieve_native_controls`, `test_generation_ram_guard`, `test_run_eta`, `test_pipeline_form_layout`,
 `test_width_advisor`, `test_width_advice_gui`, `test_quick_auto_split`, `test_target_planner`, `test_target_plan_costs`,
-`test_target_plan_text`, `test_target_planner_gui`, `test_target_planner_example`, `test_quick_number`, `test_cpu_load` (D, E).
+`test_target_plan_text`, `test_target_planner_gui`, `test_target_planner_example`, `test_quick_number`, `test_cpu_load` (D, E),
+`test_field_refusal_app` (refused fields and minima), `test_number_fields_app` (Starting point).
 
 ## Known gaps
 

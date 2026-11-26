@@ -24,6 +24,13 @@ from ..core.widgets import FlowRow
 from ..constellations.pattern_picker import PatternPicker
 
 
+# The form's number fields, in the order a run reads them.
+_KTUPLE_NUMBER_KEYS = ("base_exponent", "n_locations", "window_m", "step", "fragment_width",
+                       "fragment_start", "deep_prime_limit", "mr_rounds", "pass_counter")
+# 0 here hangs the sieve (window, step) or confirms every candidate (MR rounds).
+_KTUPLE_MIN_ONE_KEYS = ("window_m", "step", "mr_rounds")
+
+
 class KtupleSection:
     def _build_ktuple_section(self, sections):
         """Section C: the k-tuple sieve form, its Run/Auto/Stop row and its console."""
@@ -58,7 +65,8 @@ class KtupleSection:
             ttk.Label(group, text=label).pack(side="left", padx=(0, 4), pady=2)
             var = tk.StringVar(value=str(ktuple_settings.get(key, "")))
             entry = ttk.Entry(group, textvariable=var, width=width)
-            number_field.attach(entry, self.T, f"field_tip.ktuple_{key}", minimum=0)
+            number_field.attach(entry, self.T, f"field_tip.ktuple_{key}",
+                                minimum=1 if key in _KTUPLE_MIN_ONE_KEYS else 0)
             entry.pack(side="left", pady=2)
             form.add(group, padx_left=20)
             self._ktuple_vars[key] = var
@@ -212,6 +220,10 @@ class KtupleSection:
         fills n_locations with the recommendation. Like every other Auto button in
         this app, only ever SUGGESTS a value -- the field stays freely editable
         afterward."""
+        if number_field.refuse_problem([self._ktuple_vars["base_exponent"],
+                                        self._ktuple_vars["window_m"]],
+                                       self.T, self.T("gen.dialog_title")):
+            return
         base_exponent_str = plain_number(self._ktuple_vars["base_exponent"].get())
         window_m_str = plain_number(self._ktuple_vars["window_m"].get())
         if not base_exponent_str.isdigit() or not window_m_str.isdigit():
@@ -256,6 +268,9 @@ class KtupleSection:
         # non-button call path, same reasoning as _on_run_constellation()'s own.
         if self._other_engine_is_running("ktuple"):
             return
+        if number_field.refuse_problem([self._ktuple_vars[key] for key in _KTUPLE_NUMBER_KEYS],
+                                       self.T, self.T("gen.dialog_title")):
+            return
         base_exponent = plain_number(self._ktuple_vars["base_exponent"].get())
         if not base_exponent.isdigit():
             messagebox.showerror(self.T("gen.dialog_title"), self.T("gen.error_base_exponent_int"))
@@ -283,7 +298,8 @@ class KtupleSection:
             n_locations.isdigit() and window_m.isdigit() and fragment_start.isdigit()
             and deep_prime_limit.isdigit() and mr_rounds.isdigit() and pass_counter.isdigit()
             and (not fragment_width or fragment_width.isdigit())
-            and (not step or step.isdigit()))
+            and (not step or step.isdigit())
+            and all(int(value) >= 1 for value in (window_m, mr_rounds, step or "1")))
         if not numeric_ok:
             messagebox.showerror(self.T("gen.dialog_title"), self.T("gen.ktuple_error_numeric_fields"))
             return
