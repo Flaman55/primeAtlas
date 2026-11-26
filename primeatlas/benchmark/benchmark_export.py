@@ -13,6 +13,7 @@ import datetime
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from ..core import open_path
 from . import report_export
 from .benchmark import render_benchmark_pdf
 
@@ -55,10 +56,10 @@ class BenchmarkExport:
             filetypes=[filetype, (T("common.all_files"), "*.*")]) or None
 
     def _report_saved(self, title, path):
-        """path: the written file, or the list of written files."""
+        """path: the written file, or the list of written files (the main file first)."""
         paths = [path] if isinstance(path, str) else list(path)
         self.status.set(self.T("bench.status_saved", path=", ".join(paths)))
-        messagebox.showinfo(title, self.T("bench.saved_dialog", path="\n".join(paths)))
+        open_path.show_saved(self, title, paths, self.T)
 
     def _export_benchmark_pdf(self):
         T = self.T
