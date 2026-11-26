@@ -2398,13 +2398,16 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               chart, "pa-" anchors) or one
                               <div class="primeatlas-benchmark">
                               snippet with a style scoped to it; every format holds
-                              the runs the Filter window keeps; the page and the
+                              the runs the Filter window keeps and only the lines the
+                              tab shows (no chart that shows none; an SVG with no
+                              chart is not written); the page and the
                               snippet are interactive (report_html.py) -- pure, no
-                              tkinter (unitTests/test_benchmark_report_export.py)
+                              tkinter (unitTests/test_benchmark_report_export.py,
+                              test_benchmark_export_visible.py)
   report_html.py                the interactive HTML report's data: the runs it is
                               given (the kept ones) with their filter values and
-                              labels, per chart the line records, the tab's
-                              view as the starting state; joins the parts of
+                              labels, per chart the records of the lines the tab
+                              shows, the tab's view as the starting state; joins the parts of
                               report_js/ into one script (one function scope,
                               report_main.js last) and inlines it
   report_js/                    the page's script, in parts by function: filter (All or single values, like
@@ -2421,7 +2424,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
     report_runs.js              page filter and reduction (chart_filter.py,
                               chart_points.py)
     report_view.js              zoom and pan (chart_view.py)
-    report_page.js              Report: controls, redraw, tables, gestures
+    report_controls.js          the controls as HTML: filter, and the chart controls
+                              when the page has charts
+    report_page.js              Report: redraw (charts with no point for its filter
+                              hidden), tables, gestures
     report_main.js              exports for node, starts the page
                               (unitTests/test_benchmark_report_js_split.py)
   chart_svg.py                  SVG backend of chart_pdf.chart_ops(): the same chart
@@ -2541,8 +2547,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               its build commit), store kind and threads ("v6.0, 24
                               thr"), short native labels ("primesieve count", "PSS
                               count"), which charts an engine is on (native
-                              count on the sieve charts, native print on the whole-run
-                              chart), each point's range width ("@ 10^11") and the
+                              count on the sieve charts, native print and a store
+                              verification on the whole-run chart), each point's
+                              range width ("@ 10^11") and the
                               floors whose points differ in width
                               (unitTests/test_benchmark_line_names.py)
   proof_rows.py                 a pt1 row with proof_seconds (the verification after

@@ -28,10 +28,10 @@ NODE = shutil.which("node")
 BENCHMARK = ROOT / "primeatlas" / "benchmark"
 # A ceiling per part, below the repo's 1000 so the page part cannot regrow into a monolith.
 MAX_PART_LINES = 400
-EXPORTS = ["YScale", "chartSvg", "clipPolyline", "emptyColumns", "filterSummary",
-           "formatCompact", "formatNumber", "keptRuns", "mixedFloors", "pan", "pick",
-           "placeLabels", "reduce", "selectAll", "tickFloors", "toggleValue", "widthLabel",
-           "xLabel", "zoomStep"]
+EXPORTS = ["YScale", "chartSvg", "clipPolyline", "controlsHtml", "emptyColumns",
+           "filterSummary", "formatCompact", "formatNumber", "keptRuns", "mixedFloors", "pan",
+           "pick", "placeLabels", "reduce", "selectAll", "shownCharts", "tickFloors",
+           "toggleValue", "widthLabel", "xLabel", "zoomStep"]
 TOP_LEVEL = re.compile(r"^(?:function (\w+)|var (\w+)|(\w+\.prototype\.\w+) =)", re.M)
 
 failures = []

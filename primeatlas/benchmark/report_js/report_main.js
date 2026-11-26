@@ -32,7 +32,7 @@ var api = {YScale: YScale, clipPolyline: clipPolyline, placeLabels: placeLabels,
            pick: pick, widthLabel: widthLabel, xLabel: xLabel,
            filterSummary: filterSummary, toggleValue: toggleValue, selectAll: selectAll, zoomStep: zoomStep, pan: pan, tickFloors: tickFloors,
            formatNumber: formatNumber, formatCompact: formatCompact,
-           emptyColumns: emptyColumns};
+           emptyColumns: emptyColumns, shownCharts: shownCharts, controlsHtml: controlsHtml};
 if (typeof module === "object" && module.exports) module.exports = api;
 if (typeof document !== "undefined" && document.currentScript) {
   var root = document.currentScript.closest(".primeatlas-benchmark");

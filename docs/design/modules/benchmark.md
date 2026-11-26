@@ -25,7 +25,10 @@ the proof inside the scan) is drawn twice
 `proof_seconds`) and "pt1.1 D proof" with it (`proof_seconds` added to the sieve time too); either line can be
 hidden. The table keeps the one logged row, kind D/P, and selecting it selects both points.
 Rows of the store verification (engines `pt1_verify` and `v73_verify`, also the ones
-logged after a pt1 run) are on no chart.
+logged after a pt1 run) are on the whole-run chart only, a line of their own
+(`line_names.CHART_METRICS`): `numbers_processed / total_seconds`, the table's run n/s, never
+paired with the run that wrote the windows; drawn in the color of other engines (no palette
+entry: the light palette has no free hue far enough from the others).
 
 Three charts one under another, full width, one line per engine build and thread setup, last row per
 floor and line: on top the sieve (sieve n/s, s/window, reference points; the measure below), then the
@@ -197,10 +200,14 @@ sieve in the chosen measure when there is sieve data or the references are on, R
 measured it), and every format draws them with the tab's view: the runs the Filter window keeps
 (charts and tables), the sieve measure, toggles, hidden lines, pins and the zoom. `chart_pdf.chart_ops()` lays a chart out once and
 draws through a backend, PDF content ops or SVG elements (`chart_svg.py`, y flipped, Unicode text),
-so the PDF and SVG/HTML charts match. A chart no kept run sets a point on is left out
-(`report_drawn_pages()`; references count, lines hidden in the tab do not, so a chart they empty
-stays as its "no data" box); in the PDF the other chart of its page takes the whole page, and with
-no chart left anywhere the whole-run page stays, saying there is no data. Value labels and linear
+so the PDF and SVG/HTML charts match. A report holds what the tab shows: a chart that shows no
+line is left out (`report_drawn_pages()`: no points of the kept runs, or every line hidden in the
+tab -- its axis, its runs or each line; the references count when they are on), with no "no data"
+box, and so is a page left without a chart, heading included. In the PDF the other chart of its
+page takes the whole page; with no chart left the title and subtitle lead the first table's page,
+the HTML has no chart section and no chart link, and an SVG export raises `NothingToExport`
+(the tab checks `report_export.has_charts()` first and says there is nothing to save). Value
+labels and linear
 ticks from a million up are short (`number_format.compact()`: `1,18 G`); an SVG/HTML point's
 `<title>` holds the exact value, the tables always do. The HTML page and the snippet hold, under
 the subtitle, a navigation bar (charts, each table, Computers; only the sections the page holds),
@@ -237,9 +244,13 @@ filter values (with the tab's labels), and per chart the records of `benchmark_l
 (run, line, floor, value, width, log10 of the width); the tables list those runs. The script
 repeats the reduction in the browser -- the runs its filter keeps, then one point per line and x
 by the chart's point choice -- and redraws with a port of `chart_ops()`; it starts from the tab's
-view (log scale, references, hidden lines, pins, zoom, x axis, point choices, the selected run)
-with its own filter at All, and has its own x axis and point choice selectors (`width_lines` names
-and shades the width-axis lines as the tab does).
+view (log scale, references, pins, zoom, x axis, point choices, the selected run) with its own
+filter at All. A line hidden in the tab is not in its data at all (on the width axis only the
+hidden floor), nor are the references when the tab has them off; the legend toggles the lines it
+got. A chart shows while its filter leaves it a point (`shownCharts()`; lines clicked off in its
+legend still count, so the legend stays) and hides, heading too, while it leaves none; a page with
+no chart builds only its filter (`controlsHtml()`). It has its own x axis and point choice
+selectors (`width_lines` names and shades the width-axis lines as the tab does).
 Its filter also hides the rows of the runs it drops and then a table column none of the shown
 runs has a value in (`emptyColumns()`), a table left with its key columns alone and that table's
 link in the navigation bar; they come back with the runs. A link to an anchor inside a closed
@@ -255,8 +266,9 @@ exported (the Python SVG, the kept rows).
 
 The script lives in parts by function in `report_js/`: `report_format.js` (number notation and
 labels), `report_scale.js` (`YScale`, line clipping), `report_svg.js` (the `chart_ops()` port),
-`report_runs.js` (page filter, reduction), `report_view.js` (zoom, pan), `report_page.js`
-(`Report`: controls, redraw, tables, gestures) and `report_main.js` (exports for node, page
+`report_runs.js` (page filter, reduction), `report_view.js` (zoom, pan), `report_controls.js`
+(the controls' HTML), `report_page.js` (`Report`: redraw, tables, gestures) and
+`report_main.js` (exports for node, page
 start). `report_html.chart_source()` joins them in `SCRIPT_PARTS` order inside one function
 wrapper with `"use strict"`, so they share one scope and add no globals; `report_main.js` comes
 last so every value it reaches is set. A part missing on disk fails the export.

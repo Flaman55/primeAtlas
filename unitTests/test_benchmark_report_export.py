@@ -251,20 +251,20 @@ class UsabilityTests(unittest.TestCase):
         data = json.loads(re.search(r'class="pa-data">(.*?)</script>', page, re.S).group(1))
         self.assertEqual([len(p["charts"]) for p in data["pages"]], [1])
         self.assertEqual(len(_charts(self._page(COUNT_ONLY, kind="svg"))), 1)
-        # Lines hidden in the tab leave the chart in place, as its "no data" box.
+        # Every line hidden in the tab: the chart is left out too, with no "no data" box.
         hidden = self._page(NO_RAM, hidden_lines={"run": {
             chart_series.line_key("secondary", "v4.1"), chart_series.line_key("secondary", "v5")}})
-        self.assertEqual(_before_script(hidden).count("<svg"), 2)
-        self.assertIn(t("bench.no_data_chart"), _before_script(hidden))
+        self.assertEqual(_before_script(hidden).count("<svg"), 1)
+        self.assertNotIn(t("bench.no_data_chart"), _before_script(hidden))
         self.assertEqual(_before_script(self._page(NO_RAM)).count("<svg"), 2)
 
     def test_no_runs(self):
         t = Translator("en").t
         page = self._page(ROWS, selection={"engine": set()})
-        self.assertEqual(_sections(page), ([], ["pa-charts"]))
+        self.assertEqual(_sections(page), ([], None), "no chart, no table, no navigation")
         self.assertNotIn("<table", page)
-        self.assertIn(escape(t("bench.no_data_chart")), page)
-        self.assertEqual(_before_script(page).count("<svg"), 2)
+        self.assertNotIn(escape(t("bench.no_data_chart")), _before_script(page))
+        self.assertEqual(_before_script(page).count("<svg"), 0)
 
     def test_short_chart_labels_and_exact_titles(self):
         root = ET.fromstring(self._page(NO_RAM, kind="svg"))

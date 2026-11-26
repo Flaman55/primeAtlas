@@ -85,6 +85,11 @@ class BenchmarkExport:
         """Writes the report as `kind` (report_export.KINDS) to a path the user picks."""
         T = self.T
         title = T(f"bench.export_{kind}")
+        # An SVG holds the charts alone: with none showing a line there is nothing to save.
+        if kind == "svg" and self._benchmark_rows and not report_export.has_charts(
+                self._benchmark_rows, selection=self._filter_selection, **self._view_options()):
+            messagebox.showinfo(title, T("bench.export_nothing"))
+            return
         path = self._ask_report_path(title, report_export.EXTENSIONS[kind], _FILETYPES[kind])
         if not path:
             return

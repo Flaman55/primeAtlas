@@ -1,6 +1,6 @@
-/* report_page.js -- the page: Report builds the controls, redraws the charts, headings and
-tables from the data, and binds the chart gestures; emptyColumns() picks the table
-columns to hide. Runs only in a browser. */
+/* report_page.js -- the page: Report builds the controls (report_controls.js), redraws the
+charts, headings and tables from the data, and binds the chart gestures; shownCharts() picks
+the charts to show, emptyColumns() the table columns to hide. Report runs only in a browser. */
 var TEXT_SCALES = [1, 1.25, 1.5, 1.75, 2];
 var DEFAULT_TEXT_SCALE = 1.5;
 var DRAG_SLOP_PX = 4;
@@ -18,6 +18,17 @@ function emptyColumns(cells, hidden, keys) {
     if (empty) out.push(j);
   }
   return out;
+}
+
+/* Per page, per chart: whether it shows, i.e. its series (legend-hidden lines included, so
+a chart whose lines are all clicked off keeps its legend) set a point for the page's filter.
+pages[i][j].series: the chart's Series. */
+function shownCharts(pages) {
+  return pages.map(function (charts) {
+    return charts.map(function (c) {
+      return c.series.some(function (s) { return s.points.length > 0; });
+    });
+  });
 }
 
 function Report(root, data) {
@@ -42,7 +53,7 @@ function Report(root, data) {
   this.hidden = {};
   data.pages.forEach(function (page, i) {
     page.charts.forEach(function (chart, j) {
-      self.hidden[i + "/" + j] = new Set(chart.hidden);
+      self.hidden[i + "/" + j] = new Set();
       self.yViews[i + "/" + j] = chart.y_view;
       self.yLevels[i + "/" + j] = chart.y_level;
     });
@@ -54,52 +65,9 @@ function Report(root, data) {
 }
 
 Report.prototype.buildControls = function () {
-  var self = this, d = this.data, t = d.text;
+  var self = this;
   var box = this.root.querySelector(".pa-controls");
-  var html = '<div class="pa-row"><label><input type="checkbox" data-toggle="log"' +
-    (this.log ? " checked" : "") + "> " + escapeXml(t.log) + "</label>";
-  if (d.refs_available) {
-    html += '<label><input type="checkbox" data-toggle="refs"' + (this.refs ? " checked" : "") +
-      "> " + escapeXml(t.refs) + "</label>";
-  }
-  html += "<label>" + escapeXml(t.text_size) + ' <select data-toggle="scale">' +
-    TEXT_SCALES.map(function (k) {
-      return '<option value="' + k + '"' + (k === self.scale ? " selected" : "") + ">" +
-        Math.round(k * 100) + "%</option>";
-    }).join("") + "</select></label>";
-  html += "<label>" + escapeXml(t.x_axis) + ' <select data-toggle="xmode">' +
-    ["floor", "width"].map(function (m) {
-      return '<option value="' + m + '"' + (m === self.xMode ? " selected" : "") + ">" +
-        escapeXml(t["x_" + m]) + "</option>";
-    }).join("") + "</select></label>";
-  html += '<button type="button" data-act="runs">' + escapeXml(t.all_runs) + "</button>" +
-    '<button type="button" data-act="floors">' + escapeXml(t.all_floors) + "</button></div>";
-  d.dims.forEach(function (dim) {
-    html += '<div class="pa-row pa-dim" data-dim="' + dim.key + '"><span class="pa-dim-name">' +
-      escapeXml(dim.label) + '</span><span class="pa-values">' +
-      '<label><input type="checkbox" data-dim-all="' + dim.key + '"> ' + escapeXml(t.all) +
-      "</label>";
-    dim.values.forEach(function (v, i) {
-      html += '<label><input type="checkbox" data-dim-value="' + dim.key + '" data-index="' + i +
-        '"> ' + escapeXml(dim.labels[i]) + "</label>";
-    });
-    html += "</span></div>";
-  });
-  var keys = [];
-  d.pages.forEach(function (page) {
-    page.charts.forEach(function (c) { if (keys.indexOf(c.key) < 0) keys.push(c.key); });
-  });
-  html += '<div class="pa-row"><span class="pa-dim-name">' + escapeXml(t.point) + "</span> ";
-  keys.forEach(function (key) {
-    html += "<label>" + escapeXml(t["chart_" + key]) + ' <select data-choice="' + key + '">' +
-      ["last", "min", "max", "selected", "all"].map(function (c) {
-        return '<option value="' + c + '"' + (c === (self.choices[key] || "last") ?
-          " selected" : "") + ">" + escapeXml(t["point_" + c]) + "</option>";
-      }).join("") + "</select></label>";
-  });
-  html += "</div>";
-  html += '<p class="pa-hint">' + escapeXml(t.hint) + "</p>";
-  box.innerHTML = html;
+  box.innerHTML = controlsHtml(this.data, this);
   box.addEventListener("change", function (e) {
     var el = e.target;
     if (el.dataset.toggle === "log") self.log = el.checked;
@@ -197,6 +165,7 @@ Report.prototype.render = function () {
     });
   });
   var span = xs.length ? [Math.min.apply(null, xs), Math.max.apply(null, xs)] : null;
+  var shown = shownCharts(pages);
   this.span = span;
   // A filter change keeps the zoom level; the view only moves back toward the new floors.
   if (this.view && span) this.view = clampView(this.view[0], this.view[1], span);
@@ -214,8 +183,9 @@ Report.prototype.render = function () {
     var mixedList = Object.keys(mixed).map(Number).sort(function (a, b) { return a - b; });
     var heading = (page.heading ? [page.heading] : [])
       .concat(mixedList.length ? [fill(t.mixed, {floors: mixedList.join(", ")})] : []);
+    // A page with no chart shown hides its heading too (.pa-heading:empty).
     self.root.querySelector('.pa-heading[data-page="' + i + '"]').textContent =
-      heading.join("  |  ");
+      shown[i].indexOf(true) < 0 ? "" : heading.join("  |  ");
     page.charts.forEach(function (chart, j) {
       var hidden = self.hidden[i + "/" + j];
       var all = pages[i][j].series;
@@ -230,6 +200,7 @@ Report.prototype.render = function () {
                                              pins: chart.pins, view: view, xMode: self.xMode,
                                              yView: self.yViews[i + "/" + j], text: t});
       var box = self.root.querySelector('.pa-chart[data-page="' + i + '"][data-chart="' + j + '"]');
+      box.hidden = !shown[i][j];
       box.innerHTML = out.svg;
       // Shown at the report's chart width whatever the drawing size (text size).
       box.firstChild.setAttribute("width", d.width);

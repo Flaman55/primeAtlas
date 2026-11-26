@@ -8,7 +8,10 @@ scale, pinned axes, reference series, the lines hidden in the legends and the zo
 range (chart_view.py). The HTML names the filter under its title, the sieve measure over the
 sieve charts and, over a page's charts, the floors where they set points of different range
 widths. The charts are chart_svg.chart_svg() drawings, the same layout as the PDF's, without
-a chart no kept run sets a point on (benchmark.report_drawn_pages()); the tables are the
+a chart that shows no line of the kept runs (benchmark.report_drawn_pages(): no points, or
+every line hidden in the tab); a line hidden in the tab is in no chart, no legend and not in
+the page's data. With no chart left the page has no chart section and an SVG export raises
+NothingToExport. The tables are the
 tab's run table (table_columns.report_tables() of the kept runs: no column no run has a value
 in, no table left with only its key columns) in its four groups, each led by the floor, the
 run and the engine, with the tab's headers, every cell in full and HTML-escaped. A run's
@@ -95,6 +98,28 @@ _STYLE = """
 """
 
 
+class NothingToExport(ValueError):
+    """The report would be empty: an SVG export with no chart showing a line."""
+
+
+def _drawn(kept, rows, svg_options):
+    """The report pages of the kept runs that show a line (report_drawn_pages())."""
+    return report_drawn_pages(kept, report_chart_pages(rows, svg_options["sieve_points"],
+                                                       svg_options["references"],
+                                                       svg_options["measure"]),
+                              svg_options["references"], svg_options["measure"],
+                              svg_options["point_views"], svg_options["hidden_lines"])
+
+
+def has_charts(rows, selection=None, sieve_points=None, references=False,
+               measure=sieve_measure.DEFAULT, point_views=None, hidden_lines=None, **_view):
+    """Whether a report of `rows` in the tab's view (render()'s options) has a chart."""
+    kept = chart_filter.apply(rows, selection or {})
+    return bool(_drawn(kept, rows, dict(sieve_points=sieve_points, references=references,
+                                        measure=measure, point_views=point_views,
+                                        hidden_lines=hidden_lines)))
+
+
 def section_id(title_key):
     """The anchor of the report table titled `title_key`."""
     return SECTION_IDS[title_key]
@@ -114,7 +139,7 @@ def report_pages_svg(rows, translator=None, sieve_points=None, references=False,
     if pages is None:
         pages = report_drawn_pages(rows, report_chart_pages(rows, sieve_points, references,
                                                             measure),
-                                   references, measure, point_views)
+                                   references, measure, point_views, hidden_lines)
     out = []
     for kind, charts in pages:
         svgs = []
@@ -208,13 +233,15 @@ def _tables_html(tables, rows, t):
     return "".join(parts)
 
 
-def _nav_html(tables, computers, t):
-    """The navigation bar: the charts, each table of `tables`, the Computers section when
-    the page has one."""
-    links = [(CHARTS_ID, t("bench.report_nav_charts"))]
+def _nav_html(tables, computers, t, charts=True):
+    """The navigation bar: the charts when the page has any, each table of `tables`, the
+    Computers section when the page has one; "" with nothing to link."""
+    links = [(CHARTS_ID, t("bench.report_nav_charts"))] if charts else []
     links += [(section_id(key), t(NAV_KEYS[key])) for key, _columns in tables]
     if computers:
         links.append((COMPUTERS_ID, t("computer.section_title")))
+    if not links:
+        return ""
     return ('<nav class="pa-nav">'
             + "".join(f'<a href="#{target}">{escape(label)}</a>' for target, label in links)
             + "</nav>")
@@ -228,11 +255,7 @@ def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_opti
     subtitle = t("bench.pdf_subtitle", now=now, runs=len(kept), depths=floors)
     if filter_note:
         subtitle += "  |  " + filter_note
-    pages = report_drawn_pages(kept, report_chart_pages(rows, svg_options["sieve_points"],
-                                                        svg_options["references"],
-                                                        svg_options["measure"]),
-                               svg_options["references"], svg_options["measure"],
-                               svg_options["point_views"])
+    pages = _drawn(kept, rows, svg_options)
     svg_pages = report_pages_svg(kept, pages=pages, **svg_options)
     data = report_html.report_data(
         kept, pages, t, CHART_WIDTH, CHART_HEIGHT,
@@ -243,13 +266,14 @@ def _content(fieldnames, rows, selection, t, filter_note, svg_options, data_opti
         + "".join(f'<div class="pa-chart" data-page="{i}" data-chart="{j}">{svg}</div>'
                   for j, svg in enumerate(svgs))
         for i, (heading, svgs) in enumerate(svg_pages))
+    charts = f'<div id="{CHARTS_ID}">{charts}</div>' if pages else ""
     tables = table_columns.report_tables(kept)
     computers = _computers_html(kept, machines, t)
     return (f'<div class="primeatlas-benchmark"><style>{_STYLE}</style>'
             f"<h1>{escape(t('bench.pdf_title'))}</h1>"
             f'<p class="pa-subtitle">{escape(subtitle)}</p>'
-            + _nav_html(tables, computers, t)
-            + f'<div class="pa-controls"></div><div id="{CHARTS_ID}">{charts}</div>'
+            + _nav_html(tables, computers, t, bool(pages))
+            + f'<div class="pa-controls"></div>{charts}'
             + f'<div class="tables">{_tables_html(tables, kept, t)}{computers}</div>'
             + report_html.data_script(data) + report_html.chart_script() + "</div>")
 
@@ -284,6 +308,8 @@ def render(kind, fieldnames, rows, translator=None, sieve_points=None, reference
                        x_view=x_view, y_views=y_views, point_views=point_views)
     if kind == "svg":
         pages = report_pages_svg(kept, **svg_options)
+        if not pages:
+            raise NothingToExport("no chart shows a line")
         return _svg_report([svg for _heading, svgs in pages for svg in svgs])
     sieve_note = sieve_measure.note(measure, t)
     content = _content(fieldnames, rows, selection, t, filter_note, svg_options,

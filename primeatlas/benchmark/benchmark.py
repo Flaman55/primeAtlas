@@ -30,6 +30,7 @@ import math
 import os
 import re
 
+import benchmark_log_schema as schema
 import storage_kinds
 
 from ..core.i18n import Translator, DEFAULT_LANGUAGE
@@ -347,8 +348,19 @@ def _row_ram_mb_per_window(row):
     return ram / windows if ram is not None and windows > 0 else None
 
 
+def _row_run_nps(row):
+    """The whole run's speed: loop_numbers_per_second; a store verification, which has no
+    loop, numbers_processed / total_seconds (the table's run n/s); None without both
+    positive."""
+    if line_names.row_engine(row) not in schema.STORE_VERIFY_ENGINES:
+        return _metric_value(row, "loop_numbers_per_second")
+    numbers, seconds = (_metric_value(row, field) for field in ("numbers_processed",
+                                                                "total_seconds"))
+    return numbers / seconds if numbers and seconds and numbers > 0 and seconds > 0 else None
+
+
 _LINE_VALUES = {
-    "growth": lambda row: _metric_value(row, "loop_numbers_per_second"),
+    "growth": _row_run_nps,
     "write": _row_write_mbps,
     "sieve": _row_sieve_nps,
     "sieve_spw": _row_sieve_spw,
@@ -533,21 +545,21 @@ def report_chart_pages(rows, sieve_points=None, references=False,
 
 
 def report_drawn_pages(rows, pages, references=False, measure=sieve_measure.DEFAULT,
-                       point_views=None):
-    """`pages` (report_chart_pages()) without the charts no run of `rows` sets a point on --
-    the reference series count on the sieve page's first chart, lines hidden in the tab do
-    not -- and without the pages left with no chart. With no chart left anywhere the
-    whole-run page stays, its charts saying there is no data."""
+                       point_views=None, hidden_lines=None):
+    """`pages` (report_chart_pages()) without the charts that show no line of `rows` -- the
+    reference series count on the sieve page's first chart when they are on, the lines
+    hidden in the tab (hidden_lines) do not -- and without the pages left with no chart; []
+    when no chart shows a line: a report holds only what the tab shows."""
     with_refs = report_references(references, measure)
     drawn = []
     for kind, charts in pages:
         kept = tuple(spec for i, spec in enumerate(charts) if any(
             s.points for s in report_chart_series(
-                rows, spec, None, reference_series(Translator(DEFAULT_LANGUAGE).t)
+                rows, spec, hidden_lines, reference_series(Translator(DEFAULT_LANGUAGE).t)
                 if kind == "sieve" and with_refs and i == 0 else (), point_views)))
         if kept:
             drawn.append((kind, kept))
-    return drawn or [page for page in pages if page[0] == "run"]
+    return drawn
 
 
 def report_references(references, measure=sieve_measure.DEFAULT):
@@ -594,8 +606,9 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
     and its seconds per window, then -- when a row measured it -- each run's peak RAM and
     its RAM per window. The tab's two-axis charts are split in two here so that
     each chart has room for its value labels (chart_pdf.place_labels()). A chart no run
-    sets a point on is left out (report_drawn_pages()); the other chart of its page then
-    takes the whole page.
+    shows no line is left out (report_drawn_pages(): no points, or every line hidden in
+    the tab); the other chart of its page then takes the whole page, and with no chart left
+    the title and subtitle lead the first table's page.
 
     Tables: table_columns.report_tables(rows), the tab's run table in four groups without
     the columns no run has a value in, each starting
@@ -662,21 +675,27 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
 
     with_refs = report_references(references, measure)
     drawn = report_drawn_pages(rows, report_chart_pages(rows, sieve_points, references, measure),
-                               references, measure, point_views)
+                               references, measure, point_views, hidden_lines)
 
     # --- the chart pages: the title over the first, the sieve's references under its charts ---
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def title_ops(note):
+        """The report's title and subtitle at the top of its first page."""
+        return [_pdf_text_op(content_left, content_top - 14, 14, "Helvetica-Bold",
+                             _pdf_ascii_fold(t("bench.pdf_title"))),
+                _pdf_text_op(content_left, content_top - 30, 9, "Helvetica",
+                             _pdf_ascii_fold(t("bench.pdf_subtitle", now=now_str,
+                                               runs=len(rows), depths=len(points))
+                                             + ("  |  " + filter_note if filter_note else "")
+                                             + note))]
+
+    title_height = 40
     pages = []
     for kind, charts in drawn:
         if not pages:
-            ops = [_pdf_text_op(content_left, content_top - 14, 14, "Helvetica-Bold",
-                                _pdf_ascii_fold(t("bench.pdf_title"))),
-                   _pdf_text_op(content_left, content_top - 30, 9, "Helvetica",
-                                _pdf_ascii_fold(t("bench.pdf_subtitle", now=now_str,
-                                                  runs=len(rows), depths=len(points))
-                                                + ("  |  " + filter_note if filter_note else "")
-                                                + mixed_note(charts)))]
-            top = content_top - 40
+            ops = title_ops(mixed_note(charts))
+            top = content_top - title_height
         else:
             heading = t("bench.pdf_continued", page=len(pages) + 1)
             if kind == "sieve":
@@ -710,18 +729,25 @@ def render_benchmark_pdf(path, points, fieldnames, rows, points2=None, translato
             | {_COMPUTER_DEST: _computer_dest(row)} for row in rows]
     keys = [headers[c] for c in table_columns.KEY_COLUMNS]
     links = {headers["machine"]: lambda row: row[_COMPUTER_DEST]}
+    # With no chart drawn the title leads the first table's page.
+    lead = [] if pages else title_ops("")
     for title_key, columns in tables:
         title = t(title_key)
         layout = TableLayout([headers[c] for c in columns], rows, content_width, 6.5, keys,
                              links=links)
-        first = [_pdf_text_op(content_left, content_top - 12, 12, "Helvetica-Bold",
-                              _pdf_ascii_fold(title))]
+        below = title_height if lead else 0
+        first = lead + [_pdf_text_op(content_left, content_top - below - 12, 12,
+                                     "Helvetica-Bold", _pdf_ascii_fold(title))]
+        lead = []
         offset = len(pages)
         pages += table_pages(
-            layout, rows, first, content_top - 22, content_top, content_bottom, content_left,
+            layout, rows, first, content_top - below - 22, content_top, content_bottom,
+            content_left,
             lambda page, part, parts, title=title, offset=offset:
             t("bench.pdf_table_continued", title=title, page=offset + page)
             + (t("pdf.columns_part", part=part, parts=parts) if parts > 1 else ""))
+    if lead:
+        pages.append(lead)
     pages += computer_pdf.computer_pages(machine_ids, machines or {}, t, content_left,
                                          content_width, content_top, content_bottom)
     _write_pdf(path, pages, page_size=(page_w, page_h))

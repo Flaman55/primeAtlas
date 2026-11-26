@@ -156,9 +156,9 @@ class WidthTests(unittest.TestCase):
             row = _row(engine, version=version, threads="24")
             self.assertEqual(line_names.threads_label(row), "24 thr",
                              f"{engine} writes no window: no write threads")
-            self.assertFalse(any(line_names.on_chart(row, metric)
-                                 for metric in ("sieve", "growth", "ram")),
-                             f"{engine} is a storage run, in the table only")
+            self.assertEqual([m for m in ("sieve", "growth", "write", "ram")
+                              if line_names.on_chart(row, m)], ["growth"],
+                             f"{engine} is a whole run only")
 
 
 class PseudosquaresTests(unittest.TestCase):
