@@ -196,7 +196,7 @@ class TreeTab(VizTabBase):
         self.n_label = ttk.Label(self._n_row.frame)
         self._n_row.add(self.n_label)
         self.n_entry = ttk.Entry(self._n_row.frame, width=28)
-        number_field.attach(self.n_entry, self.T, "field_tip.tree_n")
+        number_field.attach(self.n_entry, self.T, "field_tip.tree_n", minimum=0)
         self.n_entry.insert(0, saved.get("n", "2"))
         self._n_row.add(self.n_entry, padx_left=6)
         self._add_entries(common_frame, _COMMON_FIELDS, saved, self._tk)
@@ -333,11 +333,20 @@ class TreeTab(VizTabBase):
         self.n_entry.delete(0, "end")
         self.n_entry.insert(0, str(n))
 
+    def _read_fields(self):
+        """The number fields Start reads: N, the common fields and the mode's own."""
+        own = (_TREE_FIELDS + _TREE_APPEARANCE_FIELDS if self.current_mode() == MODE_TREE
+               else _ASSEMBLY_FIELDS)
+        return [self.n_entry] + [getattr(self, attr) for attr, *_rest, kind in _COMMON_FIELDS + own
+                                 if kind != "text"]
+
     def _on_open(self, skip_storage_check=False, bare=False):
-        if self._resume_if_paused():
-            return
         mode = self.current_mode()
         self._active_prefix = mode
+        if self._refuses(self._read_fields()):
+            return
+        if self._resume_if_paused():
+            return
         raw_n = self.n_entry.get().strip()
         n = _eval_quick_number(raw_n) if raw_n else None
         if n is None or n < 0:

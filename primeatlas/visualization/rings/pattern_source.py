@@ -80,9 +80,9 @@ class PatternSource:
         self._k_var = tk.StringVar(master=self.frame, value=saved.get("pattern_k", ""))
         self._p0_var = tk.StringVar(master=self.frame, value=saved.get("pattern_p0", ""))
         self.k_entry = self._field(fields, "rings.pattern_k_label", self._k_var, 6,
-                                   "field_tip.rings_pattern_k", padx_left=0)
+                                   "field_tip.rings_pattern_k", padx_left=0, minimum=2)
         self.p0_entry = self._field(fields, "rings.pattern_p0_label", self._p0_var, 16,
-                                    "field_tip.rings_pattern_p0", padx_left=16)
+                                    "field_tip.rings_pattern_p0", padx_left=16, minimum=3)
         self.preview_var = tk.StringVar(master=self.frame, value="")
         WrapLabel(self.manual_frame, textvariable=self.preview_var, style="Hint.TLabel").pack(anchor="w")
 
@@ -92,11 +92,11 @@ class PatternSource:
         self._update_preview()
         self._show_source()
 
-    def _field(self, row, label_key, var, width, tip_key, padx_left):
+    def _field(self, row, label_key, var, width, tip_key, padx_left, minimum):
         group = ttk.Frame(row.frame)
         ttk.Label(group, text=self.T(label_key)).pack(side="left")
         entry = ttk.Entry(group, textvariable=var, width=width)
-        number_field.attach(entry, self.T, tip_key)
+        number_field.attach(entry, self.T, tip_key, minimum=minimum)
         entry.pack(side="left", padx=(6, 0))
         row.add(group, padx_left=padx_left)
         return entry
@@ -140,6 +140,10 @@ class PatternSource:
                 return None
             pattern["pattern_seed_k"], pattern["pattern_seed_start"] = seed
         return pattern
+
+    def read_fields(self):
+        """The number fields launch_pattern() reads: Manual's k and p0, none otherwise."""
+        return [self.k_entry, self.p0_entry] if self.source_var.get() == "manual" else []
 
     def saved_params(self):
         """Each mode's own values, as typed or chosen, for the launch-parameter save."""

@@ -165,7 +165,7 @@ class SphereTab(VizTabBase):
         n_row.pack(fill="x", padx=8, pady=(6, 4))
         ttk.Label(n_row, text=self._tk("field_n")).pack(side="left")
         self.n_entry = ttk.Entry(n_row, width=28)
-        number_field.attach(self.n_entry, self.T, "field_tip.sphere_n")
+        number_field.attach(self.n_entry, self.T, "field_tip.sphere_n", minimum=1)
         self.n_entry.insert(0, saved.get("n", "1"))
         self.n_entry.pack(side="left", padx=(6, 0))
         step_row = ttk.Frame(common_frame)
@@ -245,7 +245,15 @@ class SphereTab(VizTabBase):
         self.n_entry.delete(0, "end")
         self.n_entry.insert(0, str(n))
 
+    def _read_fields(self):
+        """The number fields Start reads: N and every field, the fiber ones in the fibers
+        mode only."""
+        fields = _ALL_FIELDS + (_ALL_FIBER_FIELDS if self.current_mode() == MODE_FIBERS else ())
+        return [self.n_entry] + [getattr(self, attr) for attr, *_ in fields]
+
     def _on_open(self, skip_storage_check=False, with_storage=True):
+        if self._refuses(self._read_fields()):
+            return
         if self._resume_if_paused():
             return
         raw_n = self.n_entry.get().strip()

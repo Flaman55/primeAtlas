@@ -1442,7 +1442,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               red field it reads, given as variables or
                               widgets (unitTests/test_number_field.py; the
                               Generation and Research actions:
-                              unitTests/test_field_refusal_app.py; every Entry
+                              unitTests/test_field_refusal_app.py; the
+                              Visualization ones:
+                              unitTests/test_field_refusal_viz_app.py; every Entry
                               and Spinbox is a number field or marked why not:
                               unitTests/test_number_field_coverage.py; the app's
                               195 fields: unitTests/test_number_fields_app.py)

@@ -236,6 +236,29 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   a/b 2, n 1, b 1, T 2, e 1, p 2, n rozdziałów 1, paliwo 1, q 2, g 1. Wartości liczone przy
   otwarciu zakładki się nie zmieniają.
 
+### +14 — Visualization: a red field stops Start and the generate dialog
+
+- English: Start of Rings, Sphere and Tree/Assembly now stops at a red field it reads with the
+  same message as the other tabs, before resuming a paused window or offering to fill empty
+  storage. Before, a value that did not read as a number was dropped and the renderer's
+  default used. Only the fields Start reads are asked about: theta not in the bertrand and
+  legendre modes, From, To and max load only in range mode, k and p0 only in line mode with a
+  Manual pattern, the Sphere fiber fields only in the fibers mode, the Tree and Assembly fields
+  only in their own mode. An empty optional field still means the default. The empty-storage
+  dialog's Generate and Enter stop at a red From or To and keep the dialog open. The fields turn
+  red below their lowest value: Rings N 2, From, To and max load 0, k 2, p0 3, Sphere N 1, Tree
+  N 0, the dialog's From 0 and To 2.
+- Polski: Start Pierścieni, Sfery i Drzewa/Składania zatrzymuje się teraz na czerwonym polu,
+  które czyta, z tym samym komunikatem co pozostałe zakładki, zanim wznowi wstrzymane okno albo
+  zaproponuje wypełnienie pustej bazy. Wcześniej wartość, która nie czytała się jako liczba,
+  była pomijana i renderer brał wartość domyślną. Pytane są tylko pola, które Start czyta: θ nie
+  w trybach bertrand i legendre, Od, Do i max load tylko w trybie zakresu, k i p0 tylko w trybie
+  linii z ręcznym wzorcem, pola włókien Sfery tylko w trybie włókien, pola Drzewa i Składania
+  tylko w ich trybie. Puste pole opcjonalne dalej oznacza wartość domyślną. Generuj i Enter w
+  oknie pustej bazy zatrzymują się na czerwonym Od lub Do i zostawiają okno otwarte. Pola robią
+  się czerwone poniżej najniższej wartości: Pierścienie N 2, Od, Do i max load 0, k 2, p0 3,
+  Sfera N 1, Drzewo N 0, w oknie Od 0 i Do 2.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

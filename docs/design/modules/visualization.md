@@ -34,6 +34,25 @@ k = 100 (`PREVIEW_P0_MAX`, `PREVIEW_K_MAX`: trial division; arbitrary bounds), p
 window computes them at launch. None launches no pattern; ring mode never sends one. The three
 radios, both dropdowns and the k/p0 fields lock while the renderer is paused.
 
+## Refused fields
+
+Start of every sub-tab first refuses a red number field it reads (`VizTabBase._refuses`, i.e.
+`number_field.refuse_problem` with the tab's `error_dialog_title`), before resuming a paused
+renderer, the portal check and the empty-storage offer, with exactly the fields it reads (a red
+field of another mode never blocks; an empty optional field still means the renderer's
+default):
+
+| Start | Fields |
+|---|---|
+| Rings | N, tempo, point sizes, HUD font size; theta unless the law mode is bertrand/legendre; From, To and max load in range mode; Manual's k and p0 in line mode |
+| Sphere | N and every field; the fiber fields in the fibers mode only |
+| Tree / Assembly | N, the common fields and the mode's own (not the cell spacing text) |
+
+The empty-storage generate dialog's Generate and Enter refuse a red From or To and stay open
+with what was typed; From > To is still reported inside the dialog. The minima are the lower
+bounds the launch checks: Rings N 2, From/To and max load 0, k 2, p0 3; Sphere N 1; Tree N 0;
+the generate dialog's From 0 and To 2. Other fields turn red only on text that is no number.
+
 ## Parameters and texts
 
 [visualization-renderer](../parameters/visualization-renderer.md); texts `rings.*`, `tree.*`, `sphere.*`.
@@ -51,7 +70,8 @@ else From the list.
 `test_ring_resonance`, `test_ring_viz_sources`, `test_ring_viz_draw`, `test_ring_viz_renderer`,
 `test_ring_viz_session`, `test_ring_viz_pattern_mode`, `test_ring_viz_pattern_offsets`, `test_ring_viz_pattern_seek`,
 `test_ring_viz_pattern_seek_async`, `test_ring_audio`, `test_ring_fullscreen`, `test_tree_*`,
-`test_assembly_*`, `test_sphere_*`, `test_fiber_geometry`, `test_fibers_mode`, `test_world_labels`.
+`test_assembly_*`, `test_sphere_*`, `test_fiber_geometry`, `test_fibers_mode`, `test_world_labels`,
+`test_field_refusal_viz_app` (refused fields and minima).
 
 ## Known gaps
 

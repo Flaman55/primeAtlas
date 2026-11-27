@@ -67,11 +67,15 @@ def _fields_of(items):
 
 
 def _set_text(item, text):
-    """Writes `text` into a variable or a widget; returns the previous text."""
+    """Writes `text` into a variable or a widget (a disabled one too, left disabled);
+    returns the previous text."""
     if hasattr(item, "winfo_class"):
         old = item.get()
+        state = str(item.cget("state"))
+        item.configure(state="normal")
         item.delete(0, "end")
         item.insert(0, text)
+        item.configure(state=state)
         return old
     old = item.get()
     item.set(text)
