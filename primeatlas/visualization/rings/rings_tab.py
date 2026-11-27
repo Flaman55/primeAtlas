@@ -198,7 +198,7 @@ class RingsTab(VizTabBase):
         field_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(field_row, text=self.T("rings.field_n")).pack(side="left")
         self.n_entry = ttk.Entry(field_row, width=28)
-        number_field.attach(self.n_entry, self.T, "field_tip.rings_n")
+        number_field.attach(self.n_entry, self.T, "field_tip.rings_n", minimum=2)
         # N is pre-filled at startup instead
         # of left empty, so the field/hint are non-empty on first render.
         self.n_entry.insert(0, saved_params.get("n", "2"))
@@ -219,12 +219,14 @@ class RingsTab(VizTabBase):
         range_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(range_row, text=self.T("rings.load_range_label")).pack(side="left")
         self.load_range_from_entry = ttk.Entry(range_row, width=16)
-        number_field.attach(self.load_range_from_entry, self.T, "field_tip.rings_load_range_from")
+        number_field.attach(self.load_range_from_entry, self.T, "field_tip.rings_load_range_from",
+                            minimum=0)
         self.load_range_from_entry.insert(0, saved_params.get("load_range_from", ""))
         self.load_range_from_entry.pack(side="left", padx=(6, 6))
         ttk.Label(range_row, text=self.T("rings.load_range_to_label")).pack(side="left")
         self.load_range_to_entry = ttk.Entry(range_row, width=16)
-        number_field.attach(self.load_range_to_entry, self.T, "field_tip.rings_load_range_to")
+        number_field.attach(self.load_range_to_entry, self.T, "field_tip.rings_load_range_to",
+                            minimum=0)
         self.load_range_to_entry.insert(0, saved_params.get("load_range_to", ""))
         self.load_range_to_entry.pack(side="left", padx=(6, 0))
 
@@ -241,7 +243,8 @@ class RingsTab(VizTabBase):
         max_load_row.pack(fill="x", padx=8, pady=(0, 6))
         ttk.Label(max_load_row, text=self.T("rings.max_load_count_label")).pack(side="left")
         self.max_load_count_entry = ttk.Entry(max_load_row, width=16)
-        number_field.attach(self.max_load_count_entry, self.T, "field_tip.rings_max_load_count")
+        number_field.attach(self.max_load_count_entry, self.T, "field_tip.rings_max_load_count",
+                            minimum=0)
         self.max_load_count_entry.insert(0, saved_params.get("max_load_count", ""))
         self.max_load_count_entry.pack(side="left", padx=(6, 0))
 
@@ -567,7 +570,24 @@ class RingsTab(VizTabBase):
         self.n_entry.insert(0, str(n))
         self._on_n_changed()
 
+    def _read_fields(self):
+        """The number fields Start reads: N and the optional fields always, theta unless
+        the law mode fixes it, the range fields in range mode, Manual's pattern in line
+        mode."""
+        fields = [self.n_entry, self.tempo_ms_entry, self.point_size_entry,
+                  self.hit_point_size_entry, self.hud_font_size_entry]
+        if self.general_law_mode_combo.get() not in ("bertrand", "legendre"):
+            fields.append(self.general_law_theta_entry)
+        if self.mode_var.get() == "range":
+            fields += [self.load_range_from_entry, self.load_range_to_entry,
+                       self.max_load_count_entry]
+        if self.line_mode_var.get():
+            fields += self.pattern_source.read_fields()
+        return fields
+
     def _on_open(self):
+        if self._refuses(self._read_fields()):
+            return
         if self._resume_if_paused():
             return
         raw = self.n_entry.get().strip()

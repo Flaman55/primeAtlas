@@ -8,7 +8,7 @@ scrollable container. A sub-tab builds its own launch form and renderer argv, th
 calls _launch_renderer().
 
 Subclasses provide: `LOCALE_PREFIX` (its translation-key namespace, e.g. "rings"; the
-keys console_launching/status_launching/hud_panel_placeholder/console_closed_ok/
+keys error_dialog_title/console_launching/status_launching/hud_panel_placeholder/console_closed_ok/
 status_closed/console_closed_error/status_error/status_paused/console_paused/
 status_running/console_resumed/hud_status_running/hud_status_stopped/hud_header must
 exist under it), the widgets `open_button`, `stop_button`, `console`, `hud_var`, and
@@ -102,8 +102,8 @@ class VizTabBase(BaseTab):
     def _ask_generate_range(self, default_from, default_to):
         """Modal dialog shown when Start finds the storage empty: explains it and asks
         for the range to generate, prefilled with `default_from`/`default_to`. Returns
-        (start, end_inclusive) on Generate, None on Cancel/close. Invalid input is
-        reported inside the dialog, which stays open."""
+        (start, end_inclusive) on Generate, None on Cancel/close. A red field is refused
+        with an error, From > To is reported inside the dialog; either way it stays open."""
         dialog = tk.Toplevel(self)
         dialog.title(self._tk("empty_storage_title"))
         dialog.transient(self.winfo_toplevel())
@@ -114,12 +114,12 @@ class VizTabBase(BaseTab):
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
         ttk.Label(body, text=self._tk("empty_storage_from")).grid(row=1, column=0, sticky="w")
         from_entry = ttk.Entry(body, width=30)
-        number_field.attach(from_entry, self.T, "field_tip.viz_generate_from")
+        number_field.attach(from_entry, self.T, "field_tip.viz_generate_from", minimum=0)
         from_entry.insert(0, default_from)
         from_entry.grid(row=1, column=1, sticky="w", padx=(6, 0), pady=2)
         ttk.Label(body, text=self._tk("empty_storage_to")).grid(row=2, column=0, sticky="w")
         to_entry = ttk.Entry(body, width=30)
-        number_field.attach(to_entry, self.T, "field_tip.viz_generate_to")
+        number_field.attach(to_entry, self.T, "field_tip.viz_generate_to", minimum=2)
         to_entry.insert(0, default_to)
         to_entry.grid(row=2, column=1, sticky="w", padx=(6, 0), pady=2)
         WrapLabel(body, text=self._tk("empty_storage_hint"), style="Hint.TLabel").grid(
@@ -130,6 +130,8 @@ class VizTabBase(BaseTab):
         result = {"value": None}
 
         def on_generate():
+            if self._refuses([from_entry, to_entry]):
+                return
             parsed = parse_generate_range(from_entry.get(), to_entry.get())
             if isinstance(parsed, str):
                 error_var.set(self._tk(parsed))
@@ -171,6 +173,11 @@ class VizTabBase(BaseTab):
 
         if self._offer_generate_storage(start, end, on_finished):
             self.status.set(self._tk("status_generating_storage", start=number_format.whole(start), end=number_format.whole(end)))
+
+    def _refuses(self, fields):
+        """True (after the error) when one of the number fields `fields` holds no usable
+        value; Start and the generate dialog's Generate call it first."""
+        return number_field.refuse_problem(fields, self.T, self._tk("error_dialog_title"))
 
     def _tk(self, key, **kwargs):
         """This sub-tab's own translation (`LOCALE_PREFIX`.`key`)."""
