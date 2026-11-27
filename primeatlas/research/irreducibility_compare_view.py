@@ -19,9 +19,9 @@ from . import irreducibility_layout as layout
 from . import irreducibility_residues as res
 from .irreducibility_draw import COLOR_A, COLOR_B, COLOR_QUOT, GOLD_BG, MAX_DIALS, draw_dials
 from .irreducibility_cases_window import show_cases
-from .irreducibility_numbers import layout_info
+from .irreducibility_numbers import LAYOUT_MINIMA, layout_info
 from .irreducibility_selftest import compare_test
-from .irreducibility_widgets import entry, wrapped_label
+from .irreducibility_widgets import entry, refusing, wrapped_label
 
 MASS_TEST_PAIRS = 1000
 
@@ -41,7 +41,7 @@ class _Side:
         # one shrinks it instead of cutting it.
         self.number_entry = entry(T, "field_tip.irreducibility_number",
                                   row, "", "", width=12, textvariable=nums.number_var(side),
-                                  on_return=view.run_compare)
+                                  on_return=view.compare_command, minimum=0)
         self.number_entry.pack_configure(fill="x", expand=True)
         self.layout_entries = {}
         for prefix, title in (("d", "blocks_row"), ("k", "quot_row")):
@@ -53,12 +53,14 @@ class _Side:
                 group = ttk.Frame(r.frame)
                 self.layout_entries[key] = entry(T, f"field_tip.irreducibility_layout_{key}",
                     group, T(f"research_irreducibility.{lab}"), "", width=5,
-                    textvariable=nums.layout_var(side, key), on_return=view.run_compare)
+                    textvariable=nums.layout_var(side, key), on_return=view.compare_command,
+                    minimum=LAYOUT_MINIMA[key])
                 r.add(group, padx_left=6 if suffix == "s" else 0)
         r = ttk.Frame(box)
         r.pack(fill="x", padx=6, pady=(2, 2))
-        self.fit_button = ttk.Button(r, text=T("research_irreducibility.fit"),
-                                     command=lambda: view.fit(side))
+        fit = refusing(view, lambda: [self.number_entry, self.layout_entries["dz"],
+                                      self.layout_entries["kz"]], lambda: view.fit(side))
+        self.fit_button = ttk.Button(r, text=T("research_irreducibility.fit"), command=fit)
         self.fit_button.pack(side="left")
         self.info_var = tk.StringVar()
         wrapped_label(box, textvariable=self.info_var, style="Hint.TLabel", padx=6, pady=(2, 2))
@@ -83,6 +85,9 @@ class CompareView(BaseTab):
         cards.columnconfigure(0, weight=1, uniform="side")
         cards.columnconfigure(1, weight=1, uniform="side")
         self.sides = {}
+        self.compare_command = refusing(
+            self, lambda: [self.sides[s].number_entry for s in ("A", "B")]
+            + self._layout_entries(), self.run_compare)
         for col, side in enumerate(("A", "B")):
             s = _Side(self, cards, side)
             s.frame.grid(row=0, column=col, sticky="nsew", padx=(0, 6) if col == 0 else (6, 0))
@@ -91,10 +96,12 @@ class CompareView(BaseTab):
 
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(8, 4))
-        ttk.Button(row, text=T("research_irreducibility.compare"),
-                   command=self.run_compare).pack(side="left")
-        self.random_button = ttk.Button(row, text=T("research_irreducibility.random_pair"),
-                                        command=self.random_pair)
+        self.compare_button = ttk.Button(row, text=T("research_irreducibility.compare"),
+                                         command=self.compare_command)
+        self.compare_button.pack(side="left")
+        self.random_button = ttk.Button(
+            row, text=T("research_irreducibility.random_pair"),
+            command=refusing(self, self._layout_entries, self.random_pair))
         self.random_button.pack(side="left", padx=(8, 0))
         self.test_button = ttk.Button(
             row, text=T("research_irreducibility.test_pairs", count=MASS_TEST_PAIRS),
@@ -132,6 +139,9 @@ class CompareView(BaseTab):
         for side in ("A", "B"):
             self.refresh_info(side)
         self.run_compare()
+
+    def _layout_entries(self):
+        return [e for s in ("A", "B") for e in self.sides[s].layout_entries.values()]
 
     def refresh_info(self, side):
         try:

@@ -15,10 +15,17 @@ Exploration with one and with three iterations, primesieve and cudasieve From).
 Research: the Gaps, Squares, Polynomials, pi(x) and Goldbach Runs, Goldbach Visualize (before
 and after its window exists), the Goldbach window's Check, row Previous/Next/Go, old base Go,
 decompose and the decomposition list's Go. A refusal changes no page and opens no window.
+Irreducibility: every button and Enter that reads number fields (Build, Compare, random pair,
+Fit, Draw, Show, take from A/B, Find, the Arithmetic operations, Primality Run and Fit,
+Multiplicative Run); Enter asks like its button, a refusal keeps what the view shows, and the
+computation the tab runs when it is built asks nothing.
 The minimum of each field is the lower bound its action checks: the pipeline form's floor 0
 and its other numbers 1; the k-tuple step, window and MR rounds 1 (0 hangs the sieve or
 confirms every candidate), its other numbers 0; Gaps and Squares 1, Polynomials 0, pi(x)
-from/to 2 and step 1, Goldbach n and window "to" 2, window "from" and decompose 4, every Go 1.
+from/to 2 and step 1, Goldbach n and window "to" 2, window "from" and decompose 4, every Go 1;
+Irreducibility: the numbers A, B and N 0, layout starts 2 and sizes and counts 1 (Comparison
+and Ranges), radices from/to 1, comb a/b 2, Ranges n 1, Arithmetic b 1, T 2, e 1, p 2, n 1,
+Primality fuel 1, Multiplicative q 2 and g 1.
 Windows, real display:
     python unitTests/test_field_refusal_app.py
 """
@@ -348,6 +355,180 @@ def research_minimum_checks(app):
     return passed
 
 
+def _enter(entry):
+    """Enter in `entry`, with every notebook page holding it shown (a hidden page gets no
+    key events)."""
+    def press():
+        w = entry
+        while w.master is not None:
+            if w.master.winfo_class() == "TNotebook":
+                w.master.select(w)
+            w = w.master
+        entry.update()
+        entry.focus_force()
+        entry.event_generate("<Return>")
+    return press
+
+
+def irreducibility_cases(h, app):
+    """Every button and Enter of the Irreducibility sub-tabs that reads number fields; the
+    computation the tab runs when it is built asks nothing."""
+    tab = app.research_irreducibility_tab_widget
+    rad, cmp_, comb = tab.radices_view, tab.compare_view, tab.comb_view
+    rng, ar, pr, mul = tab.ranges_view, tab.arith_view, tab.primality_view, tab.mul_view
+    sides = cmp_.sides
+    keys = ("ds", "dz", "dc", "ks", "kz", "kc")
+    layouts = [sides[s].layout_entries[k] for s in ("A", "B") for k in keys]
+    numbers = [sides["A"].number_entry, sides["B"].number_entry]
+    params = [rng.param_entries[k] for k in keys]
+    nums = [ar.number_entries["A"], ar.number_entries["B"]]
+    a_only = [ar.number_entries["A"]]
+    passed = True
+    actions = [
+        ("Radices Build", rad.build_button.invoke, [rad.from_entry, rad.to_entry],
+         [comb.a_entry]),
+        ("Compare", cmp_.compare_button.invoke, numbers + layouts, [rng.param_entries["ds"]]),
+        ("Compare random pair", cmp_.random_button.invoke, layouts, [rng.n_entry]),
+        ("Compare Fit A", sides["A"].fit_button.invoke,
+         [sides["A"].number_entry, sides["A"].layout_entries["dz"],
+          sides["A"].layout_entries["kz"]], [sides["B"].number_entry]),
+        ("Compare Fit B", sides["B"].fit_button.invoke,
+         [sides["B"].number_entry, sides["B"].layout_entries["dz"],
+          sides["B"].layout_entries["kz"]], [sides["A"].layout_entries["dz"]]),
+        ("Comb Draw", comb.draw_button.invoke, [comb.a_entry, comb.b_entry, comb.scale_entry],
+         [rad.from_entry]),
+        ("Ranges Show", rng.show_button.invoke, params, [sides["A"].layout_entries["ds"]]),
+        ("Ranges Find", rng.find_button.invoke, [rng.n_entry], [rng.param_entries["ds"]]),
+        ("Arithmetic A+B", ar.add_button.invoke, nums, [ar.b_entry]),
+        ("Arithmetic A-B", ar.sub_button.invoke, nums, [ar.t_entry]),
+        ("Arithmetic A*B", ar.mul_button.invoke, nums, [ar.e_entry]),
+        ("Arithmetic A/b", ar.div_button.invoke, a_only + [ar.b_entry],
+         [ar.number_entries["B"], ar.t_entry]),
+        ("Arithmetic address", ar.address_button.invoke, a_only + [ar.t_entry], [ar.b_entry]),
+        ("Arithmetic power", ar.pow_button.invoke, a_only + [ar.e_entry], [ar.p_entry]),
+        ("Arithmetic chapters", ar.chapters_button.invoke, a_only + [ar.p_entry, ar.n_entry],
+         [ar.e_entry]),
+        ("Arithmetic Fit A", ar.fit_buttons["A"].invoke, a_only, [ar.number_entries["B"]]),
+        ("Arithmetic Fit B", ar.fit_buttons["B"].invoke, [ar.number_entries["B"]], [ar.b_entry]),
+        ("Primality Run", pr.run_button.invoke, [pr.number_entry, pr.fuel_entry], [ar.b_entry]),
+        ("Primality Fit", pr.fit_button.invoke, [pr.number_entry], [pr.fuel_entry]),
+        ("Multiplicative Run", mul.run_button.invoke, [mul.q_entry, mul.g_entry, mul.n_entry],
+         [comb.a_entry]),
+    ]
+    for name, action, fields, foreign in actions:
+        passed &= h.case(name, action, fields, foreign=foreign)
+
+    for side, button in (("A", rng.from_a_button), ("B", rng.from_b_button)):
+        calls, shown, _launched = h.asked(button.invoke)
+        got = _fields_of(calls[0]) if calls else set()
+        passed &= check(len(calls) == 1 and got == _fields_of(params) and not shown,
+                        f"Ranges take from {side}: asks about the copied fields")
+        source = sides[side].layout_entries["kc"]
+        old = _set_text(source, "abc")
+        h.app.update()
+        before = rng.ranges_var.get()
+        h.errors.clear()
+        button.invoke()
+        h.app.update()
+        passed &= check(len(h.errors) == 1 and rng.ranges_var.get() == before,
+                        f"Ranges take from {side}: a red {side} field copied over is refused")
+        _set_text(source, old)
+        h.app.update()
+        rng.show_button.invoke()
+
+    enters = [("Radices", e, [rad.from_entry, rad.to_entry]) for e in (rad.from_entry,
+                                                                        rad.to_entry)]
+    enters += [("Compare", e, numbers + layouts) for e in numbers + layouts]
+    enters += [("Comb", e, [comb.a_entry, comb.b_entry, comb.scale_entry])
+               for e in (comb.a_entry, comb.b_entry, comb.scale_entry)]
+    enters += [("Ranges Show", e, params) for e in params]
+    enters += [("Ranges Find", rng.n_entry, [rng.n_entry])]
+    enters += [("Primality", e, [pr.number_entry, pr.fuel_entry])
+               for e in (pr.number_entry, pr.fuel_entry)]
+    enters += [("Multiplicative", e, [mul.q_entry, mul.g_entry, mul.n_entry])
+               for e in (mul.q_entry, mul.g_entry, mul.n_entry)]
+    for name, e, fields in enters:
+        calls, shown, launched = h.asked(_enter(e))
+        got = _fields_of(calls[0]) if calls else set()
+        passed &= check(len(calls) == 1 and got == _fields_of(fields) and not shown,
+                        f"{name}: Enter in {e.number_field.purpose} asks like its button "
+                        f"(calls {len(calls)}, got {len(got)} of {len(fields)})")
+
+    for name, compute in (("Radices", rad.run), ("Compare", cmp_.run_compare),
+                          ("Comb", comb.draw), ("Ranges Show", rng.show),
+                          ("Ranges Find", rng.find), ("Multiplicative", mul.run)):
+        calls, shown, _launched = h.asked(compute)
+        passed &= check(not calls and not shown,
+                        f"{name}: the computation run when the tab is built asks nothing")
+
+    outputs = [("Radices Build", rad.build_button.invoke, rad.from_entry,
+                lambda: (rad.summary_var.get(), rad.message_var.get())),
+               ("Compare", cmp_.compare_button.invoke, sides["A"].layout_entries["dc"],
+                lambda: (cmp_.verdict_var.get(), cmp_.message_var.get(),
+                         len(cmp_.digits_tree.get_children()))),
+               ("Comb Draw", comb.draw_button.invoke, comb.b_entry,
+                lambda: (comb.result_var.get(), comb.message_var.get())),
+               ("Ranges Show", rng.show_button.invoke, rng.param_entries["kc"],
+                lambda: (rng.ranges_var.get(), rng.message_var.get(), len(rng.sweep_cells))),
+               ("Ranges Find", rng.find_button.invoke, rng.n_entry,
+                lambda: (rng.fit_note_var.get(), len(rng.fit_tree.get_children()))),
+               ("Arithmetic power", ar.pow_button.invoke, ar.e_entry, ar.out.text),
+               ("Primality Run", pr.run_button.invoke, pr.fuel_entry,
+                lambda: (pr.message_var.get(), pr.verdict_var.get(), pr.is_running())),
+               ("Multiplicative Run", mul.run_button.invoke, mul.q_entry,
+                lambda: (mul.verdict_var.get(), mul.message_var.get()))]
+    for name, action, field, state in outputs:
+        old = _set_text(field, "abc")
+        h.app.update()
+        before = state()
+        h.errors.clear()
+        action()
+        h.app.update()
+        passed &= check(len(h.errors) == 1 and state() == before,
+                        f"{name}: a refusal keeps what the view shows")
+        _set_text(field, old)
+    h.errors.clear()
+    h.app.update()
+    return passed
+
+
+def irreducibility_minimum_checks(app):
+    """Each Irreducibility field's minimum: below it red, at it fine."""
+    tab = app.research_irreducibility_tab_widget
+    rad, cmp_, comb = tab.radices_view, tab.compare_view, tab.comb_view
+    rng, ar, pr, mul = tab.ranges_view, tab.arith_view, tab.primality_view, tab.mul_view
+    layout_lows = {"ds": 2, "dz": 1, "dc": 1, "ks": 2, "kz": 1, "kc": 1}
+    lows = [("radices from", rad.from_entry, 1), ("radices to", rad.to_entry, 1),
+            ("comb a", comb.a_entry, 2), ("comb b", comb.b_entry, 2),
+            ("ranges n", rng.n_entry, 1), ("arithmetic b", ar.b_entry, 1),
+            ("arithmetic T", ar.t_entry, 2), ("arithmetic e", ar.e_entry, 1),
+            ("arithmetic p", ar.p_entry, 2), ("arithmetic n", ar.n_entry, 1),
+            ("primality number", pr.number_entry, 0), ("primality fuel", pr.fuel_entry, 1),
+            ("multiplicative q", mul.q_entry, 2), ("multiplicative g", mul.g_entry, 1),
+            ("multiplicative N", mul.n_entry, 0)]
+    for side in ("A", "B"):
+        lows.append((f"compare {side} number", cmp_.sides[side].number_entry, 0))
+        lows.append((f"arithmetic {side} number", ar.number_entries[side], 0))
+        lows += [(f"compare {side} {k}", cmp_.sides[side].layout_entries[k], low)
+                 for k, low in layout_lows.items()]
+    lows += [(f"ranges {k}", rng.param_entries[k], low) for k, low in layout_lows.items()]
+
+    def problem(entry, text):
+        _set_text(entry, text)
+        entry.number_field.refresh(at_once=True)
+        return entry.number_field.problem
+
+    passed = True
+    for label, entry, low in lows:
+        old = entry.get()
+        below = problem(entry, str(low - 1)) == "range"
+        at = problem(entry, str(low)) is None
+        problem(entry, old)
+        passed &= check(below and at, f"{label}: minimum {low}")
+    app.update()
+    return passed
+
+
 def main():
     import prime_atlas_v2
     from tkinter import messagebox
@@ -374,6 +555,8 @@ def main():
         passed &= minimum_checks(gen)
         passed &= research_cases(h, app)
         passed &= research_minimum_checks(app)
+        passed &= irreducibility_cases(h, app)
+        passed &= irreducibility_minimum_checks(app)
     finally:
         if app is not None:
             try:

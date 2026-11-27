@@ -19,7 +19,7 @@ from . import irreducibility_residues as res
 from .irreducibility_cases_window import show_cases
 from .irreducibility_numbers import blocks_text, layout_info
 from .irreducibility_selftest import ops_test
-from .irreducibility_widgets import OutputText, entry, wrapped_label
+from .irreducibility_widgets import OutputText, entry, refusing, wrapped_label
 
 SHOWN_RESIDUES = 10
 """Residues listed per result; the rest is counted."""
@@ -51,6 +51,7 @@ class ArithView(BaseTab):
         cards.columnconfigure(0, weight=1, uniform="side")
         cards.columnconfigure(1, weight=1, uniform="side")
         self.number_entries = {}
+        self.fit_buttons = {}
         self._layout_vars = {}
         for col, side in enumerate(("A", "B")):
             box = ttk.LabelFrame(cards, text=T("research_irreducibility.arith_number_title",
@@ -62,45 +63,61 @@ class ArithView(BaseTab):
             # wide window, a narrow one shrinks it instead of cutting the button.
             self.number_entries[side] = entry(T, "field_tip.irreducibility_number",
                                               row, "", "", width=12,
-                                              textvariable=numbers.number_var(side))
+                                              textvariable=numbers.number_var(side), minimum=0)
             self.number_entries[side].pack_configure(fill="x", expand=True)
-            ttk.Button(row, text=T("research_irreducibility.fit"),
-                       command=lambda s=side: self._fit(s)).pack(side="left")
+            self.fit_buttons[side] = ttk.Button(
+                row, text=T("research_irreducibility.fit"),
+                command=refusing(self, lambda s=side: [self.number_entries[s]],
+                                 lambda s=side: self._fit(s)))
+            self.fit_buttons[side].pack(side="left")
             self._layout_vars[side] = tk.StringVar()
             wrapped_label(box, textvariable=self._layout_vars[side], style="Hint.TLabel",
                           padx=6, pady=(2, 6))
 
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(8, 2))
-        self.add_button = ttk.Button(row, text="A ⊕ B", command=lambda: self.add(1))
+        both = self._both_numbers
+        self.add_button = ttk.Button(row, text="A ⊕ B",
+                                     command=refusing(self, both, lambda: self.add(1)))
         self.add_button.pack(side="left")
-        self.sub_button = ttk.Button(row, text="A ⊖ B", command=lambda: self.add(-1))
+        self.sub_button = ttk.Button(row, text="A ⊖ B",
+                                     command=refusing(self, both, lambda: self.add(-1)))
         self.sub_button.pack(side="left", padx=(8, 0))
-        self.mul_button = ttk.Button(row, text="A ⊗ B", command=self.mul)
+        self.mul_button = ttk.Button(row, text="A ⊗ B", command=refusing(self, both, self.mul))
         self.mul_button.pack(side="left", padx=(8, 0))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=2)
         self.b_entry = entry(T, "field_tip.irreducibility_arith_b",
-                             row, "b", "7", "research.irreducibility.arith_b", width=8)
-        self.div_button = ttk.Button(row, text="A ⊘ b", command=self.div)
+                             row, "b", "7", "research.irreducibility.arith_b", width=8,
+                             minimum=1)
+        self.div_button = ttk.Button(row, text="A ⊘ b", command=refusing(
+            self, lambda: [self.number_entries["A"], self.b_entry], self.div))
         self.div_button.pack(side="left", padx=(0, 18))
         self.t_entry = entry(T, "field_tip.irreducibility_arith_t",
-                             row, "T", "30", "research.irreducibility.arith_t", width=8)
-        self.address_button = ttk.Button(row, text=T("research_irreducibility.address_button"),
-                                         command=self.address)
+                             row, "T", "30", "research.irreducibility.arith_t", width=8,
+                             minimum=2)
+        self.address_button = ttk.Button(
+            row, text=T("research_irreducibility.address_button"), command=refusing(
+                self, lambda: [self.number_entries["A"], self.t_entry], self.address))
         self.address_button.pack(side="left")
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=2)
         self.e_entry = entry(T, "field_tip.irreducibility_arith_e",
-                             row, "e", "3", "research.irreducibility.arith_e", width=8)
-        self.pow_button = ttk.Button(row, text="A^(e)", command=self.power)
+                             row, "e", "3", "research.irreducibility.arith_e", width=8,
+                             minimum=1)
+        self.pow_button = ttk.Button(row, text="A^(e)", command=refusing(
+            self, lambda: [self.number_entries["A"], self.e_entry], self.power))
         self.pow_button.pack(side="left", padx=(0, 18))
         self.p_entry = entry(T, "field_tip.irreducibility_arith_p",
-                             row, "p", "5", "research.irreducibility.arith_p", width=6)
+                             row, "p", "5", "research.irreducibility.arith_p", width=6,
+                             minimum=2)
         self.n_entry = entry(T, "field_tip.irreducibility_arith_n",
-                             row, "n", "3", "research.irreducibility.arith_n", width=6)
-        self.chapters_button = ttk.Button(row, text=T("research_irreducibility.chapters_button"),
-                                          command=self.chapters)
+                             row, "n", "3", "research.irreducibility.arith_n", width=6,
+                             minimum=1)
+        self.chapters_button = ttk.Button(
+            row, text=T("research_irreducibility.chapters_button"), command=refusing(
+                self, lambda: [self.number_entries["A"], self.p_entry, self.n_entry],
+                self.chapters))
         self.chapters_button.pack(side="left")
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(2, 6))
@@ -118,6 +135,9 @@ class ArithView(BaseTab):
             self._refresh_layout(side)
 
     # --- inputs -------------------------------------------------------------------------
+
+    def _both_numbers(self):
+        return [self.number_entries["A"], self.number_entries["B"]]
 
     def _refresh_layout(self, side):
         try:

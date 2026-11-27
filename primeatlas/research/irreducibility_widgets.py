@@ -1,7 +1,8 @@
 """
 irreducibility_widgets.py -- small widget helpers shared by the Research -> Irreducibility
-sub-tabs: a wrapping label packed across its parent, a labelled remembered number field, and
-a read-only text area for results.
+sub-tabs: a wrapping label packed across its parent, a labelled remembered number field, the
+command of a button or Enter that refuses a red field first, and a read-only text area for
+results.
 """
 import tkinter as tk
 from tkinter import ttk
@@ -19,13 +20,13 @@ def wrapped_label(parent, padx=0, pady=0, **kw):
 
 
 def entry(T, purpose, row, label, default, key=None, width=8, textvariable=None,
-          on_return=None, fraction=False, words=()):
+          on_return=None, fraction=False, words=(), minimum=None):
     """A label and a number field packed left in row, its tip opening with T(purpose);
     remembered under key when given."""
     if label:
         ttk.Label(row, text=label).pack(side="left", padx=(0, 4))
     e = ttk.Entry(row, width=width, textvariable=textvariable)
-    number_field.attach(e, T, purpose, fraction=fraction, words=words)
+    number_field.attach(e, T, purpose, fraction=fraction, words=words, minimum=minimum)
     if textvariable is None:
         e.insert(0, default)
     e.pack(side="left", padx=(0, 12))
@@ -34,6 +35,17 @@ def entry(T, purpose, row, label, default, key=None, width=8, textvariable=None,
     if on_return:
         e.bind("<Return>", lambda _e: on_return())
     return e
+
+
+def refusing(view, fields, action):
+    """The command of a button or Enter: action() unless one of fields() (the number fields
+    the action reads) holds an unusable value, which is refused first. The computation a view
+    runs when it is built calls action itself and keeps its own message for a bad value."""
+    def command():
+        if not number_field.refuse_problem(
+                fields(), view.T, view.T("research_irreducibility.error_dialog_title")):
+            action()
+    return command
 
 
 class OutputText(tk.Text):

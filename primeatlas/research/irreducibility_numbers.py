@@ -17,6 +17,10 @@ DEFAULTS = {
     "B": ("12345679", dict(ds=2, dz=4, dc=2, ks=13, kz=3, kc=3)),
 }
 
+LAYOUT_MINIMA = dict(ds=2, dz=1, dc=1, ks=2, kz=1, kc=1)
+"""Lowest accepted value of each layout parameter: blocks start at modulus 2, a block holds
+at least one modulus and a layout at least one block."""
+
 MAX_START = 10 ** 6
 """Largest accepted first modulus of D or K; arbitrary."""
 
@@ -33,9 +37,9 @@ def parse_params(values):
     out = {}
     for key in layout.PARAMS:
         v = int(plain_number(str(values[key])))
-        lo, hi = ((2, MAX_START) if key in ("ds", "ks") else
-                  (1, MAX_SIZE) if key in ("dz", "kz") else (1, MAX_COUNT))
-        if not lo <= v <= hi:
+        hi = (MAX_START if key in ("ds", "ks") else
+              MAX_SIZE if key in ("dz", "kz") else MAX_COUNT)
+        if not LAYOUT_MINIMA[key] <= v <= hi:
             raise ValueError(key)
         out[key] = v
     return out

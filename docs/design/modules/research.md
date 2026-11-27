@@ -89,11 +89,34 @@ no window:
 | Visualize window: old base Go | its page |
 | Visualize window: decompose | its n (after the "no window checked yet" message) |
 | Decomposition list: Go | its page |
+| Irreducibility, Radices: Build | from, to |
+| Comparison: Compare | A, B and both layouts |
+| Comparison: Random neighbours | both layouts |
+| Comparison: Fit to number | the side's number, its block sizes |
+| Comb reading: Draw | a, b, scale |
+| Ranges: Show ranges | the six layout fields |
+| Ranges: Take from A / B | the six layout fields, after the side's layout is copied in |
+| Ranges: Find layouts | n |
+| Arithmetic: A ⊕ B, A ⊖ B, A ⊗ B | A, B |
+| Arithmetic: A ⊘ b, A mod_R T, A^(e), Append powers of p | A and the operation's fields |
+| Arithmetic: Fit to number | the side's number |
+| Primality: Check primality | A, fuel |
+| Primality: Fit for primality | A |
+| Multiplicative counting: Count | q, g, N |
 
 A field's minimum is the lowest value its action accepts: Gaps and Squares 1, Polynomials 0,
 pi(x) x from/to 2 and step 1, Goldbach n and the window's "to" 2, the window's "from" and
 decompose 4, every page field 1. A Visualize window opened by Visualize reads its "from" from
 its remembered text; `_goldbach_queue_viz` checks that value with its own message.
+
+In Irreducibility, Enter in a field runs the same command as its button
+(`irreducibility_widgets.refusing`); the computation a view runs when the tab is built calls the
+view's method itself and writes its own message for a bad value. The layout of A and B lives in
+the Comparison fields: Arithmetic and Primality read it but do not refuse it (it is not their
+field) and keep their message. Minima: A, B and N 0, layout starts 2 and sizes and counts 1
+(`irreducibility_numbers.LAYOUT_MINIMA`, also used by `parse_params`), radices from/to 1,
+comb a/b 2, Ranges n 1, Arithmetic b 1, T 2, e 1, p 2, n 1, Primality fuel 1, Multiplicative
+q 2 and g 1. The comb scale has no minimum: Draw raises a smaller one to the proved scale.
 
 ## Kept data
 
@@ -111,5 +134,4 @@ None.
 
 ## Known gaps
 
-- The Irreducibility sub-tab does not refuse a red field yet: its views read the text with
-  their own checks and write the message into the view.
+None.

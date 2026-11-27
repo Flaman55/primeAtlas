@@ -27,6 +27,8 @@ sys.path.insert(0, os.path.join(_REPO_ROOT, "prime_sieve"))
 sys.stdout.reconfigure(errors="backslashreplace")
 
 failures = []
+dialogs = []
+"""Error dialogs shown (messagebox.showerror is patched in main)."""
 
 REPO_URL = "https://github.com/Flaman55/Irreducibility"
 PAPER_URL = REPO_URL + "/blob/main/Latex/irreducibility.pdf"
@@ -38,6 +40,13 @@ def check(condition, message):
         print(f"FAIL: {message}")
     else:
         print(f"ok:   {message}")
+
+
+def _refusals():
+    """How many error dialogs appeared since the last call."""
+    n = len(dialogs)
+    dialogs.clear()
+    return n
 
 
 def _pump(app, seconds):
@@ -305,8 +314,10 @@ def test_arith(app, tab, T):
     _check_cases(app, v, T, 450, "Arithmetic test",
                  [T(f"research_irreducibility.op_{k}") for k in OP_KINDS])
     nums.number_var("A").set("abc")
+    before = v.output_text()
     v.add_button.invoke()
-    check(v.last_check is None and v.output_text().strip() != "", "A not a number: message")
+    check(_refusals() == 1 and v.output_text() == before,
+          "A not a number: refused, the output kept")
     nums.number_var("A").set("12345678")
 
 
@@ -415,21 +426,31 @@ def test_primality(app, tab, T):
     check(v.answer is False and v.steps == 1 and not v.is_running(),
           "Run during a run starts over on the new number; the old run does not continue")
 
-    for number, lay, fuel, name in (
-            ("abc", None, "100", "A not a number"),
-            ("12", (2, 1, 1, 0, 1, 1), "100", "invalid layout"),
-            ("12", None, "0", "fuel 0"),
-            ("12", None, "abc", "fuel not a number"),
-            ("12", None, str(10 ** 10), "fuel above the maximum"),
-            (str(10 ** 30), None, "100", "A >= W"),
-            ("1", (2, 1, 1, 2, 1, 1), "100", "W = 2")):
+    _refusals()
+    # A red field of Primality is refused (one dialog, the view kept); a layout of A, read
+    # from the Comparison tab, and values the field accepts get the view's message.
+    for number, lay, fuel, name, refused in (
+            ("abc", None, "100", "A not a number", True),
+            ("12", (2, 1, 1, 0, 1, 1), "100", "invalid layout", False),
+            ("12", None, "0", "fuel 0", True),
+            ("12", None, "abc", "fuel not a number", True),
+            ("12", None, str(10 ** 10), "fuel above the maximum", False),
+            (str(10 ** 30), None, "100", "A >= W", False),
+            ("1", (2, 1, 1, 2, 1, 1), "100", "W = 2", False)):
         nums.number_var("A").set(number)
         _set_layout(nums, lay or (2, 3, 3, 11, 3, 3))
         _set(v.fuel_entry, fuel)
+        before = (v.message_var.get(), v.verdict_var.get(), v.steps_tree.get_children())
         v.run_button.invoke()
         app.update()
-        check(v.message_var.get() != "" and v.verdict_var.get() == "" and not v.is_running()
-              and not v.steps_tree.get_children(), f"{name}: message, no run")
+        if refused:
+            after = (v.message_var.get(), v.verdict_var.get(), v.steps_tree.get_children())
+            check(_refusals() == 1 and after == before and not v.is_running(),
+                  f"{name}: refused, the view kept, no run")
+            continue
+        check(_refusals() == 0 and v.message_var.get() != "" and v.verdict_var.get() == ""
+              and not v.is_running() and not v.steps_tree.get_children(),
+              f"{name}: message, no run")
     _set_layout(nums, (2, 3, 3, 11, 3, 3))
     nums.number_var("A").set("12345678")
     _set(v.fuel_entry, "1000000")
@@ -538,15 +559,24 @@ def test_multiplicative(app, tab, T):
     check(v.result is not None and v.message_var.get() != "",
           "q = MAX_Q (composite): computed, with the note")
 
-    for q, g, n, name in (("1", "auto", "5", "q = 1"), ("abc", "auto", "5", "q not a number"),
-                          (str(mult.MAX_Q + 1), "auto", "5", "q above MAX_Q"),
-                          ("23", "0", "5", "g = 0"), ("23", "23", "5", "g = q"),
-                          ("23", "x", "5", "g not a number"), ("23", "auto", "-1", "N < 0"),
-                          ("23", "auto", "", "N empty")):
+    _refusals()
+    # Below a field's minimum or not a number: refused, the view kept; values the field
+    # accepts but the view does not: its message.
+    for q, g, n, name, refused in (
+            ("1", "auto", "5", "q = 1", True), ("abc", "auto", "5", "q not a number", True),
+            (str(mult.MAX_Q + 1), "auto", "5", "q above MAX_Q", False),
+            ("23", "0", "5", "g = 0", True), ("23", "23", "5", "g = q", False),
+            ("23", "x", "5", "g not a number", True), ("23", "auto", "-1", "N < 0", True),
+            ("23", "auto", "", "N empty", False)):
+        before = (v.message_var.get(), v.verdict_var.get(), v.table.get_children())
         _mul(app, v, q, g, n)
-        check(v.message_var.get() != "" and v.result is None and v.verdict_var.get() == ""
-              and not v.table.get_children() and not v.canvas.find_withtag("comb"),
-              f"{name}: message, nothing computed")
+        if refused:
+            after = (v.message_var.get(), v.verdict_var.get(), v.table.get_children())
+            check(_refusals() == 1 and after == before, f"{name}: refused, the view kept")
+            continue
+        check(_refusals() == 0 and v.message_var.get() != "" and v.result is None
+              and v.verdict_var.get() == "" and not v.table.get_children()
+              and not v.canvas.find_withtag("comb"), f"{name}: message, nothing computed")
     _mul(app, v, 23, "AUTO", 10)
     check(v.auto_used and v.g_used == 5, "auto in any case")
 
@@ -636,8 +666,7 @@ def test_wiring_and_locales(app):
 
 def main():
     import tkinter.messagebox
-    shown = []
-    tkinter.messagebox.showerror = lambda *a, **k: shown.append(a)
+    tkinter.messagebox.showerror = lambda *a, **k: dialogs.append(a)
 
     from app_sandbox import isolate_app
     prime_atlas_v2, _portal = isolate_app()
@@ -657,7 +686,7 @@ def main():
         test_links(app, tab)
         test_remembered(app, tab, _dyn.TRANSLATOR)
         test_wiring_and_locales(app)
-        check(shown == [], f"no error dialog at any point (got {shown!r})")
+        check(dialogs == [], f"no error dialog besides the refusals checked (got {dialogs!r})")
     finally:
         app.destroy()
     if failures:

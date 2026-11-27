@@ -1715,9 +1715,10 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               one cycle of g mod q, the step reaching N mod q and
                               whether N is a square mod q
   irreducibility_numbers.py   IrreducibilityNumbers: A, B and their layouts (shared,
-                              remembered fields), layout text
+                              remembered fields, layout minima), layout text
   irreducibility_widgets.py, irreducibility_draw.py
-                              wrapped label, remembered entry, read-only output text /
+                              wrapped label, remembered entry, the refusing command of
+                              a button or Enter, read-only output text /
                               Canvas chips, dials, the two combs and the comb of
                               modulus q - 1 with the returns to 1
   irreducibility_cases_window.py
