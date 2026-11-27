@@ -193,6 +193,26 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   jest czerwony i odrzucany; nie wypełnia już pola Piętro i nie uruchamia przebiegu od liczby
   ujemnej.
 
+### +12 — Research: a red field stops every action that reads it
+
+- English: Check in the Gaps, Squares, Polynomials, pi(x) and Goldbach tabs, Goldbach's
+  Visualize and every action of the Goldbach Visualize and decompositions windows (Check, row
+  Previous, Next and Go, old base Go, Show all decompositions) now stop at a red field they
+  read with the same message as the Generation tab; a red field of another action does not
+  block. The fields turn red below their lowest value: Gaps and Squares 1, Polynomials 0,
+  pi(x) from/to 2 and step 1, Goldbach n 2, the Goldbach window's "from" and decompose 4. A
+  page number of 0 or text in a Go field is refused instead of being ignored or taken as page
+  1. Irreducibility is not covered yet.
+- Polski: Sprawdź w zakładkach Luki, Przedziały kwadratowe, Wielomiany pierwszorodne,
+  Przybliżenia π(x) i Goldbach, Wizualizacja w Goldbachu oraz każda akcja okien wizualizacji i
+  rozkładów Goldbacha (Sprawdź, Poprzednia, Następna i Idź w wierszach, Idź w starej bazie,
+  Pokaż wszystkie rozkłady) zatrzymują się teraz na czerwonym polu, które czytają, z tym samym
+  komunikatem co zakładka Generowanie; czerwone pole innej akcji ich nie blokuje. Pola robią
+  się czerwone poniżej najniższej wartości: Luki i Przedziały kwadratowe 1, Wielomiany 0, π(x)
+  od/do 2 i krok 1, n w Goldbachu 2, „od” okna Goldbacha i rozkład 4. Strona 0 albo tekst w
+  polu Idź jest odrzucany, zamiast być pomijany albo brany jako strona 1. Nieredukowalność nie
+  jest jeszcze objęta.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

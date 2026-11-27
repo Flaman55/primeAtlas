@@ -111,12 +111,12 @@ class ResearchPolynomialsTab(BaseTab):
         range_row.pack(fill="x", padx=6, pady=(0, 4))
         ttk.Label(range_row, text=T("research_polynomials.n_from_label")).pack(side="left")
         self.poly_n_from_entry = ttk.Entry(range_row, width=12)
-        number_field.attach(self.poly_n_from_entry, self.T, "field_tip.polynomials_n_from")
+        number_field.attach(self.poly_n_from_entry, self.T, "field_tip.polynomials_n_from", minimum=0)
         self.poly_n_from_entry.insert(0, "0")
         self.poly_n_from_entry.pack(side="left", padx=(6, 16))
         ttk.Label(range_row, text=T("research_polynomials.n_to_label")).pack(side="left")
         self.poly_n_to_entry = ttk.Entry(range_row, width=12)
-        number_field.attach(self.poly_n_to_entry, self.T, "field_tip.polynomials_n_to")
+        number_field.attach(self.poly_n_to_entry, self.T, "field_tip.polynomials_n_to", minimum=0)
         self.poly_n_to_entry.insert(0, "100")
         self.poly_n_to_entry.pack(side="left", padx=(6, 0))
         self._poly_range_row = range_row
@@ -220,6 +220,9 @@ class ResearchPolynomialsTab(BaseTab):
     def _on_poly_run(self):
         T = self.T
         if self._poly_busy:
+            return
+        if number_field.refuse_problem([self.poly_n_from_entry, self.poly_n_to_entry], T,
+                                       T("research_polynomials.error_dialog_title")):
             return
         preset = self._current_preset_id()
         try:

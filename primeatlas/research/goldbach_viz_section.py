@@ -28,6 +28,18 @@ GOLDBACH_VIZ_CHIP_ROWS_PER_PAGE = 6  # old-base prime chips: how many CHIP ROWS 
 
 
 class GoldbachVizSection:
+    def _goldbach_viz_from_field(self):
+        """The Visualize window's "od" field as a list, empty while the window is closed
+        (a fresh window starts it from its remembered text, checked by _goldbach_queue_viz)."""
+        if self._goldbach_viz_win is None or not self._goldbach_viz_win.winfo_exists():
+            return []
+        return [self.goldbach_viz_range_from_entry]
+
+    def _goldbach_viz_refused(self, fields):
+        """True after refuse_problem showed the first red field of `fields` plus "od"."""
+        return number_field.refuse_problem(fields + self._goldbach_viz_from_field(), self.T,
+                                           self.T("research_goldbach.error_dialog_title"))
+
     def _on_goldbach_viz_refresh(self):
         """The Visualize Toplevel's OWN "Check window" button -- reads "do"
         from ITS OWN field (self.goldbach_viz_n_entry, still validated via
@@ -37,6 +49,8 @@ class GoldbachVizSection:
         (shared with the row Prev/Next/goto handlers, which also need it re-
         checked on every call -- see that method's own docstring)."""
         if self._goldbach_viz_win is None or not self._goldbach_viz_win.winfo_exists():
+            return
+        if self._goldbach_viz_refused([self.goldbach_viz_n_entry]):
             return
         try:
             n = self._goldbach_parse_n_from(self.goldbach_viz_n_entry)
@@ -99,6 +113,8 @@ class GoldbachVizSection:
         held in memory at a time."""
         if self._goldbach_busy or self._goldbach_viz_current_n is None:
             return
+        if self._goldbach_viz_refused([]):
+            return
         if self._goldbach_viz_row_page > 0:
             self._goldbach_viz_row_page -= 1
             self._goldbach_queue_viz(self._goldbach_viz_current_n, reset_page=False)
@@ -109,6 +125,8 @@ class GoldbachVizSection:
         current page (see _goldbach_show_window_visualization), so this doesn't
         need its own upper-bound check."""
         if self._goldbach_busy or self._goldbach_viz_current_n is None:
+            return
+        if self._goldbach_viz_refused([]):
             return
         self._goldbach_viz_row_page += 1
         self._goldbach_queue_viz(self._goldbach_viz_current_n, reset_page=False)
@@ -123,6 +141,8 @@ class GoldbachVizSection:
         segment_size), this just avoids the round-trip and the confusing "page 500
         / 12" label that would otherwise result."""
         if self._goldbach_busy or self._goldbach_viz_current_n is None:
+            return
+        if self._goldbach_viz_refused([self.goldbach_viz_row_goto_entry]):
             return
         raw = plain_number(self.goldbach_viz_row_goto_entry.get())
         if not raw.isdigit():
@@ -160,6 +180,9 @@ class GoldbachVizSection:
         sets the page and redraws; _goldbach_show_window_visualization clamps it
         against the true page count itself (same as it already does for chip
         prev/next going past either end)."""
+        if number_field.refuse_problem([self.goldbach_viz_chip_goto_entry], self.T,
+                                       self.T("research_goldbach.error_dialog_title")):
+            return
         raw = plain_number(self.goldbach_viz_chip_goto_entry.get())
         if not raw.isdigit():
             return
@@ -200,14 +223,14 @@ class GoldbachVizSection:
         ttk.Label(top, text=T("research_goldbach.viz_range_label")).pack(side="left")
         self.goldbach_viz_range_from_entry = ttk.Entry(top, width=16)
         number_field.attach(self.goldbach_viz_range_from_entry, self.T,
-                            "field_tip.goldbach_viz_from")
+                            "field_tip.goldbach_viz_from", minimum=4)
         self.goldbach_viz_range_from_entry.pack(side="left", padx=(6, 12))
         self.goldbach_viz_range_from_entry.insert(0, "4")
         self.goldbach_viz_range_from_entry.bind(
             "<Return>", lambda _e: self._on_goldbach_viz_refresh())
         ttk.Label(top, text=T("research_goldbach.viz_range_to_label")).pack(side="left")
         self.goldbach_viz_n_entry = ttk.Entry(top, width=16)
-        number_field.attach(self.goldbach_viz_n_entry, self.T, "field_tip.goldbach_viz_to")
+        number_field.attach(self.goldbach_viz_n_entry, self.T, "field_tip.goldbach_viz_to", minimum=2)
         self.goldbach_viz_n_entry.pack(side="left", padx=(6, 12))
         self.goldbach_viz_n_entry.insert(0, self.goldbach_n_entry.get() or "1000")
         self.goldbach_viz_n_entry.bind(
@@ -252,7 +275,7 @@ class GoldbachVizSection:
             side="left")
         self.goldbach_viz_decompose_entry = ttk.Entry(decompose_row, width=16)
         number_field.attach(self.goldbach_viz_decompose_entry, self.T,
-                            "field_tip.goldbach_decompose_n")
+                            "field_tip.goldbach_decompose_n", minimum=4)
         self.goldbach_viz_decompose_entry.pack(side="left", padx=(6, 12))
         self.goldbach_viz_decompose_entry.bind(
             "<Return>", lambda _e: self._on_goldbach_viz_decompose())

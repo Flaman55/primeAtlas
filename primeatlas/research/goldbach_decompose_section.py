@@ -35,6 +35,9 @@ class GoldbachDecomposeSection:
                 T("research_goldbach.error_dialog_title"),
                 T("research_goldbach.error_decompose_no_window"))
             return
+        if number_field.refuse_problem([self.goldbach_viz_decompose_entry], T,
+                                       T("research_goldbach.error_dialog_title")):
+            return
         try:
             target_n = self._goldbach_parse_n_from(self.goldbach_viz_decompose_entry)
         except ValueError as e:
@@ -81,6 +84,9 @@ class GoldbachDecomposeSection:
 
     def _on_goldbach_decompose_goto(self):
         if self._goldbach_busy or self._goldbach_decompose_current_n is None:
+            return
+        if number_field.refuse_problem([self.goldbach_decompose_goto_entry], self.T,
+                                       self.T("research_goldbach.error_dialog_title")):
             return
         raw = plain_number(self.goldbach_decompose_goto_entry.get())
         if not raw.isdigit():

@@ -153,7 +153,7 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
         top.pack(fill="x", padx=6, pady=(10, 4))
         ttk.Label(top, text=T("research_goldbach.field_n")).pack(side="left")
         self.goldbach_n_entry = ttk.Entry(top, width=20)
-        number_field.attach(self.goldbach_n_entry, self.T, "field_tip.goldbach_n")
+        number_field.attach(self.goldbach_n_entry, self.T, "field_tip.goldbach_n", minimum=2)
         self.goldbach_n_entry.pack(side="left", padx=(6, 16))
         self.goldbach_n_entry.insert(0, "1000")
 
@@ -250,6 +250,9 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
         T = self.T
         if self._goldbach_busy:
             return
+        if number_field.refuse_problem([self.goldbach_n_entry], T,
+                                       T("research_goldbach.error_dialog_title")):
+            return
         try:
             n = self._goldbach_parse_n()
         except ValueError as e:
@@ -274,6 +277,9 @@ class ResearchGoldbachTab(GoldbachVizSection, GoldbachDecomposeSection,
         n (see _goldbach_queue_viz's own docstring for why od/do form one
         validated range)."""
         T = self.T
+        if number_field.refuse_problem([self.goldbach_n_entry] + self._goldbach_viz_from_field(),
+                                       T, T("research_goldbach.error_dialog_title")):
+            return
         try:
             n = self._goldbach_parse_n()
         except ValueError as e:
