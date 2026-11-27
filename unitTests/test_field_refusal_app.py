@@ -12,9 +12,13 @@ Drives the app (temp storage, launches stubbed). For each action below:
 Generation: the pipeline form's Run, the direct orchestrator launch, Verify Run, the k-tuple
 Run, Auto and n_locations Auto, the constellation Run, Quick-gen's Auto buttons (Floor, Range,
 Exploration with one and with three iterations, primesieve and cudasieve From).
+Research: the Gaps, Squares, Polynomials, pi(x) and Goldbach Runs, Goldbach Visualize (before
+and after its window exists), the Goldbach window's Check, row Previous/Next/Go, old base Go,
+decompose and the decomposition list's Go. A refusal changes no page and opens no window.
 The minimum of each field is the lower bound its action checks: the pipeline form's floor 0
 and its other numbers 1; the k-tuple step, window and MR rounds 1 (0 hangs the sieve or
-confirms every candidate), its other numbers 0.
+confirms every candidate), its other numbers 0; Gaps and Squares 1, Polynomials 0, pi(x)
+from/to 2 and step 1, Goldbach n and window "to" 2, window "from" and decompose 4, every Go 1.
 Windows, real display:
     python unitTests/test_field_refusal_app.py
 """
@@ -244,6 +248,106 @@ def minimum_checks(gen):
     return passed
 
 
+def research_cases(h, app):
+    passed = True
+    gaps = app.research_gaps_tab_widget
+    squares = app.research_squares_tab_widget
+    poly = app.research_polynomials_tab_widget
+    pi = app.research_pi_approx_tab_widget
+    gold = app.research_goldbach_tab_widget
+    passed &= h.case("Gaps Run", gaps._on_gaps_run,
+                     [gaps.gaps_n_from_entry, gaps.gaps_n_to_entry],
+                     foreign=[squares.squares_n_from_entry])
+    passed &= h.case("Squares Run", squares._on_squares_run,
+                     [squares.squares_required_count_entry, squares.squares_n_from_entry,
+                      squares.squares_n_to_entry], foreign=[gaps.gaps_n_to_entry])
+    passed &= h.case("Polynomials Run", poly._on_poly_run,
+                     [poly.poly_n_from_entry, poly.poly_n_to_entry],
+                     foreign=[pi.pi_step_entry])
+    passed &= h.case("pi(x) Run", pi._on_pi_run,
+                     [pi.pi_x_from_entry, pi.pi_x_to_entry, pi.pi_step_entry],
+                     foreign=[poly.poly_n_to_entry])
+    passed &= h.case("Goldbach Run", gold._on_goldbach_run, [gold.goldbach_n_entry],
+                     foreign=[gaps.gaps_n_from_entry])
+    passed &= h.case("Goldbach Visualize (no window yet)", gold._on_goldbach_visualize,
+                     [gold.goldbach_n_entry])
+    passed &= check(gold._goldbach_viz_win is None,
+                    "Goldbach Visualize: a refusal opens no window")
+
+    gold._goldbach_ensure_viz_window()
+    h.app.update()
+    od, do = gold.goldbach_viz_range_from_entry, gold.goldbach_viz_n_entry
+    passed &= h.case("Goldbach Visualize (window open)", gold._on_goldbach_visualize,
+                     [gold.goldbach_n_entry, od], foreign=[gold.goldbach_viz_decompose_entry])
+    passed &= h.case("Goldbach window Check", gold._on_goldbach_viz_refresh, [do, od],
+                     foreign=[gold.goldbach_n_entry])
+    gold._goldbach_viz_current_n = 1000
+    gold._goldbach_viz_row_page = 1
+    passed &= h.case("Goldbach rows Previous", gold._on_goldbach_viz_row_prev, [od],
+                     foreign=[do])
+    passed &= check(gold._goldbach_viz_row_page == 1,
+                    "Goldbach rows Previous: a refusal keeps the page")
+    passed &= h.case("Goldbach rows Next", gold._on_goldbach_viz_row_next, [od])
+    passed &= check(gold._goldbach_viz_row_page == 1,
+                    "Goldbach rows Next: a refusal keeps the page")
+    passed &= h.case("Goldbach rows Go", gold._on_goldbach_viz_row_goto,
+                     [gold.goldbach_viz_row_goto_entry, od],
+                     foreign=[gold.goldbach_viz_chip_goto_entry])
+    passed &= h.case("Goldbach old base Go", gold._on_goldbach_viz_chip_goto,
+                     [gold.goldbach_viz_chip_goto_entry], foreign=[od])
+    gold._goldbach_viz_last_result = {"pmax": 997}
+    passed &= h.case("Goldbach decompose", gold._on_goldbach_viz_decompose,
+                     [gold.goldbach_viz_decompose_entry], foreign=[od])
+    gold._goldbach_viz_last_result = None
+    gold._goldbach_viz_current_n = None
+    gold._goldbach_viz_row_page = 0
+
+    gold._goldbach_ensure_decompose_window()
+    h.app.update()
+    gold._goldbach_decompose_current_n = 1012
+    gold._goldbach_decompose_current_pmax = 997
+    passed &= h.case("Goldbach decomposition list Go", gold._on_goldbach_decompose_goto,
+                     [gold.goldbach_decompose_goto_entry], foreign=[od])
+    gold._goldbach_decompose_current_n = None
+    return passed
+
+
+def research_minimum_checks(app):
+    """Each Research field's minimum: below it red, at it fine."""
+    gaps = app.research_gaps_tab_widget
+    squares = app.research_squares_tab_widget
+    poly = app.research_polynomials_tab_widget
+    pi = app.research_pi_approx_tab_widget
+    gold = app.research_goldbach_tab_widget
+    lows = [("gaps from", gaps.gaps_n_from_entry, 1), ("gaps to", gaps.gaps_n_to_entry, 1),
+            ("squares required", squares.squares_required_count_entry, 1),
+            ("squares from", squares.squares_n_from_entry, 1),
+            ("squares to", squares.squares_n_to_entry, 1),
+            ("polynomials from", poly.poly_n_from_entry, 0),
+            ("polynomials to", poly.poly_n_to_entry, 0),
+            ("pi from", pi.pi_x_from_entry, 2), ("pi to", pi.pi_x_to_entry, 2),
+            ("pi step", pi.pi_step_entry, 1), ("Goldbach n", gold.goldbach_n_entry, 2),
+            ("Goldbach window from", gold.goldbach_viz_range_from_entry, 4),
+            ("Goldbach window to", gold.goldbach_viz_n_entry, 2),
+            ("Goldbach decompose", gold.goldbach_viz_decompose_entry, 4),
+            ("Goldbach rows Go", gold.goldbach_viz_row_goto_entry, 1),
+            ("Goldbach old base Go", gold.goldbach_viz_chip_goto_entry, 1),
+            ("Goldbach decomposition list Go", gold.goldbach_decompose_goto_entry, 1)]
+    def problem(entry, text):
+        _set_text(entry, text)
+        entry.number_field.refresh(at_once=True)
+        return entry.number_field.problem
+
+    passed = True
+    for label, entry, low in lows:
+        old = entry.get()
+        below = problem(entry, str(low - 1)) == "range"
+        at = problem(entry, str(low)) is None
+        problem(entry, old)
+        passed &= check(below and at, f"{label}: minimum {low}")
+    return passed
+
+
 def main():
     import prime_atlas_v2
     from tkinter import messagebox
@@ -268,6 +372,8 @@ def main():
         h = Harness(app, errors, dialogs)
         passed = generation_cases(h, gen)
         passed &= minimum_checks(gen)
+        passed &= research_cases(h, app)
+        passed &= research_minimum_checks(app)
     finally:
         if app is not None:
             try:

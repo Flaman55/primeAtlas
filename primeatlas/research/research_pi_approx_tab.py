@@ -119,17 +119,17 @@ class ResearchPiApproxTab(BaseTab):
         range_row.pack(fill="x", padx=6, pady=(10, 4))
         ttk.Label(range_row, text=T("research_pi_approx.x_from_label")).pack(side="left")
         self.pi_x_from_entry = ttk.Entry(range_row, width=14)
-        number_field.attach(self.pi_x_from_entry, self.T, "field_tip.pi_x_from")
+        number_field.attach(self.pi_x_from_entry, self.T, "field_tip.pi_x_from", minimum=2)
         self.pi_x_from_entry.insert(0, "100")
         self.pi_x_from_entry.pack(side="left", padx=(6, 16))
         ttk.Label(range_row, text=T("research_pi_approx.x_to_label")).pack(side="left")
         self.pi_x_to_entry = ttk.Entry(range_row, width=14)
-        number_field.attach(self.pi_x_to_entry, self.T, "field_tip.pi_x_to")
+        number_field.attach(self.pi_x_to_entry, self.T, "field_tip.pi_x_to", minimum=2)
         self.pi_x_to_entry.insert(0, "100000")
         self.pi_x_to_entry.pack(side="left", padx=(6, 16))
         ttk.Label(range_row, text=T("research_pi_approx.step_label")).pack(side="left")
         self.pi_step_entry = ttk.Entry(range_row, width=14)
-        number_field.attach(self.pi_step_entry, self.T, "field_tip.pi_step")
+        number_field.attach(self.pi_step_entry, self.T, "field_tip.pi_step", minimum=1)
         self.pi_step_entry.insert(0, "10000")
         self.pi_step_entry.pack(side="left", padx=(6, 0))
 
@@ -212,6 +212,10 @@ class ResearchPiApproxTab(BaseTab):
     def _on_pi_run(self):
         T = self.T
         if self._pi_busy:
+            return
+        if number_field.refuse_problem(
+                [self.pi_x_from_entry, self.pi_x_to_entry, self.pi_step_entry], T,
+                T("research_pi_approx.error_dialog_title")):
             return
         try:
             x_from = self._parse_positive_int(self.pi_x_from_entry, "research_pi_approx.x_from_label", 2)

@@ -108,8 +108,9 @@ Code that reads plain integers keeps its own checks and messages: it reads the t
 again first, since text set by code reaches it through no event). An action calls it first, after
 its "already running" guard, with exactly the fields it reads, so a red field never becomes a
 default and a red field of another action never blocks it: Quick-gen Generate (the selected
-mode's fields, `_QUICK_MODE_NUMBER_VARS`) and every action of the Generation tab (see
-[generation](generation.md#refused-fields)).
+mode's fields, `_QUICK_MODE_NUMBER_VARS`), every action of the Generation tab (see
+[generation](generation.md#refused-fields)) and every action of the Research tab except
+Irreducibility (see [research](research.md#refused-fields)).
 
 `unitTests/test_number_field_coverage.py` requires every `ttk.Entry` and `ttk.Spinbox` in
 `primeatlas/` to be a number field or marked `# not a number field: <why>` (folder paths,
@@ -120,8 +121,8 @@ live fields.
 
 ## Known gaps
 
-- The actions of the Research, Visualization, Constellations, Primality, Primes and Benchmark tabs
-  do not call `refuse_problem` yet: there a red field is only shown, and the action reads the
+- The actions of the Irreducibility sub-tab and of the Visualization, Constellations, Primality,
+  Primes and Benchmark tabs do not call `refuse_problem` yet: there a red field is only shown, and the action reads the
   text with its own checks.
 - Separate dialogs and windows of a fixed size (machine details, chart windows, consent and
   confirmation dialogs) keep texts of a fixed wrap width; they are not resized with the app.

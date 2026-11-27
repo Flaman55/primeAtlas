@@ -129,7 +129,7 @@ class ResearchSquaresTab(BaseTab):
         ttk.Label(top, text=T("research_squares.required_count_label")).pack(side="left")
         self.squares_required_count_entry = ttk.Entry(top, width=6)
         number_field.attach(self.squares_required_count_entry, self.T,
-                            "field_tip.squares_required_count")
+                            "field_tip.squares_required_count", minimum=1)
         self.squares_required_count_entry.insert(0, "1")
         self.squares_required_count_entry.pack(side="left", padx=(6, 0))
 
@@ -137,12 +137,12 @@ class ResearchSquaresTab(BaseTab):
         range_row.pack(fill="x", padx=6, pady=(0, 4))
         ttk.Label(range_row, text=T("research_squares.n_from_label")).pack(side="left")
         self.squares_n_from_entry = ttk.Entry(range_row, width=12)
-        number_field.attach(self.squares_n_from_entry, self.T, "field_tip.squares_n_from")
+        number_field.attach(self.squares_n_from_entry, self.T, "field_tip.squares_n_from", minimum=1)
         self.squares_n_from_entry.insert(0, "1")
         self.squares_n_from_entry.pack(side="left", padx=(6, 16))
         ttk.Label(range_row, text=T("research_squares.n_to_label")).pack(side="left")
         self.squares_n_to_entry = ttk.Entry(range_row, width=12)
-        number_field.attach(self.squares_n_to_entry, self.T, "field_tip.squares_n_to")
+        number_field.attach(self.squares_n_to_entry, self.T, "field_tip.squares_n_to", minimum=1)
         self.squares_n_to_entry.insert(0, "100")
         self.squares_n_to_entry.pack(side="left", padx=(6, 0))
         self._squares_range_row = range_row
@@ -262,6 +262,10 @@ class ResearchSquaresTab(BaseTab):
     def _on_squares_run(self):
         T = self.T
         if self._squares_busy:
+            return
+        if number_field.refuse_problem(
+                [self.squares_required_count_entry, self.squares_n_from_entry,
+                 self.squares_n_to_entry], T, T("research_squares.error_dialog_title")):
             return
         preset = self._current_preset_id()
         try:

@@ -76,12 +76,12 @@ class ResearchGapsTab(BaseTab):
         range_row.pack(fill="x", padx=6, pady=(0, 4))
         ttk.Label(range_row, text=T("research_gaps.n_from_label")).pack(side="left")
         self.gaps_n_from_entry = ttk.Entry(range_row, width=12)
-        number_field.attach(self.gaps_n_from_entry, self.T, "field_tip.gaps_n_from")
+        number_field.attach(self.gaps_n_from_entry, self.T, "field_tip.gaps_n_from", minimum=1)
         self.gaps_n_from_entry.insert(0, "1")
         self.gaps_n_from_entry.pack(side="left", padx=(6, 16))
         ttk.Label(range_row, text=T("research_gaps.n_to_label")).pack(side="left")
         self.gaps_n_to_entry = ttk.Entry(range_row, width=12)
-        number_field.attach(self.gaps_n_to_entry, self.T, "field_tip.gaps_n_to")
+        number_field.attach(self.gaps_n_to_entry, self.T, "field_tip.gaps_n_to", minimum=1)
         self.gaps_n_to_entry.insert(0, "100")
         self.gaps_n_to_entry.pack(side="left", padx=(6, 0))
 
@@ -164,6 +164,9 @@ class ResearchGapsTab(BaseTab):
     def _on_gaps_run(self):
         T = self.T
         if self._gaps_busy:
+            return
+        if number_field.refuse_problem([self.gaps_n_from_entry, self.gaps_n_to_entry], T,
+                                       T("research_gaps.error_dialog_title")):
             return
         overlay = self._current_overlay_id()
         try:

@@ -69,6 +69,32 @@ Texts `research_*`. Irreducibility remembers every input field under `research.i
 (A, B and their layouts, the range, the comb, the Ranges layout and n, the Arithmetic parameters,
 the Primality fuel) and computes them when the tab is built, except Primality.
 
+## Refused fields
+
+Every action below first refuses a red field it reads (`number_field.refuse_problem`), after its
+"already running" guard, with exactly the fields it reads; a refusal changes no page and opens
+no window:
+
+| Action | Fields |
+|---|---|
+| Gaps Run | n from, n to |
+| Squares Run | required count, n from, n to |
+| Polynomials Run | n from, n to |
+| pi(x) Run | x from, x to, step |
+| Goldbach Run | n |
+| Goldbach Visualize | n; the Visualize window's "from" while that window is open |
+| Visualize window: Check | "to", "from" |
+| Visualize window: row Previous, Next | "from" |
+| Visualize window: row Go | its page, "from" |
+| Visualize window: old base Go | its page |
+| Visualize window: decompose | its n (after the "no window checked yet" message) |
+| Decomposition list: Go | its page |
+
+A field's minimum is the lowest value its action accepts: Gaps and Squares 1, Polynomials 0,
+pi(x) x from/to 2 and step 1, Goldbach n and the window's "to" 2, the window's "from" and
+decompose 4, every page field 1. A Visualize window opened by Visualize reads its "from" from
+its remembered text; `_goldbach_queue_viz` checks that value with its own message.
+
 ## Kept data
 
 None.
@@ -78,8 +104,12 @@ None.
 `test_research_squares_tab`, `test_research_polynomials_tab`, `test_research_gaps_tab`,
 `test_research_pi_approx_tab`, `test_goldbach_worker`, `test_squares_window`, `test_polynomials_window`,
 `test_gaps_window`, `test_pi_approx_window`, `test_irreducibility_core`,
-`test_irreducibility_blocks`, `test_research_irreducibility_tab`.
+`test_irreducibility_blocks`, `test_research_irreducibility_tab`, `test_field_refusal_app`
+(refused fields and minima).
+
+
 
 ## Known gaps
 
-- None known.
+- The Irreducibility sub-tab does not refuse a red field yet: its views read the text with
+  their own checks and write the message into the view.
