@@ -318,6 +318,7 @@
   "research_irreducibility.intro": "The definitions of the Irreducibility repository (Lean 4, Mathlib), computed on your input: radices of a mixed-radix system over arbitrary moduli, comparison and arithmetic of numbers given only by their residues, and residues read from sech combs. Numbers are turned into residues on input and results are checked against ordinary integers; everything in between uses residues only.",
   "research_irreducibility.open_repo": "Open repository",
   "research_irreducibility.open_paper": "Open paper (PDF)",
+  "research_irreducibility.error_dialog_title": "Error",
   "research_irreducibility.tab_radices": "Radices and atoms",
   "research_irreducibility.tab_compare": "Comparison",
   "research_irreducibility.tab_comb": "Comb reading",

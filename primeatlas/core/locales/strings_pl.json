@@ -318,6 +318,7 @@
   "research_irreducibility.intro": "Definicje repozytorium Irreducibility (Lean 4, Mathlib) liczone na Twoich danych: podstawy systemu mieszanych podstaw nad dowolnymi modułami, porównanie i arytmetyka liczb danych wyłącznie resztami oraz reszty odczytane z grzebieni sech. Liczby są zamieniane na reszty na wejściu, a wyniki sprawdzane zwykłymi liczbami całkowitymi; wszystko pomiędzy działa tylko na resztach.",
   "research_irreducibility.open_repo": "Otwórz repozytorium",
   "research_irreducibility.open_paper": "Otwórz artykuł (PDF)",
+  "research_irreducibility.error_dialog_title": "Błąd",
   "research_irreducibility.tab_radices": "Podstawy i atomy",
   "research_irreducibility.tab_compare": "Porównanie",
   "research_irreducibility.tab_comb": "Odczyt z grzebieni",

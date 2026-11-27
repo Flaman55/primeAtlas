@@ -16,7 +16,7 @@ from ..core.base_tab import BaseTab
 from . import irreducibility_core as core
 from . import irreducibility_residues as res
 from .irreducibility_draw import draw_chips
-from .irreducibility_widgets import entry, wrapped_label
+from .irreducibility_widgets import entry, refusing, wrapped_label
 
 MAX_MODULUS = 50000
 """Largest accepted end of the range; arbitrary."""
@@ -37,14 +37,16 @@ class RadicesView(BaseTab):
                       padx=6, pady=(8, 4))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(0, 4))
+        build = refusing(self, lambda: [self.from_entry, self.to_entry], self.run)
         self.from_entry = entry(T, "field_tip.irreducibility_moduli_from",
                                 row, T("research_irreducibility.from_label"), "2",
-                                "research.irreducibility.range_from", on_return=self.run)
+                                "research.irreducibility.range_from", on_return=build, minimum=1)
         self.to_entry = entry(T, "field_tip.irreducibility_moduli_to",
                               row, T("research_irreducibility.to_label"), "60",
-                              "research.irreducibility.range_to", on_return=self.run)
-        ttk.Button(row, text=T("research_irreducibility.build"), command=self.run).pack(
-            side="left")
+                              "research.irreducibility.range_to", on_return=build, minimum=1)
+        self.build_button = ttk.Button(row, text=T("research_irreducibility.build"),
+                                       command=build)
+        self.build_button.pack(side="left")
         self.summary_var = tk.StringVar()
         ttk.Label(row, textvariable=self.summary_var).pack(side="left", padx=(12, 0))
         self.message_var = tk.StringVar()

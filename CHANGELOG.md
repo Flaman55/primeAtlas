@@ -213,6 +213,29 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   polu Idź jest odrzucany, zamiast być pomijany albo brany jako strona 1. Nieredukowalność nie
   jest jeszcze objęta.
 
+### +13 — Irreducibility: a red field stops every action that reads it
+
+- English: Every button of Research → Irreducibility that reads number fields, and Enter in
+  those fields, now stops at a red field with the same message as the other tabs and leaves
+  the view as it was: Build, Compare, Random neighbours, Fit to number, Draw, Show ranges, Take
+  from A/B, Find layouts, the Arithmetic operations, Check primality, Fit for primality and
+  Count. Before, the view was cleared and showed its own message. A red field of another
+  sub-tab does not block, and the layouts of A and B, read by Arithmetic and Primality from
+  the Comparison fields, keep their message there. The fields turn red below their lowest
+  value: A, B and N 0, layout starts 2 and sizes and counts 1, radices 1, comb a/b 2, n 1,
+  b 1, T 2, e 1, p 2, chapters n 1, fuel 1, q 2, g 1. The values computed when the tab opens
+  are unchanged.
+- Polski: Każdy przycisk Badania → Nieredukowalność, który czyta pola liczbowe, i Enter w tych
+  polach zatrzymują się teraz na czerwonym polu z tym samym komunikatem co pozostałe zakładki i
+  zostawiają widok bez zmian: Buduj, Porównaj, Losowe sąsiednie, Dobierz do liczby, Rysuj,
+  Pokaż zakresy, Weź z A/B, Znajdź układy, działania Arytmetyki, Sprawdź pierwszość, Dopasuj do
+  pierwszości i Licz. Wcześniej widok był czyszczony i pokazywał własny komunikat. Czerwone
+  pole innej podzakładki nie blokuje, a układy A i B, które Arytmetyka i Pierwszość czytają z
+  pól Porównania, zachowują tam swój komunikat. Pola robią się czerwone poniżej najniższej
+  wartości: A, B i N 0, początki układu 2, rozmiary i liczby bloków 1, podstawy 1, grzebień
+  a/b 2, n 1, b 1, T 2, e 1, p 2, n rozdziałów 1, paliwo 1, q 2, g 1. Wartości liczone przy
+  otwarciu zakładki się nie zmieniają.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

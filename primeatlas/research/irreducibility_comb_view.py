@@ -16,7 +16,7 @@ from ..core.base_tab import BaseTab
 from ..core.widgets import HeightGrip
 from .irreducibility_comb import PROVED_SCALE
 from .irreducibility_draw import draw_combs
-from .irreducibility_widgets import entry, wrapped_label
+from .irreducibility_widgets import entry, refusing, wrapped_label
 
 MAX_STEP = 200
 """Largest a and b; arbitrary, keeps the plot readable."""
@@ -32,18 +32,20 @@ class CombView(BaseTab):
                       padx=6, pady=(8, 4))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(0, 4))
+        draw = refusing(self, lambda: [self.a_entry, self.b_entry, self.scale_entry], self.draw)
         self.a_entry = entry(T, "field_tip.irreducibility_comb_a",
                              row, "a", "17", "research.irreducibility.comb_a", width=6,
-                             on_return=self.draw)
+                             on_return=draw, minimum=2)
         self.b_entry = entry(T, "field_tip.irreducibility_comb_b",
                              row, "b", "5", "research.irreducibility.comb_b", width=6,
-                             on_return=self.draw)
+                             on_return=draw, minimum=2)
         self.scale_entry = entry(T, "field_tip.irreducibility_comb_scale",
                                  row, T("research_irreducibility.scale_label"), "8",
                                  "research.irreducibility.comb_scale", width=6,
-                                 on_return=self.draw, fraction=True)
-        ttk.Button(row, text=T("research_irreducibility.draw"), command=self.draw).pack(
-            side="left")
+                                 on_return=draw, fraction=True)
+        self.draw_button = ttk.Button(row, text=T("research_irreducibility.draw"),
+                                      command=draw)
+        self.draw_button.pack(side="left")
         self.message_var = tk.StringVar()
         wrapped_label(self, textvariable=self.message_var, padx=6)
         self.result_var = tk.StringVar()

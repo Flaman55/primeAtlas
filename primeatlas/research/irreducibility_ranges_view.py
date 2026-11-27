@@ -16,8 +16,9 @@ from ..core.base_tab import BaseTab
 from ..core.widgets import HeightGrip, StripedTreeview
 from . import irreducibility_layout as layout
 from .irreducibility_draw import COLOR_B, GOLD_BG
-from .irreducibility_numbers import DEFAULTS, blocks_text, layout_info, parse_params
-from .irreducibility_widgets import entry, wrapped_label
+from .irreducibility_numbers import (DEFAULTS, LAYOUT_MINIMA, blocks_text, layout_info,
+                                     parse_params)
+from .irreducibility_widgets import entry, refusing, wrapped_label
 
 FIT_SIZES = (1, 2, 3, 4, 5)
 
@@ -36,6 +37,8 @@ class RangesView(BaseTab):
         wrapped_label(self, text=T("research_irreducibility.ranges_desc"), style="Hint.TLabel",
                       padx=6, pady=(8, 4))
         self.param_entries = {}
+        show = self._show_command = refusing(self, lambda: list(self.param_entries.values()),
+                                             self.show)
         for prefix, title in (("d", "blocks_row"), ("k", "quot_row")):
             row = ttk.Frame(self)
             row.pack(fill="x", padx=6, pady=1)
@@ -45,11 +48,13 @@ class RangesView(BaseTab):
                 key = prefix + suffix
                 self.param_entries[key] = entry(T, f"field_tip.irreducibility_layout_{key}",
                     row, T(f"research_irreducibility.{lab}"), str(DEFAULTS["A"][1][key]),
-                    f"research.irreducibility.ranges_{key}", width=5, on_return=self.show)
+                    f"research.irreducibility.ranges_{key}", width=5, on_return=show,
+                    minimum=LAYOUT_MINIMA[key])
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(4, 4))
-        ttk.Button(row, text=T("research_irreducibility.show_ranges"),
-                   command=self.show).pack(side="left")
+        self.show_button = ttk.Button(row, text=T("research_irreducibility.show_ranges"),
+                                      command=show)
+        self.show_button.pack(side="left")
         self.from_a_button = ttk.Button(row, text=T("research_irreducibility.take_from_a"),
                                         command=lambda: self.take_from("A"))
         self.from_a_button.pack(side="left", padx=(8, 0))
@@ -71,11 +76,13 @@ class RangesView(BaseTab):
                       padx=6, pady=(0, 4))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=6, pady=(0, 4))
+        find = refusing(self, lambda: [self.n_entry], self.find)
         self.n_entry = entry(T, "field_tip.irreducibility_fit_n",
                              row, "n", "1" + "0" * 24, "research.irreducibility.fit_n", width=34,
-                             on_return=self.find)
-        ttk.Button(row, text=T("research_irreducibility.find"), command=self.find).pack(
-            side="left")
+                             on_return=find, minimum=1)
+        self.find_button = ttk.Button(row, text=T("research_irreducibility.find"),
+                                      command=find)
+        self.find_button.pack(side="left")
         self.fit_note_var = tk.StringVar()
         wrapped_label(self, textvariable=self.fit_note_var, style="Hint.TLabel", padx=6)
         frame = ttk.Frame(self)
@@ -108,7 +115,7 @@ class RangesView(BaseTab):
         for key, e in self.param_entries.items():
             e.delete(0, "end")
             e.insert(0, self.numbers.layout_var(side, key).get())
-        self.show()
+        self._show_command()
 
     def show(self):
         T = self.T

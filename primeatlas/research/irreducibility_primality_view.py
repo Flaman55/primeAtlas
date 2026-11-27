@@ -26,7 +26,7 @@ from .irreducibility_cases_window import show_cases
 from .irreducibility_numbers import blocks_text, layout_info
 from .irreducibility_primality import PrimalityRun, fit_target, square_test_holds
 from .irreducibility_selftest import primality_test
-from .irreducibility_widgets import entry, wrapped_label
+from .irreducibility_widgets import entry, refusing, wrapped_label
 
 DEFAULT_FUEL = 10 ** 6
 """Divisors tried before a run gives up; arbitrary."""
@@ -63,11 +63,13 @@ class PrimalityView(BaseTab):
         box.pack(fill="x", padx=6)
         row = ttk.Frame(box)
         row.pack(fill="x", padx=6, pady=(4, 2))
+        start = refusing(self, lambda: [self.number_entry, self.fuel_entry], self.start)
         self.number_entry = entry(T, "field_tip.irreducibility_number",
                                   row, "", "", width=34, textvariable=numbers.number_var("A"),
-                                  on_return=self.start)
+                                  on_return=start, minimum=0)
         self.fit_button = ttk.Button(row, text=T("research_irreducibility.primality_fit"),
-                                     command=self.fit)
+                                     command=refusing(self, lambda: [self.number_entry],
+                                                      self.fit))
         self.fit_button.pack(side="left")
         self.info_var = tk.StringVar()
         wrapped_label(box, textvariable=self.info_var, style="Hint.TLabel", padx=6, pady=(2, 2))
@@ -80,9 +82,9 @@ class PrimalityView(BaseTab):
         self.fuel_entry = entry(T, "field_tip.irreducibility_primality_fuel",
                                 row, T("research_irreducibility.primality_fuel"),
                                 str(DEFAULT_FUEL), "research.irreducibility.primality_fuel",
-                                width=12, on_return=self.start)
+                                width=12, on_return=start, minimum=1)
         self.run_button = ttk.Button(row, text=T("research_irreducibility.primality_run"),
-                                     command=self.start)
+                                     command=start)
         self.run_button.pack(side="left")
         self.stop_button = ttk.Button(row, text=T("research_irreducibility.primality_stop"),
                                       command=self.stop, state="disabled")
