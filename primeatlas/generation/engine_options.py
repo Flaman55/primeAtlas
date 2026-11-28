@@ -131,7 +131,11 @@ DEFAULT_KNOBS = {
 }
 _ZERO_ALLOWED = {"pt1_b", "v7_jump_model_pct", "v7_jump_landing_cost_pct"} | CHECKBOX_KNOBS
 PT1_MAX_B = 2 ** 32 - 1
-_MAX_VALUES = {"pt1_b": PT1_MAX_B, RAM_BUDGET_KNOB: 100, **{k: 1 for k in CHECKBOX_KNOBS}}
+# Bucket memory ceiling in MiB (1 TiB), arbitrary: far above any RAM the runs see, and it keeps
+# bucket_mb * 2**20 inside the engines' c_uint64.
+BUCKET_MB_MAX = 1_048_576
+_MAX_VALUES = {"pt1_b": PT1_MAX_B, RAM_BUDGET_KNOB: 100, **{k: 1 for k in CHECKBOX_KNOBS},
+               **{f"{e}_bucket_mb": BUCKET_MB_MAX for e in BUCKETED_ENGINES}}
 
 # Input ceiling of one run's window count. v4.1 gains nothing from longer tapes; for v5 and
 # v6 the RAM budget is the real limit (1e12 numbers take 62.5 GB in v5, 33 GB in v6); pt1

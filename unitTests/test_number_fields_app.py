@@ -10,11 +10,12 @@ Drives the app (temp storage, launches stubbed). Checks:
   - a red field of another mode does not block the selected one;
   - the same fields in other notations run: Floor "2 5", Width "1 0" hand 25 and 10 windows
     to the launch;
-  - Floor mode's Starting point has the minimum 0: a negative start (-5, -1e3, -10^3) is red,
-    Generate refuses it (twice: two refusals, nothing else), the Floor field is then empty and
-    editable and the engine advice ignores the start; 0 and -0 are fine (floor 0, read-only);
-    negative -> positive -> negative switches the Floor field each time; the planner itself,
-    reached past the refusal, rejects a negative start with its own message and launches nothing.
+  - Floor mode's Starting point has the minimum 10^7 (floors 0..6 hold one window, set by the
+    Floor field): a smaller start (-5, -1e3, -10^3, 0, -0, 9 999 999) is red, Generate refuses
+    it (twice: two refusals, nothing else), the Floor field is then empty and editable and the
+    engine advice ignores the start; 10^7 is fine (floor 7, read-only); negative -> positive ->
+    negative switches the Floor field each time; the planner itself, reached past the refusal,
+    rejects a start below 10^7 with its own message and launches nothing.
 Windows, real display:
     python unitTests/test_number_fields_app.py
 """
@@ -163,7 +164,7 @@ def floor_start_checks(app, gen, errors, launches):
     gen.quick_mode_var.set("floor")
     gen._on_quick_mode_changed()
     gen.quick_floor_width_var.set("1")
-    for text in ("-5", "-1e3", "-10^3"):
+    for text in ("-5", "-1e3", "-10^3", "0", "9999999"):
         var.set(text)
         app.update()
         field = nf.problem_field([var])
@@ -182,25 +183,32 @@ def floor_start_checks(app, gen, errors, launches):
         passed &= check(len(errors) == 1 and T("number_field.fix_field", reason="").split("\n")[0]
                         in errors[0] and not launches,
                         f"Starting point -5, click {click}: refused, nothing launched ({errors})")
-    for text in ("0", "-0"):
+    for text in ("0", "-0", "9999999"):
         var.set(text)
         app.update()
-        passed &= check(nf.problem_field([var]) is None and floor_shown() == ("0", {"readonly"}),
-                        f"Starting point {text}: fine, floor 0 read-only ({floor_shown()})")
+        passed &= check(nf.problem_field([var]) is not None and floor_shown() == ("", {"normal"}),
+                        f"Starting point {text}: red, Floor empty and editable ({floor_shown()})")
+    var.set("10^7")
+    app.update()
+    passed &= check(nf.problem_field([var]) is None and floor_shown() == ("7", {"readonly"}),
+                    f"Starting point 10^7: fine, floor 7 read-only ({floor_shown()})")
     for text, shown in (("-5", ("", {"normal"})), ("123456789", ("8", {"readonly"})),
                         ("-5", ("", {"normal"}))):
         var.set(text)
         app.update()
         passed &= check(floor_shown() == shown,
                         f"Starting point {text} after a change: Floor {floor_shown()}")
-    var.set("-5")
-    app.update()
-    errors.clear()
-    launches.clear()
-    gen._plan_quick_floor()
-    app.update()
-    passed &= check(errors == [T("quick.error_floor_start_negative")] and not launches,
-                    f"the planner rejects a negative start on its own ({errors} {launches})")
+    from primeatlas.core import number_format
+    for text in ("-5", "9999999"):
+        var.set(text)
+        app.update()
+        errors.clear()
+        launches.clear()
+        gen._plan_quick_floor()
+        app.update()
+        passed &= check(errors == [T("quick.error_floor_start_low",
+                                     minimum=number_format.whole(10 ** 7))] and not launches,
+                        f"the planner rejects start {text} on its own ({errors} {launches})")
     var.set("")
     gen.quick_floor_var.set("25")
     app.update()

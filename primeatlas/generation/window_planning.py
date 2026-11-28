@@ -295,6 +295,8 @@ def recommended_digit_sweep_n_locations(base_exponent, window_m, target_windows_
 # primesieve_get_max_stop() call), so this staying correct is not safety-critical, only
 # cosmetic (a stale value here would at worst show/skip the note a run late).
 PRIMESIEVE_MAX_STOP = 2 ** 64 - 1
+# pi(2**64): the largest n libprimesieve's nth prime answers from start 0.
+PRIMESIEVE_MAX_NTH = 425_656_284_035_217_743
 
 
 def plan_storage_fill(start, end, window=QUICK_GEN_MAX_WINDOW_WIDTH, primesieve_max_stop=PRIMESIEVE_MAX_STOP):

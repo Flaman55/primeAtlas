@@ -313,7 +313,7 @@ class QuickGenPanel:
         frame = flow_group(row, 20)
         ttk.Label(frame, text=self.T("quick.field_start")).pack(side="left")
         number_field.attach(ttk.Entry(frame, textvariable=self.quick_floor_start_var, width=20), self.T,
-                            "field_tip.quick_start", minimum=0).entry.pack(
+                            "field_tip.quick_start", minimum=QUICK_GEN_MAX_WINDOW_WIDTH).entry.pack(
             side="left", padx=(6, 0))
         gap_row = ttk.Frame(outer)
         gap_row.grid(row=1, column=0, sticky="w", pady=(4, 0))
@@ -370,11 +370,11 @@ class QuickGenPanel:
         """Gives the Floor field its two roles (see _build_quick_mode_floor's
         docstring): a parseable starting point value makes it a read-only,
         auto-computed "which floor is this number in" display; clearing/blanking it
-        (or typing something unparseable) hands control back to the person, since an
-        empty starting point means "continue this floor" and the app has no other way
-        to know WHICH floor that is. A negative value is no starting point either."""
+        (or typing something unparseable) hands control back to the person: an empty
+        starting point means "continue this floor", and only the person knows WHICH. A value
+        below one window width is none either (floors 0..6, one window, use Floor)."""
         value = _eval_quick_number(self.quick_floor_start_var.get())
-        if value is not None and value < 0:
+        if value is not None and value < QUICK_GEN_MAX_WINDOW_WIDTH:
             value = None
         new_floor_value = "" if value is None else str(digit_count_floor(value))
         new_state = "normal" if value is None else "readonly"

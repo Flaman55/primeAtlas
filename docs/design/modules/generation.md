@@ -214,9 +214,14 @@ Every action of the tab that reads number fields first refuses a red one
 
 A field's minimum is the lowest value its action accepts: the pipeline form's floor 0 and its other
 numbers 1; the k-tuple window, step and MR rounds 1 (0 hangs the sieve or confirms every
-candidate; the run checks it too), its other numbers 0; Floor mode's Starting point 0. A negative
+candidate; the run checks it too), its other numbers 0; Floor mode's Starting point 10^7
+(`QUICK_GEN_MAX_WINDOW_WIDTH`: floors 0..6 hold one window, set by the Floor field). A smaller
 Starting point is no starting point: the Floor field stays editable and empty, the engine
 proposal ignores it, and `_plan_quick_floor` itself refuses it before it reads the floor.
+Upper bounds the engines need: the pipeline form's floor stops at `QUICK_FLOOR_MAX` (35, like
+every other floor field; the v5-v7 base splits into two `c_uint64` and would wrap from floor
+38), and the v5, v6 and v7 bucket memory at `engine_options.BUCKET_MB_MAX` (1 048 576 MiB, an
+arbitrary ceiling that keeps `bucket_mb * 2**20` inside the engines' `c_uint64`).
 
 ## Pipeline form
 
