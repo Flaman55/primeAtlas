@@ -5,7 +5,9 @@ atoms, Comparison, Comb reading, Ranges, Arithmetic, Primality, Multiplicative c
 pure logic is tested in test_irreducibility_core.py and test_irreducibility_blocks.py; this
 file exercises the tkinter wiring: what each sub-tab computes on opening, its buttons, input
 errors, the numbers A and B shared by Comparison, Ranges, Arithmetic and Primality, the
-repository links, remembered fields and both locales.
+repository links, remembered fields and both locales, and numbers past Python's 4300-digit
+str/int limit: a layout whose W has about 8700 digits in every sub-tab's info line, A and B
+fields of 4301 to 100000 digits, Random on that layout, A^(e) past 4300 digits.
 
 Builds the real app (same approach as test_research_pi_approx_tab.py), with the storage
 folder and remembered fields isolated by app_sandbox.isolate_app().
@@ -594,6 +596,88 @@ def app_translator():
     return _dyn.TRANSLATOR
 
 
+BIG_LAYOUT = dict(ds=2, dz=50, dc=400, ks=20002, kz=1, kc=1)
+
+
+def _set_layout_of(nums, side, params):
+    for key, value in params.items():
+        nums.layout_var(side, key).set(str(value))
+
+
+def test_big_numbers(app, tab, T):
+    from primeatlas.research.irreducibility_numbers import DEFAULTS
+    errors = []
+    app.report_callback_exception = lambda *a: errors.append(a[1])
+
+    def attempt(action):
+        """Runs action, an exception counted like one in a Tk callback."""
+        errors.clear()
+        try:
+            action()
+            app.update()
+        except Exception as error:  # noqa: BLE001
+            errors.append(error)
+
+    nums = tab.numbers
+    attempt(lambda: [_set_layout_of(nums, side, BIG_LAYOUT) for side in ("A", "B")])
+    for name, var in (("Comparison A", tab.compare_view.sides["A"].info_var),
+                      ("Arithmetic A", tab.arith_view._layout_vars["A"]),
+                      ("Primality", tab.primality_view.info_var)):
+        check("·10^" in var.get() and not errors,
+              f"{name}: the info line of a W with ~8700 digits ({errors[:1]})")
+    r = tab.ranges_view
+    for key, value in BIG_LAYOUT.items():
+        _set(r.param_entries[key], str(value))
+    attempt(r.show)
+    check("·10^" in r.ranges_var.get() and not errors,
+          f"Ranges: the info line of a W with ~8700 digits ({errors[:1]})")
+
+    v = tab.compare_view
+    field = v.sides["A"].number_entry.number_field
+    for digits in (4301, 50000, 100000, 100001):
+        attempt(lambda: (nums.number_var("A").set("1" + "0" * (digits - 1)),
+                         field.refresh(at_once=True)))
+        red = digits > 100000
+        check((field.problem is not None) == red and not errors,
+              f"A field with a {digits}-digit number is {'red' if red else 'accepted'} "
+              f"({field.problem}, {errors[:1]})")
+    attempt(lambda: (nums.number_var("A").set("1" + "0" * 4300),
+                     nums.number_var("B").set("1" + "0" * 4300 + "1"), v.run_compare()))
+    check(v.verdict_var.get() == "A < B" and v.oracle_ok is True and not errors,
+          f"4301-digit A and B compare ({errors[:1]})")
+    attempt(v.random_button.invoke)
+    try:
+        a, b = int(nums.number_var("A").get()), int(nums.number_var("B").get())
+    except ValueError:
+        a, b = 0, -1
+    check(b - a in (0, 1) and a.bit_length() > 4300 * 3 and v.oracle_ok is True and not errors,
+          f"Random on a W with ~8700 digits fills A, B and compares ({errors[:1]})")
+
+    ar = tab.arith_view
+    attempt(lambda: (_set_layout_of(nums, "A", DEFAULTS["A"][1]),
+                     nums.number_var("A").set(DEFAULTS["A"][0])))
+    for e in ("607", "10000"):
+        _set(ar.e_entry, e)
+        attempt(ar.pow_button.invoke)
+        check(ar.last_check is True and not errors,
+              f"A^({e}) of the default A: the line and the check ({errors[:1]})")
+    template = T("research_irreducibility.pow_wraps")
+    check("about {digits}" in template or "około {digits}" in template,
+          f"a wrapping A^(e) gives its digits as about N ({template!r})")
+    check(template.split("{")[0] in ar.output_text(), "the A^(10000) output holds that line")
+
+    def restore():
+        for side in ("A", "B"):
+            _set_layout_of(nums, side, DEFAULTS[side][1])
+            nums.number_var(side).set(DEFAULTS[side][0])
+        _set(ar.e_entry, "3")
+        for key, value in DEFAULTS["A"][1].items():
+            _set(r.param_entries[key], str(value))
+        r.show()
+    attempt(restore)
+    del app.report_callback_exception
+
+
 def test_links(app, tab):
     import webbrowser
     opened = []
@@ -683,6 +767,7 @@ def main():
         test_arith(app, tab, T)
         test_primality(app, tab, T)
         test_multiplicative(app, tab, T)
+        test_big_numbers(app, tab, T)
         test_links(app, tab)
         test_remembered(app, tab, _dyn.TRANSLATOR)
         test_wiring_and_locales(app)

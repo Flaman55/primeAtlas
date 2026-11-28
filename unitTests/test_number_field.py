@@ -25,7 +25,8 @@ Rules checked, for a field with a StringVar and for a bare entry:
     not a usable value (invalid, ambiguous or out of range), so a run can refuse it; it also
     takes the fields' widgets (a bare entry has no variable) and reads the text they show now;
   - the tip starts with what the field is for (attach requires a purpose key), then its
-    range in grouped digits in the app's notation (also in the range reason); the notation
+    range in grouped digits in the app's notation (also in the range reason), a bound of
+    more than SHORT_BOUND_DIGITS digits as d·10^k or d·10^k − 1 when that is shorter; the notation
     help shows only with no maximum or a maximum of at least 10^6, otherwise one short line of
     the power and scientific forms (a callable maximum is read when the tip shows), the fraction line only on a fraction field;
   - a field destroyed right after it was left (a closed dialog) leaves no error behind; every text exists in English and Polish.
@@ -36,6 +37,9 @@ import os
 import sys
 import tkinter as tk
 from tkinter import ttk
+
+# Bounds written short hold · and −, which a cp1250 console cannot print.
+sys.stdout.reconfigure(errors="backslashreplace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -337,6 +341,25 @@ def purpose_checks(root, nf, translators):
                                                    high="1,000,000"), True, "a maximum of 10^6"),
             ({"minimum": 0.5, "maximum": 2.5, "fraction": True},
              T("number_field.range_both", low="0.5", high="2.5"), False, "fraction bounds"),
+            ({"maximum": 2 ** 64}, T("number_field.range_max", high="18,446,744,073,709,551,616"),
+             True, "a 20-digit maximum in full"),
+            ({"maximum": 10 ** 29}, T("number_field.range_max", high="100," + "000," * 8 + "000"),
+             True, "a 30-digit maximum of the d·10^k form in full"),
+            ({"maximum": 10 ** 30}, T("number_field.range_max", high="10^30"), True,
+             "a 31-digit one written short"),
+            ({"maximum": 10 ** 36 - 1}, T("number_field.range_max", high="10^36 − 1"), True,
+             "10^36 - 1 written short"),
+            ({"maximum": 9 * 10 ** 99999 - 1}, T("number_field.range_max",
+                                                  high="9·10^99999 − 1"), True,
+             "9·10^99999 - 1 written short"),
+            ({"maximum": 1250 * 10 ** 40}, T("number_field.range_max", high="125·10^41"),
+             True, "1250·10^40 written short as 125·10^41"),
+            ({"maximum": 1234567 * 10 ** 40}, T("number_field.range_max",
+                                                 high="1,234,567·10^40"),
+             True, "a grouped mantissa"),
+            ({"maximum": 10 ** 40 + 7}, T("number_field.range_max", high="10,000,000,000,000,"
+                                          "000,000,000,000,000,000,000,000,007"), True,
+             "a bound of no short form in full"),
         )
         starts = tuple(T(f"number_field.{key}", low="\0", high="\0").split("\0")[0]
                        for key in ("range_both", "range_min", "range_max"))
@@ -344,7 +367,7 @@ def purpose_checks(root, nf, translators):
             entry, field, tip = _tip_of(root, nf, T, **options)
             ranges = [l for l in tip.split("\n") if l.startswith(starts)]
             passed &= check(ranges == ([line] if line else []),
-                            f"{what}: range line {line!r} ({ranges})")
+                            f"{what}: range line {line!r} ({str(ranges)[:120]})")
             passed &= check((T("number_field.help") in tip) == help_shown,
                             f"{what}: notation help {'shown' if help_shown else 'left out'}")
             passed &= check((T("number_field.help_short") in tip) != help_shown,
@@ -352,6 +375,14 @@ def purpose_checks(root, nf, translators):
             passed &= check((T("number_field.help_fraction") in tip) == bool(
                 options.get("fraction")), f"{what}: fraction line only on a fraction field")
             entry.destroy()
+        entry, field, _tip = _tip_of(root, nf, T, maximum=9 * 10 ** 99999 - 1)
+        entry.insert(0, "9*10^99999")
+        field.refresh(at_once=True)
+        tip = field.tip.text()
+        passed &= check(field.problem == "range" and len(tip) < 2000
+                        and T("number_field.reason_max", high="9·10^99999 − 1") in tip,
+                        f"a 100000-digit maximum: the reason names it short ({len(tip)} chars)")
+        entry.destroy()
         cap = [500]
         entry, field, tip = _tip_of(root, nf, T, minimum=1, maximum=lambda: cap[0])
         cap[0] = 2 * 10 ** 6

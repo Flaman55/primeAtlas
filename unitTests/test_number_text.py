@@ -18,7 +18,10 @@ Rules checked:
     are read case-insensitively as themselves;
   - plain_number gives the plain digits a reading stands for, or the stripped text when it
     is not ok, so code that reads plain integers keeps its own error messages;
-  - _eval_quick_number returns the value only when the reading is unambiguous.
+  - _eval_quick_number returns the value only when the reading is unambiguous;
+  - a value has at most MAX_DIGITS digits, whether typed out, a power or a whole expression:
+    beyond it TOO_LARGE, never an exception (Python's 4300-digit str/int limit is lifted by
+    the primeatlas package), and plain_number gives all its digits.
     python unitTests/test_number_text.py
 """
 import os
@@ -126,6 +129,50 @@ INVALID = (
 )
 
 
+def big_number_checks(nt):
+    """Values from 4300 to MAX_DIGITS digits read exactly; one digit more is TOO_LARGE."""
+    top = nt.MAX_DIGITS
+    passed = True
+
+    def shown(r):
+        return f"{r.state} {r.reason}" if isinstance(r, nt.Reading) else repr(r)[:80]
+
+    for text, want, label in (("1" + "0" * 4999, 10 ** 4999, "a typed 5000-digit number"),
+                              ("9" * top, 10 ** top - 1, f"a typed {top}-digit number"),
+                              ("0000" + "9" * top, 10 ** top - 1, "leading zeros do not count"),
+                              (f"9*10^{top - 1}", 9 * 10 ** (top - 1), f"a {top}-digit product"),
+                              (f"10^{top}-1", 10 ** top - 1,
+                               "an expression passing through a larger value")):
+        try:
+            r = nt.read_number(text)
+            ok = r.state == nt.OK and r.value == want and nt.plain_number(text) == str(want)
+        except Exception as error:  # noqa: BLE001
+            ok, r = False, error
+        passed &= check(ok, f"{label} reads exactly, plain_number gives its digits "
+                            f"({shown(r)})")
+    for text, kw, label in (("1" + "0" * top, {}, f"a typed {top + 1}-digit number"),
+                            (f"10^{top}", {}, "a power one digit past"),
+                            (f"10^{top - 1}*10^{top - 1}", {}, "a product past"),
+                            (f"-10^{top}", {}, "a negative value past"),
+                            (f"10^{top}*3/2", {"fraction": True}, "a fraction past")):
+        try:
+            r = nt.read_number(text, **kw)
+            ok = r.state == nt.INVALID and r.reason == nt.TOO_LARGE
+        except Exception as error:  # noqa: BLE001
+            ok, r = False, error
+        passed &= check(ok, f"{label}: TOO_LARGE, no exception ({shown(r)})")
+    start = time.perf_counter()
+    try:
+        nt.read_number("7" * top)
+        nt.read_number("1" + "0" * (10 * top))
+        seconds = time.perf_counter() - start
+    except Exception:  # noqa: BLE001
+        seconds = float("inf")
+    passed &= check(seconds < 1.0, f"reading {top} and {10 * top + 1} typed digits takes "
+                                   f"under 1 s ({seconds:.2f} s)")
+    return passed
+
+
 def main():
     from primeatlas.core import number_text as nt
     from primeatlas.generation.quick_number import _eval_quick_number
@@ -197,6 +244,7 @@ def main():
                     and _eval_quick_number("10^25+3") == F25 + 3
                     and _eval_quick_number("1,5") is None and _eval_quick_number("") is None,
                     "_eval_quick_number: the value when unambiguous, else None")
+    passed &= big_number_checks(nt)
     print("ALL CHECKS PASSED" if passed else "SOME CHECKS FAILED")
     return 0 if passed else 1
 

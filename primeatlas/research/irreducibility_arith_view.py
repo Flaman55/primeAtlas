@@ -317,11 +317,12 @@ class ArithView(BaseTab):
             self._residues(out["moduli"], out["residues"])
             self._line(T("research_irreducibility.pow_rhythm", mu=out["preperiod"],
                          period=f(out["period"])))
-            xe = x ** e
-            self._line(T("research_irreducibility.pow_fits" if xe < w
-                         else "research_irreducibility.pow_wraps", e=e, digits=len(str(xe)),
+            fits, digits = ops.power_size(x, e, w)
+            self._line(T("research_irreducibility.pow_fits" if fits
+                         else "research_irreducibility.pow_wraps", e=e, digits=digits,
                          w_digits=layout.digit_count(w)))
-            self._check(ops.residues_match(out["moduli"], out["residues"], xe % w), f(xe % w))
+            xe = pow(x, e, w)
+            self._check(ops.residues_match(out["moduli"], out["residues"], xe), f(xe))
         self._run(body)
 
     def chapters(self):

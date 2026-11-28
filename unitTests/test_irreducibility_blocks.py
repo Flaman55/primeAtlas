@@ -5,7 +5,11 @@ interval atoms, arithmetic; mirrors Defs.lean), irreducibility_layout.py (block 
 fitting a layout to a number, the parameter sweep), irreducibility_ops.py (the operations
 shown in the Arithmetic sub-tab), irreducibility_primality.py (a run of isPrimeRes in slices,
 for the Primality sub-tab) and irreducibility_selftest.py (the random self-tests).
-Every result is compared with plain integer arithmetic.
+Every result is compared with plain integer arithmetic. Numbers past Python's 4300-digit
+str/int limit (lifted by the primeatlas package) are shown, counted and powered without an
+exception: fmt_big, digit_count, layout_info of a layout whose W has about 8700 digits, and
+power_size, which tells whether A^e fits W exactly and its digits (exact when it fits, from
+the logarithm otherwise) without forming a huge A^e.
 
 Usage:
     python unitTests/test_irreducibility_blocks.py
@@ -223,6 +227,62 @@ def test_layout():
           "sweep: values below the minimum (start 2, size 1) are empty")
     check(layout.fmt_big(1234567) == "1,234,567"
           and layout.fmt_big(10 ** 24) == "1.000·10^24", "fmt_big: grouped, or mantissa·10^e")
+
+
+def _info_T(key, **kw):
+    return key + " " + " ".join(f"{k}={v}" for k, v in kw.items())
+
+
+def test_big_numbers():
+    import time
+    from primeatlas.research.irreducibility_numbers import layout_info
+    w = 10 ** 5000
+    try:
+        ok = (layout.fmt_big(w) == "1.000·10^5000"
+              and layout.fmt_big(1234 * 10 ** 4996 + 5) == "1.234·10^4999"
+              and layout.digit_count(w) == 5000 and layout.digit_count(w + 1) == 5001)
+    except ValueError as error:
+        ok = repr(error)[:60]
+    check(ok is True, f"fmt_big and digit_count past 4300 digits ({ok})")
+    D, K = layout.blocks(2, 50, 400), layout.blocks(20002, 1, 1)
+    big_w = layout.capacity(D, K)
+    try:
+        text = layout_info(_info_T, D, K, 12345678)
+        ok = "·10^" in text and f"digits={len(str(big_w - 1))}" in text
+    except ValueError as error:
+        text, ok = repr(error)[:60], False
+    check(ok and big_w.bit_length() > 4300 * 3.33,
+          f"layout_info of ds=2, dz=50, dc=400: W as m.mmm·10^e and its digits ({text[:90]!r})")
+
+    size = getattr(ops, "power_size", None)
+    check(size is not None, "irreducibility_ops.power_size exists")
+    if size is None:
+        return
+    x = 12345678
+    X = x ** 3
+    check(size(x, 3, X + 1) == (True, len(str(X))) and size(x, 3, X)[0] is False
+          and size(x, 3, X - 1)[0] is False,
+          "power_size: A^e = W - 1 fits with its exact digits, A^e = W and W + 1 wrap")
+    check(size(0, 5, 7) == (True, 1) and size(1, 10000, 2) == (True, 1)
+          and size(1, 1, 1)[0] is False and size(7, 1, 8) == (True, 1),
+          "power_size: A = 0 and A = 1, e = 1")
+    worst = 0
+    for a in (2, 3, 7, 10, 99, 12345678, 10 ** 12 - 1, 3 ** 200):
+        for e in (1, 2, 538, 600, 4999, 10000):
+            fits, digits = size(a, e, 2520)
+            if a ** e < 2520:
+                continue
+            worst = max(worst, abs(digits - len(str(a ** e))))
+            if fits:
+                worst = 99
+    check(worst <= 1, f"power_size: a wrapping A^e has its digits from the logarithm, at most "
+                      f"one off (worst {worst})")
+    start = time.perf_counter()
+    fits, digits = size(10 ** 4000 + 7, 10000, big_w)
+    seconds = time.perf_counter() - start
+    check(not fits and abs(digits - 40_000_001) <= 1 and seconds < 1.0,
+          f"power_size: a 4000-digit A to e = 10000 wraps, about 40,000,001 digits, in under "
+          f"1 s ({digits}, {seconds:.2f} s)")
 
 
 def test_ops():
@@ -555,6 +615,7 @@ def main():
     test_atoms()
     test_arithmetic()
     test_layout()
+    test_big_numbers()
     test_ops()
     test_is_prime_res()
     test_primality_run()

@@ -7,8 +7,11 @@ rhythm of A, A^2, ..., division (exact, or the solutions of b x = A mod W), the 
 
 The results are residues computed by irreducibility_residues.py. Periods are lcm values of
 per-modulus cycles and the appended-power rows are lcm values: those are formed here, as is
-residues_match, the check against a value computed with ordinary integers.
+residues_match, the check against a value computed with ordinary integers, and power_size,
+which places the integer A^e against W without forming it when it is far larger.
 """
+import math
+
 from .irreducibility_core import euclid, prod_mod
 from .irreducibility_layout import lcm_all
 from . import irreducibility_residues as res
@@ -67,6 +70,20 @@ def op_pow(x, e):
     mu, lam = _rhythm(moduli, xs, xs)
     return {"moduli": moduli, "residues": [pow(s, e, m) for m, s in zip(moduli, xs)],
             "preperiod": mu, "period": lam}
+
+
+def power_size(x, e, w):
+    """(fits, digits) of the integer x^e against w: fits when x^e < w, exact. digits is exact
+    when it fits, else floor(e * log10 x) + 1, at most one off. x^e is formed only when
+    e * (bits(x) - 1) < bits(w), so it has at most e bits more than w; a larger one is past w
+    already."""
+    if e * max(x.bit_length() - 1, 0) < w.bit_length():
+        xe = x ** e
+        if xe < w:
+            return True, len(str(xe))
+    if x < 2:
+        return False, 1
+    return False, math.floor(e * math.log10(x)) + 1
 
 
 def op_div(x, b):

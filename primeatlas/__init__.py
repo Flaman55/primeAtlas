@@ -16,8 +16,17 @@ one pure-logic module per feature (window_planning.py, engine_argv.py, ... /gene
 benchmark.py/benchmark_tab.py, constellations.py/constellations_*_tab.py,
 research_goldbach.py/research_goldbach_tab.py) -- see each module's own docstring for
 details, and README.md for the overall picture.
+
+Importing the package lifts Python's 4300-digit limit on int <-> str conversion:
+core.number_text bounds every value read from a field at MAX_DIGITS digits, and code that
+computes larger values bounds them itself (A^e in Research -> Irreducibility is sized by
+its logarithm), so every number the app holds can be shown.
 """
-from .core.app_settings import AppSettings
+import sys
+
+sys.set_int_max_str_digits(0)
+
+from .core.app_settings import AppSettings  # noqa: E402
 from .core.theme import THEMES, DEFAULT_THEME, palette_for
 from .settings.manifest import FloorSnapshot, ConstellationSnapshot, BackupManifest
 from .settings.backup_store import BackupStore

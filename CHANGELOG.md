@@ -321,6 +321,33 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   niewyrównaniu, teraz jest czerwony, nie wypełnia pola Piętro, a Generuj go odrzuca; piętra
   od 0 do 6 ustawia się polem Piętro.
 
+### +18 — Numbers past 4300 digits: no more crashes in Irreducibility, the calculator, Factorize and number fields
+
+- English: Numbers longer than 4300 digits no longer break the app. Before, Python refused to
+  write them out and the action stopped with no message. Now a number field takes up to
+  100 000 digits, typed out, as a power or as a whole expression, and turns red past that
+  (before, a long typed number raised an error and an expression could go past the limit).
+  Irreducibility shows the info line of a layout whose W has thousands of digits in every
+  sub-tab, and Random works on such a layout. A^(e) in Arithmetic gives the exact digits when
+  A^e fits W, else about how many digits it has, worked out from the logarithm, and no longer
+  freezes the window building a huge A^e. The constellation calculator's exponent goes up to
+  99 999 and its offset up to 9·10^e − 1, so 10^e + offset stays on floor e (before, a huge
+  exponent froze the window). Factorize shows a number and factors of any length in full,
+  ready to copy. A field's tip and refusal write a bound longer than 30 digits short, e.g.
+  9·10^99999 − 1.
+- Polski: Liczby dłuższe niż 4300 cyfr już nie psują aplikacji. Wcześniej Python odmawiał ich
+  zapisania i akcja przerywała się bez komunikatu. Teraz pole liczby przyjmuje do 100 000
+  cyfr, wpisanych wprost, jako potęga albo jako całe wyrażenie, a za tą granicą robi się
+  czerwone (wcześniej długa wpisana liczba powodowała błąd, a wyrażenie mogło przekroczyć
+  granicę). Nieredukowalność pokazuje linię informacji o układzie, którego W ma tysiące cyfr, w
+  każdej podkarcie, a Losuj działa na takim układzie. A^(e) w Arytmetyce podaje dokładną liczbę
+  cyfr, gdy A^e mieści się w W, a w przeciwnym razie około ilu cyfr ma, z logarytmu, i nie
+  zamraża już okna budowaniem ogromnego A^e. Wykładnik w kalkulatorze konstelacji sięga
+  99 999, a przesunięcie 9·10^e − 1, więc 10^e + przesunięcie zostaje na piętrze e (wcześniej
+  ogromny wykładnik zamrażał okno). Rozkład pokazuje liczbę i czynniki dowolnej długości w
+  całości, gotowe do skopiowania. Dymek pola i komunikat odmowy zapisują granicę dłuższą niż
+  30 cyfr krótko, np. 9·10^99999 − 1.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

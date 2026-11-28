@@ -16,7 +16,12 @@ Drives the real app (temp storage, launches stubbed) with test_field_refusal_app
     and start 0, a and x 0, b 1, calculator exponent and offset 0; searches 0, export pages
     and every Go 1;
   - the primesieve calculator's fields stop at libprimesieve's uint64 range: a, start and x at
-    2^64 - 1, b at 2^64, n at pi(2^64); one past is red and Compute refuses it.
+    2^64 - 1, b at 2^64, n at pi(2^64); one past is red and Compute refuses it;
+  - the constellation calculator's exponent stops at number_text's ceiling, 99 999 (10^e has
+    MAX_DIGITS digits), and the offset at 9*10^e - 1 (10^e + offset stays on floor e); one
+    past is red and Compute refuses it at once; at both tops Compute lists every number with
+    all its digits and Search selected raises nothing;
+  - Factorize shows a number and factors past 4300 digits whole, the factors copyable.
 Windows, real display:
     python unitTests/test_field_refusal_tools_app.py
 """
@@ -24,6 +29,9 @@ import os
 import shutil
 import sys
 import tempfile
+
+# Refusals of long bounds hold · and −, which a cp1250 console cannot print.
+sys.stdout.reconfigure(errors="backslashreplace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -302,6 +310,109 @@ def primesieve_bound_checks(h, app):
     return passed
 
 
+def _recording_callback_errors(app):
+    errors = []
+    app.report_callback_exception = lambda *a: errors.append(a[1])
+    return errors
+
+
+def calc_bound_checks(h, app):
+    calc = app.constellations_calc_tab_widget
+    errors = _recording_callback_errors(app)
+    passed = True
+    olds = {calc.exp_entry: calc.exp_entry.get(), calc.offset_entry: calc.offset_entry.get()}
+    for label, exp, offset, red in (
+            ("exponent 99999", "99999", "0", None),
+            ("exponent 100000", "100000", "0", calc.exp_entry),
+            ("exponent 10^30", "10^30", "0", calc.exp_entry),
+            ("offset 8999 on exponent 3", "3", "8999", None),
+            ("offset 9000 on exponent 3", "3", "9000", calc.offset_entry),
+            ("offset 9*10^99999-1 on exponent 99999", "99999", "9*10^99999-1", None),
+            ("offset 9*10^99999 on exponent 99999", "99999", "9*10^99999", calc.offset_entry)):
+        _set_text(calc.exp_entry, exp)
+        _set_text(calc.offset_entry, offset)
+        problems = {e: (e.number_field.refresh(at_once=True), e.number_field.problem)[1]
+                    for e in (calc.exp_entry, calc.offset_entry)}
+        ok = all((problems[e] == "range") == (e is red) for e in problems)
+        shown = {("exponent" if e is calc.exp_entry else "offset"): p for e, p in problems.items()}
+        passed &= check(ok, f"calculator {label}: {'red' if red else 'passes'} ({shown})")
+        if red is None or problems[red] != "range":
+            continue  # an unbounded exponent of 10^30 would hang the Compute below
+        h.errors.clear()
+        calc.compute_button.invoke()
+        app.update()
+        passed &= check(len(h.errors) == 1 and not errors,
+                        f"calculator {label}: Compute refuses it ({h.errors[:1]}, {errors[:1]})")
+    for exp, offset in (("99999", "9*10^99999-1"), ("35", "0")):
+        _set_text(calc.exp_entry, exp)
+        _set_text(calc.offset_entry, offset)
+        errors.clear()
+        h.errors.clear()
+        calc.compute_button.invoke()
+        app.update()
+        rows = [calc.results_tree.item(i, "values") for i in calc.results_tree.get_children()]
+        digits = int(exp) + 1
+        whole = bool(rows) and all(sum(c.isdigit() for c in str(r[1])) >= digits for r in rows)
+        passed &= check(whole and not errors and not h.errors,
+                        f"calculator Compute at exponent {exp}, offset {offset}: every number "
+                        f"with all its digits ({len(rows)} rows, {errors[:1]} {h.errors[:1]})")
+        if rows:
+            calc.results_tree.selection_set(calc.results_tree.get_children()[0])
+            errors.clear()
+            try:
+                calc.search_selected()
+                app.update()
+            except Exception as error:  # noqa: BLE001
+                errors.append(error)
+            passed &= check(not errors, f"calculator Search selected at exponent {exp} raises "
+                                        f"nothing ({errors[:1]})")
+    for entry, old in olds.items():
+        _set_text(entry, old)
+    h.errors.clear()
+    h.dialogs.clear()
+    del app.report_callback_exception
+    return passed
+
+
+def big_factor_checks(h, app):
+    import time
+    pri = app.primality_tab_widget
+    errors = _recording_callback_errors(app)
+    passed = True
+    old = _set_text(pri.primality_number_entry, "2*10^4999")
+    pri.primality_factor_result_var.set("")
+    pri.primality_factorize_button.invoke()
+    deadline = time.monotonic() + 60
+    while pri._primality_busy and time.monotonic() < deadline:
+        app.update()
+        time.sleep(0.02)
+    app.update()
+    text = pri.primality_factor_result_var.get()
+    passed &= check(pri.primality_factors_only_var.get() == "2^5000 x 5^4999"
+                    and sum(c.isdigit() for c in text.split("=")[0]) == 5000
+                    and not errors and not h.errors,
+                    f"Factorize 2*10^4999: the 5000-digit number in full and its factors "
+                    f"({text[-60:]!r}, {errors[:1]} {h.errors[:1]})")
+    big = 10 ** 4999 + 9
+    errors.clear()
+    try:
+        pri._primality_show_factorize_result(
+            2 * big, {"pairs": [(2, 1), (big, 1)], "method": "sympy", "complete": False,
+                      "seconds": 0.5})
+        app.update()
+    except Exception as error:  # noqa: BLE001
+        errors.append(error)
+    passed &= check(not errors and pri.primality_factors_only_var.get() == "2 x " + str(big)
+                    if not errors else False,
+                    f"a 5000-digit factor is shown and copyable in full ({errors[:1]})")
+    _set_text(pri.primality_number_entry, old)
+    pri.primality_factor_result_var.set("")
+    pri.primality_factors_only_var.set("")
+    h.errors.clear()
+    del app.report_callback_exception
+    return passed
+
+
 def main():
     import prime_atlas_v2
     from tkinter import messagebox
@@ -331,6 +442,8 @@ def main():
         passed &= pager_unit_checks(h, app)
         passed &= minimum_checks(app)
         passed &= primesieve_bound_checks(h, app)
+        passed &= calc_bound_checks(h, app)
+        passed &= big_factor_checks(h, app)
     finally:
         if app is not None:
             try:

@@ -44,6 +44,7 @@ from tkinter import ttk, messagebox
 
 from ..core import number_field
 from ..core import number_format
+from ..core.number_text import MAX_DIGITS
 from ..core import ui_state_dynamic
 from ..core.base_tab import BaseTab
 from ..core.widgets import HeightGrip, StripedTreeview
@@ -55,6 +56,9 @@ from .pattern_picker import PatternPicker
 
 # The selected variant's id (the combo shows translated labels of the current k's variants).
 _VARIANT_KEY = "constellations.calc.variant_id"
+
+# 10^EXP_MAX has MAX_DIGITS digits, the most a number field holds.
+EXP_MAX = MAX_DIGITS - 1
 
 
 class ConstellationsCalcTab(BaseTab):
@@ -128,12 +132,16 @@ class ConstellationsCalcTab(BaseTab):
         input_row.pack(fill="x", pady=(0, 8))
         ttk.Label(input_row, text=T("const_calc.field_exp")).pack(side="left")
         self.exp_entry = ttk.Entry(input_row, width=10)
-        number_field.attach(self.exp_entry, self.T, "field_tip.const_calc_exp", minimum=0)
+        number_field.attach(self.exp_entry, self.T, "field_tip.const_calc_exp", minimum=0,
+                            maximum=EXP_MAX)
         self.exp_entry.pack(side="left", padx=(6, 16))
         ttk.Label(input_row, text=T("const_calc.field_offset")).pack(side="left")
         self.offset_entry = ttk.Entry(input_row, width=24)
         number_field.attach(self.offset_entry, self.T, "field_tip.const_calc_offset",
-                            minimum=0)
+                            minimum=0, maximum=self._offset_cap)
+        for event in ("<KeyRelease>", "<<Paste>>", "<<Cut>>"):
+            self.exp_entry.bind(event, lambda _e: self.exp_entry.after_idle(
+                self.offset_entry.number_field.refresh), add="+")
         self.offset_entry.pack(side="left", padx=(6, 16))
         remember("constellations.calc.exp", self.exp_entry)
         remember("constellations.calc.offset", self.offset_entry)
@@ -174,6 +182,14 @@ class ConstellationsCalcTab(BaseTab):
             self.picker.k_combo.current(0)
             remember("constellations.calc.k", self.picker.k_combo)
             self.picker.select(k=self.picker.k_combo.get(), variant_id=saved_variant)
+
+    def _offset_cap(self):
+        """9 * 10^exp - 1, so 10^exp + offset stays on floor exp; the exponent's top while the
+        exponent field holds no usable value."""
+        exp = self._eval_quick_number(self.exp_entry.get())
+        if exp is None or not 0 <= exp <= EXP_MAX:
+            exp = EXP_MAX
+        return 9 * 10 ** exp - 1
 
     def _on_compute(self):
         T = self.T

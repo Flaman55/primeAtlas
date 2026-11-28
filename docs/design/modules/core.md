@@ -77,8 +77,10 @@ Theme, language, font scale and ScrollPad width live in `AppSettings`; texts in 
 pasted: grouping by spaces of any kind, apostrophes, underscores, commas or dots (groups of three or
 Indian lakh groups), a decimal comma or dot, powers (`^`, `**`, superscripts, LaTeX braces),
 scientific `1.5E+25`, times signs `* × · 	imes` and `x` before a power of ten, minus signs `- − –`,
-`+ - * / ( )`. Arithmetic is exact (fractions) in a small parser, never `eval`; one power is capped at
-10^100000. A comma or dot that appears once before exactly three digits is tried as grouping and as a
+`+ - * / ( )`. Arithmetic is exact (fractions) in a small parser, never `eval`; a value has at most
+`MAX_DIGITS` = 100 000 digits, typed out, as a power or as the whole expression (more is too large).
+Importing `primeatlas` lifts Python's 4300-digit limit on int <-> str conversion, so every value read
+can be shown; code that computes larger values bounds them itself. A comma or dot that appears once before exactly three digits is tried as grouping and as a
 decimal mark, and only whole results count: one -> ok, several -> ambiguous with the readings
 ("3,000": 3000 or 3), none -> invalid with a reason (not whole, syntax, too large).
 `generation.quick_number._eval_quick_number` returns the value only when it is ok.
@@ -94,7 +96,8 @@ out of range) and the ambiguous popup wait
 once when the field is left. The popup ("Could be:" and a button per reading) shows while the
 field has focus; a click writes the plain digits. Left ambiguous, the field is red and its hover
 tip lists the readings. The hover tip (`InfoTip`, below the field, after `TIP_DELAY_MS`) shows the
-purpose, the range (bounds in grouped digits in the app's notation, `number_format`; a callable
+purpose, the range (bounds in grouped digits in the app's notation, `number_format`, a bound of
+more than `SHORT_BOUND_DIGITS` = 30 digits as d·10^k or d·10^k − 1 where that is shorter; a callable
 maximum is read when the tip shows), the accepted forms only where large numbers belong (no
 maximum, or one of at least `HELP_FROM` = 10^6; elsewhere one line of the power and scientific
 forms), the fraction line on a fraction field and, when

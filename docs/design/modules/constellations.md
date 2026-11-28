@@ -49,7 +49,10 @@ Scan and Density Scan the floor from/to, Records PDF and CSV export the export p
 the calculator's Compute the exponent and offset, Storage Search (button and Enter) the search
 number. An empty field behaves as before (no floor bound, offset 0, the "enter an integer"
 search error). The minima are the lower bounds the actions check: the calculator's exponent and
-offset 0, the search number 0, the export pages 1; the floors have none.
+offset 0, the search number 0, the export pages 1; the floors have none. The calculator's
+exponent stops at 99 999 (`EXP_MAX`: 10^e has `number_text.MAX_DIGITS` digits) and its offset at
+9·10^e − 1, so 10^e + offset stays on floor e; the offset's maximum follows the exponent field
+(the exponent's top while that field holds no usable value).
 
 ## Parameters and texts
 
