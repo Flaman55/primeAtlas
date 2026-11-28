@@ -13,7 +13,10 @@ Drives the real app (temp storage, launches stubbed) with test_field_refusal_app
     page changes nothing, a valid page is shown as before, an empty one does nothing;
   - an empty search field still shows the "enter an integer" error;
   - each field's minimum is the lower bound its action checks: Primality N 2, primesieve n 1
-    and start 0, calculator exponent and offset 0; searches 0, export pages and every Go 1.
+    and start 0, a and x 0, b 1, calculator exponent and offset 0; searches 0, export pages
+    and every Go 1;
+  - the primesieve calculator's fields stop at libprimesieve's uint64 range: a, start and x at
+    2^64 - 1, b at 2^64, n at pi(2^64); one past is red and Compute refuses it.
 Windows, real display:
     python unitTests/test_field_refusal_tools_app.py
 """
@@ -216,6 +219,9 @@ def minimum_checks(app):
     lows = [("primality N", pri.primality_number_entry, 2),
             ("primesieve n", ps.primesieve_calc_n_entry, 1),
             ("primesieve start", ps.primesieve_calc_start_entry, 0),
+            ("primesieve a", ps.primesieve_calc_lo_entry, 0),
+            ("primesieve b", ps.primesieve_calc_hi_entry, 1),
+            ("primesieve x", ps.primesieve_calc_x_entry, 0),
             ("calculator exponent", calc.exp_entry, 0),
             ("calculator offset", calc.offset_entry, 0),
             ("Prime numbers search", app.primes_tab_widget.search_entry, 0),
@@ -230,6 +236,68 @@ def minimum_checks(app):
         at = _problem(entry, str(low)) is None
         _problem(entry, old)
         passed &= check(below and at, f"{label}: minimum {low}")
+    app.update()
+    return passed
+
+
+PI_OF_2_64 = 425_656_284_035_217_743
+
+
+def primesieve_bound_checks(h, app):
+    """The primesieve calculator's fields stop where libprimesieve's uint64 does: a, start and
+    x at 2^64 - 1, b (an open end) at 2^64, n at pi(2^64); one past is red and Compute refuses
+    it with every field's text kept."""
+    ps = app.primesieve_calc_tab_widget
+    passed = True
+    tops = [("primesieve a", ps.primesieve_calc_lo_entry, "2^64-1", "2^64"),
+            ("primesieve b", ps.primesieve_calc_hi_entry, "2^64", "2^64+1"),
+            ("primesieve start", ps.primesieve_calc_start_entry, "2^64-1", "2^64"),
+            ("primesieve x", ps.primesieve_calc_x_entry, "2^64-1", "2^64"),
+            ("primesieve n", ps.primesieve_calc_n_entry, str(PI_OF_2_64), str(PI_OF_2_64 + 1)),
+            ("primesieve a in digits", ps.primesieve_calc_lo_entry, str(2 ** 64 - 1),
+             str(2 ** 64))]
+    for label, entry, top, past in tops:
+        old = entry.get()
+        at = _problem(entry, top) is None
+        over = _problem(entry, past) == "range"
+        _problem(entry, old)
+        passed &= check(at and over, f"{label}: {top} passes, {past} is red")
+
+    T = ps.T
+    refusal = T("number_field.fix_field", reason="").split("\n")[0]
+    codes = [code for code, _label in ps._primesieve_calc_ops]
+    saved = ps.primesieve_calc_op_combo.current()
+    for code, texts in (("count", {ps.primesieve_calc_lo_entry: "2^64",
+                                   ps.primesieve_calc_hi_entry: "2^64+5"}),
+                        ("count", {ps.primesieve_calc_lo_entry: "0",
+                                   ps.primesieve_calc_hi_entry: "10^30"}),
+                        ("count", {ps.primesieve_calc_lo_entry: "-5",
+                                   ps.primesieve_calc_hi_entry: "100"}),
+                        ("next", {ps.primesieve_calc_x_entry: "-5"}),
+                        ("nth", {ps.primesieve_calc_n_entry: str(PI_OF_2_64 + 1),
+                                 ps.primesieve_calc_start_entry: "0"}),
+                        ("nth", {ps.primesieve_calc_n_entry: "1",
+                                 ps.primesieve_calc_start_entry: "10^30"}),
+                        ("next", {ps.primesieve_calc_x_entry: "10^30"}),
+                        ("prev", {ps.primesieve_calc_x_entry: "10^30"})):
+        ps.primesieve_calc_op_combo.current(codes.index(code))
+        ps._on_primesieve_calc_operation_changed()
+        olds = {entry: _set_text(entry, text) for entry, text in texts.items()}
+        app.update()
+        h.errors.clear()
+        h.dialogs.clear()
+        launched = h._guarded(ps.primesieve_calc_button.invoke)
+        app.update()
+        kept = all(entry.get() == text for entry, text in texts.items())
+        passed &= check(len(h.errors) == 1 and refusal in h.errors[0] and not h.dialogs
+                        and not launched and kept and not ps._primesieve_calc_busy,
+                        f"primesieve Compute ({code}) {list(texts.values())}: refused, "
+                        f"nothing launched, the text kept ({h.errors[:1]} launched {launched})")
+        for entry, old in olds.items():
+            _set_text(entry, old)
+    ps.primesieve_calc_op_combo.current(saved)
+    ps._on_primesieve_calc_operation_changed()
+    h.errors.clear()
     app.update()
     return passed
 
@@ -262,6 +330,7 @@ def main():
         passed &= pager_cases(h, app)
         passed &= pager_unit_checks(h, app)
         passed &= minimum_checks(app)
+        passed &= primesieve_bound_checks(h, app)
     finally:
         if app is not None:
             try:

@@ -19,19 +19,19 @@ Generation tab, Section A: the generation pipeline run (orchestrator_loop_v2.py;
 | `engine` | `v7` | one of v4.1, v5, v6, v7, pt1, pt1-pss | `engine_options.py` | Sieve engine: |
 | `v5_segment_kb` | `2048` | integer >= 1 | `engine_options.py` | v5 segment (KiB): |
 | `v5_region_kb` | `1024` | integer >= 1 | `engine_options.py` | v5 bucket region (KiB): |
-| `v5_bucket_mb` | `8192` | integer >= 1 | `engine_options.py` | v5 bucket memory (MiB): |
+| `v5_bucket_mb` | `8192` | integer >= 1, <= 1,048,576 | `engine_options.py` | v5 bucket memory (MiB): |
 | `v5_windows_at_25` | `20000` | integer >= 1 | `engine_options.py` | v5 windows / run @ floor 25: |
 | `v5_pieces_per_thread` | `16` | integer >= 1 | `engine_options.py` | v5 prime pieces / thread: |
 | `v5_write_threads` | `8` | integer 1..WSL's CPU count (a larger one becomes the count) | `engine_options.py` | v5 write threads: |
 | `v6_segment_kb` | `2048` | integer >= 1 | `engine_options.py` | v6 segment (KiB): |
 | `v6_region_kb` | `1024` | integer >= 1 | `engine_options.py` | v6 bucket region (KiB): |
-| `v6_bucket_mb` | `8192` | integer >= 1 | `engine_options.py` | v6 bucket memory (MiB): |
+| `v6_bucket_mb` | `8192` | integer >= 1, <= 1,048,576 | `engine_options.py` | v6 bucket memory (MiB): |
 | `v6_windows_at_25` | `40000` | integer >= 1 | `engine_options.py` | v6 windows / run @ floor 25: |
 | `v6_pieces_per_thread` | `16` | integer >= 1 | `engine_options.py` | v6 prime pieces / thread: |
 | `v6_write_threads` | `8` | integer 1..WSL's CPU count (a larger one becomes the count) | `engine_options.py` | v6 write threads: |
 | `v7_segment_kb` | `2048` | integer >= 1 | `engine_options.py` | v7 segment (KiB): |
 | `v7_region_kb` | `1024` | integer >= 1 | `engine_options.py` | v7 bucket region (KiB): |
-| `v7_bucket_mb` | `8192` | integer >= 1 | `engine_options.py` | v7 bucket memory (MiB): |
+| `v7_bucket_mb` | `8192` | integer >= 1, <= 1,048,576 | `engine_options.py` | v7 bucket memory (MiB): |
 | `v7_windows_at_25` | `40000` | integer >= 1 | `engine_options.py` | v7 windows / run @ floor 25: |
 | `v7_pieces_per_thread` | `16` | integer >= 1 | `engine_options.py` | v7 prime pieces / thread: |
 | `v7_write_threads` | `8` | integer 1..WSL's CPU count (a larger one becomes the count) | `engine_options.py` | v7 write threads: |

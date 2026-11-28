@@ -990,7 +990,7 @@
   "quick.hybrid_error_enter_valid_numbers": "Wprowadź całkowite wartości MAIN i filtra.",
   "quick.error_range_required": "Wypełnij oba pola: Od i Do.",
   "quick.error_range_negative": "Pole Od nie może być mniejsze od 0.",
-  "quick.error_floor_start_negative": "Punkt startowy nie może być mniejszy od 0.",
+  "quick.error_floor_start_low": "Punkt startowy nie może być mniejszy od {minimum}.",
   "quick.error_range_order": "Pole Od musi być mniejsze od pola Do.",
   "quick.error_explore_floor_required": "Podaj piętro, na którym ma kontynuować eksploracja.",
   "quick.error_hybrid_floor_required": "Podaj piętro, na którym hybryda ma kontynuować, albo najpierw wygeneruj magazyn.",

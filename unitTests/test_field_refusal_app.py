@@ -26,6 +26,9 @@ from/to 2 and step 1, Goldbach n and window "to" 2, window "from" and decompose 
 Irreducibility: the numbers A, B and N 0, layout starts 2 and sizes and counts 1 (Comparison
 and Ranges), radices from/to 1, comb a/b 2, Ranges n 1, Arithmetic b 1, T 2, e 1, p 2, n 1,
 Primality fuel 1, Multiplicative q 2 and g 1.
+Bounds the engines need: the pipeline floor at most 35, the v5/v6/v7 bucket memory at most
+1 048 576 MiB (1 TiB) and Quick-gen's Starting point at least 10^7 (a smaller one is red, does
+not fill the Floor field and Generate refuses it); the pipeline Run refuses one past a bound.
 Windows, real display:
     python unitTests/test_field_refusal_app.py
 """
@@ -256,6 +259,87 @@ def minimum_checks(gen):
         at = all(f.problem is None for f in fields)
         var.set(old)
         passed &= check(fields and below and at, f"{section} {key}: minimum {low}")
+    return passed
+
+
+def _problems(var, texts):
+    """The problem of every field of `var` for each text, then the old text back."""
+    fields = _fields_of([var])
+    old = var.get()
+    out = []
+    for text in texts:
+        var.set(text)
+        out.append({f.problem for f in fields} if fields else {"no field"})
+    var.set(old)
+    return out
+
+
+def bound_checks(h, gen):
+    """The pipeline floor stops at 35, the bucket memory at 1 TiB and the Starting point starts
+    at 10^7: the bound passes, one past it is red and refused by the action that reads it."""
+    passed = True
+    floor = gen._loop_vars["base_exponent"]
+    passed &= check(_problems(floor, ("35", "36", "5*7", "6^2")) == [{None}, {"range"}, {None},
+                                                                     {"range"}],
+                    f"pipeline floor: 35 and 5*7 pass, 36 and 6^2 are red "
+                    f"({_problems(floor, ('35', '36', '5*7', '6^2'))})")
+    knobs = gen._engine_fields
+    for engine in ("v5", "v6", "v7"):
+        var = knobs.knob_vars[f"{engine}_bucket_mb"]
+        got = _problems(var, ("1048576", "1048577", "2^20", "2^20+1"))
+        passed &= check(got == [{None}, {"range"}, {None}, {"range"}],
+                        f"{engine} bucket memory: 1 048 576 and 2^20 pass, one more is red ({got})")
+    start = gen.quick_floor_start_var
+    got = _problems(start, ("10000000", "9999999", "10^7", "0"))
+    passed &= check(got == [{None}, {"range"}, {None}, {"range"}],
+                    f"Starting point: 10^7 passes, 9 999 999 and 0 are red ({got})")
+
+    refusal = gen.T("number_field.fix_field", reason="").split("\n")[0]
+
+    def refused(label, action):
+        h.errors.clear()
+        h.dialogs.clear()
+        launched = h._guarded(action)
+        h.app.update()
+        return check(len(h.errors) == 1 and refusal in h.errors[0] and not h.dialogs
+                     and not launched,
+                     f"{label}: one error, nothing launched ({h.errors[:2]} {h.dialogs[:1]} "
+                     f"launched {launched})")
+
+    old = floor.get()
+    floor.set("36")
+    h.app.update()
+    passed &= refused("pipeline Run with floor 36", gen._on_run_loop)
+    passed &= check(floor.get() == "36", "pipeline Run keeps the text 36")
+    floor.set(old)
+    knobs.engine_var.set("v7")
+    bucket = knobs.knob_vars["v7_bucket_mb"]
+    old = bucket.get()
+    bucket.set("1048577")
+    h.app.update()
+    passed &= refused("pipeline Run with v7 bucket memory 1 048 577", gen._on_run_loop)
+    bucket.set(old)
+
+    gen.quick_mode_var.set("floor")
+    gen.quick_floor_width_var.set("1")
+    h.app.update()
+    for typed in ("9999999", "0"):
+        start.set(typed)
+        h.app.update()
+        floor_states = {str(p["floor_entry"].cget("state")) for p in gen._quick_panels}
+        passed &= check(gen.quick_floor_var.get() == "" and floor_states == {"normal"},
+                        f"Starting point {typed}: the Floor field is not filled and stays "
+                        f"editable ({gen.quick_floor_var.get()!r} {floor_states})")
+        gen.quick_floor_var.set("13")
+        h.app.update()
+        passed &= refused(f"Generate with Starting point {typed}", gen._on_quick_generate_clicked)
+        passed &= check(start.get() == typed, f"Generate keeps the Starting point {typed}")
+    start.set("10^7")
+    h.app.update()
+    passed &= check(gen.quick_floor_var.get() == "7",
+                    f"Starting point 10^7 fills Floor 7 ({gen.quick_floor_var.get()!r})")
+    start.set("")
+    h.app.update()
     return passed
 
 
@@ -557,6 +641,7 @@ def main():
         h = Harness(app, errors, dialogs)
         passed = generation_cases(h, gen)
         passed &= minimum_checks(gen)
+        passed &= bound_checks(h, gen)
         passed &= research_cases(h, app)
         passed &= research_minimum_checks(app)
         passed &= irreducibility_cases(h, app)

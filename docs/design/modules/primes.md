@@ -37,6 +37,11 @@ Each action first refuses a red number field it reads (`number_field.refuse_prob
 Check and Factorize N, the primesieve calculator's Compute only the selected operation's fields
 (count lo/hi, nth n/start, next and prev x). An empty field behaves as before. The minima are the
 lower bounds the actions check: Primality N 2, primesieve n 1 and start 0, the search number 0.
+The primesieve calculator's fields keep to libprimesieve's uint64 range, 0 to 2^64 - 1
+(`window_planning.PRIMESIEVE_MAX_STOP`): lo, start and x from 0 to 2^64 - 1, hi (an open end,
+the library gets hi - 1) from 1 to 2^64, n up to pi(2^64) (`PRIMESIEVE_MAX_NTH`, the largest n
+with an answer from start 0); a value outside would wrap in ctypes and count or find the wrong
+numbers, so it is red and Compute refuses it.
 
 ## Parameters and texts
 

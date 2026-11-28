@@ -298,6 +298,29 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   który nie jest liczbą, był zastępowany zapisaną wartością. Resetuj nadal wpisuje wartości
   domyślne, a puste pole nadal wraca do zapisanej wartości.
 
+### +17 — Number fields stop where the engines do: primesieve calculator, pipeline floor, bucket memory, Starting point
+
+- English: Fields whose value the engines would silently wrap now turn red past their bound,
+  and the action refuses them with the same message as before. The primesieve calculator takes
+  a, start and x from 0 to 2^64 - 1, b from 1 to 2^64 and n up to pi(2^64) =
+  425 656 284 035 217 743, the range libprimesieve takes; before, a negative or larger value was
+  cut modulo 2^64 and gave a wrong count or prime with no message.
+  The pipeline form's floor stops at 35, like every other floor field (from floor 38 v5-v7
+  sieved the wrong range). The v5, v6 and v7 bucket memory stops at 1 048 576 MiB (1 TiB).
+  Quick-gen's Starting point starts at 10 000 000: a smaller one always ended in the
+  "misaligned" message, it is now red, does not fill the Floor field and Generate refuses it;
+  floors 0 to 6 are set with the Floor field.
+- Polski: Pola, których wartość silniki po cichu by zawinęły, robią się czerwone za swoją
+  granicą, a akcja odmawia z tym samym komunikatem co dotąd. Kalkulator primesieve przyjmuje a,
+  start i x od 0 do 2^64 - 1, b od 1 do 2^64 i n do pi(2^64) = 425 656 284 035 217 743, czyli
+  zakres, który przyjmuje libprimesieve; wcześniej wartość ujemna albo większa była obcinana
+  modulo 2^64 i dawała zły wynik bez komunikatu. Piętro w formularzu
+  pipeline kończy się na 35, jak każde inne pole piętra (od piętra 38 v5-v7 przesiewały zły
+  zakres). Pamięć kubełków v5, v6 i v7 kończy się na 1 048 576 MiB (1 TiB). Punkt startowy w
+  Quick-gen zaczyna się od 10 000 000: mniejszy zawsze kończył się komunikatem o
+  niewyrównaniu, teraz jest czerwony, nie wypełnia pola Piętro, a Generuj go odrzuca; piętra
+  od 0 do 6 ustawia się polem Piętro.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

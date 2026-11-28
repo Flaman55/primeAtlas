@@ -25,7 +25,8 @@ from .engine_fields import EngineFields
 from .engine_argv import build_loop_argv
 from primeatlas.core import ui_state_dynamic
 from .generation_settings import remember_generation_field, save_generation_settings
-from .window_planning import compute_totals_bumps_from_new_rows, find_continuation_target_idx
+from .window_planning import (QUICK_FLOOR_MAX, compute_totals_bumps_from_new_rows,
+                              find_continuation_target_idx)
 from .wsl_command import generation_log_paths, build_wsl_logged_command
 
 
@@ -92,9 +93,12 @@ class LoopSection:
                                      purpose=f"field_tip.loop_{key}")
             else:
                 entry = ttk.Entry(cell, textvariable=var, width=width)
-                # The lowest values _collect_loop_settings_from_form accepts.
+                # The lowest values _collect_loop_settings_from_form accepts; the floor
+                # stops at the highest floor every other floor field allows.
+                floor = key == "base_exponent"
                 number_field.attach(entry, self.T, f"field_tip.loop_{key}",
-                                    minimum=0 if key == "base_exponent" else 1)
+                                    minimum=0 if floor else 1,
+                                    maximum=QUICK_FLOOR_MAX if floor else None)
             entry.pack(side="left")
             self._loop_vars[key] = var
             remember_generation_field("loop", key, var)

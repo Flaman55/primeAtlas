@@ -263,7 +263,7 @@ class EngineAdviceControls:
         "fill gaps first": its first gap)."""
         if mode == "floor":
             typed = _eval_quick_number(self.quick_floor_start_var.get())
-            if typed is not None and typed >= 0:
+            if typed is not None and typed >= QUICK_GEN_MAX_WINDOW_WIDTH:
                 return typed
         find = (find_first_gap_target_idx if mode == "floor" and self.quick_floor_fill_gaps_var.get()
                 else find_continuation_target_idx)
