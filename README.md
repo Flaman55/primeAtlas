@@ -1447,7 +1447,9 @@ primeatlas/                 backend + GUI-tab package, split into one subdirecto
                               unitTests/test_field_refusal_viz_app.py; the
                               Constellations, Primes, Primality, Benchmark and
                               pager ones:
-                              unitTests/test_field_refusal_tools_app.py; every Entry
+                              unitTests/test_field_refusal_tools_app.py; the
+                              Settings ones:
+                              unitTests/test_field_refusal_settings_app.py; every Entry
                               and Spinbox is a number field or marked why not:
                               unitTests/test_number_field_coverage.py; the app's
                               195 fields: unitTests/test_number_fields_app.py)

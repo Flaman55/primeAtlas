@@ -105,6 +105,18 @@ default) that adds the same tools and build to its elevated script (`run_install
 build as the distro's default user); checked, it enables Install even when everything required is
 present.
 
+## Refused fields
+
+Settings > General reads number fields in two places, and neither changes the text typed in
+them. Apply refuses a red background brightness, text brightness or font size field
+(`number_field.refuse_problem`): nothing is saved and the app does not restart; Reset never
+refuses, it writes the defaults over the fields. The ScrollPad width applies on Enter, on the
+spin arrows and on leaving the field: Enter and the arrows refuse a red width, while leaving the
+field (`<FocusOut>`, which also fires on a tab or window switch) applies a usable width and
+leaves a red one as typed and unused, without a dialog. An empty field goes back to the saved
+value, as before. The ranges are the ones the setters clamp to: width 16 to 160
+(`app_settings.SCROLL_PAD_WIDTH_MIN/MAX`), brightness and font size from `core/theme.py`.
+
 ## Parameters and texts
 
 `AppSettings` properties; texts `settings.*`, `wizard.*`, `about.*`.
@@ -120,7 +132,8 @@ present.
 `test_delete_benchmarks`,
 `test_full_backup_hit_paging`, `test_storage_integrate`, `test_benchmark_rows_safety`, `test_machines_backup`, `test_machine_details`, `test_dp_settings`,
 `test_primecount_settings_integration`, `test_env_versions`, `test_pseudosquares_settings`,
-`test_about_tab`, `test_system_info`, `test_wslconfig_edit`.
+`test_about_tab`, `test_system_info`, `test_wslconfig_edit`, `test_ui_settings`,
+`test_field_refusal_settings_app`.
 
 ## Known gaps
 
