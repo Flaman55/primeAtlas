@@ -30,6 +30,14 @@ the tree pane's width.
 The tree's horizontal scrollbar is always packed, disabled while the columns fit, so it never
 changes the tree's height.
 
+## Refused fields
+
+Each action first refuses a red number field it reads (`number_field.refuse_problem`), after its
+"already running" guard: Prime numbers Search (button and Enter) the search number, Primality
+Check and Factorize N, the primesieve calculator's Compute only the selected operation's fields
+(count lo/hi, nth n/start, next and prev x). An empty field behaves as before. The minima are the
+lower bounds the actions check: Primality N 2, primesieve n 1 and start 0, the search number 0.
+
 ## Parameters and texts
 
 Preview page sizes in `primeatlas/app/app_const.py`; texts `primes.*`, `primality.*`, `primesieve_calc.*`.
@@ -42,7 +50,7 @@ None of its own (reads prime windows; `DP_PROVEN.txt` / `DP_MISMATCH.txt` are wr
 ## Specs and tests
 
 `test_primes_tab`, `test_primes_tab_dp`, `test_primality_worker`, `test_primesieve_calc_worker`,
-`test_search_worker`.
+`test_search_worker`, `test_field_refusal_tools_app` (refused fields and minima).
 
 ## Known gaps
 

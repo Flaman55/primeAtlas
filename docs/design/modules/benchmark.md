@@ -289,7 +289,7 @@ None of its own.
 `test_benchmark_actual_range`,
 `test_benchmark_run_status`, `test_benchmark_main_compatibility`, `test_benchmark_log_schema`,
 `test_benchmark_line_names`, `test_benchmark_auto_reload`, `test_benchmark_filter`,
-`test_benchmark_computers`,
+`test_benchmark_computers`, `test_field_refusal_tools_app` (Go refuses a red page),
 `test_benchmark_sieve_measure`, `test_benchmark_proof_rows`, `test_open_path` (Folder, saved dialog), `test_orchestrator_verify_after_run`; `test_orchestrator_sieve_wall`
 (prime-sieve).
 

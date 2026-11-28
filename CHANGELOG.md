@@ -259,6 +259,27 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   się czerwone poniżej najniższej wartości: Pierścienie N 2, Od, Do i max load 0, k 2, p0 3,
   Sfera N 1, Drzewo N 0, w oknie Od 0 i Do 2.
 
+### +15 — Constellations, Primality, Prime numbers, Benchmark and every page Go: a red field stops the action
+
+- English: the actions of the Constellations, Primality, primesieve calculator, Prime numbers
+  and Benchmark tabs now stop at a red field they read with the same message as the other tabs,
+  and so do Go and Enter of every page navigation. Before, a red floor in Records or Density
+  scanned without that bound, a red search or calculator field showed its own error, and a red
+  page number was skipped or taken as page 1. Only the fields an action reads are asked about:
+  the primesieve calculator only the selected operation's fields, the Records export only the
+  export pages. An empty field behaves as before. The fields turn red below their lowest
+  value: Primality N 2, primesieve n 1 and start 0, the constellation calculator's exponent and
+  offset 0.
+- Polski: akcje zakładek Konstelacje, Pierwszość, Kalkulator primesieve, Liczby pierwsze i
+  Benchmark zatrzymują się teraz na czerwonym polu, które czytają, z tym samym komunikatem co
+  pozostałe zakładki; tak samo Idź i Enter każdej nawigacji stron. Wcześniej czerwone piętro w
+  Rekordach albo Gęstości skanowało bez tej granicy, czerwone pole wyszukiwania albo kalkulatora
+  pokazywało własny błąd, a czerwony numer strony był pomijany albo brany jako strona 1. Pytane
+  są tylko pola, które akcja czyta: w kalkulatorze primesieve tylko pola wybranej operacji, w
+  eksporcie Rekordów tylko strony eksportu. Puste pole działa jak dotąd. Pola robią się czerwone
+  poniżej najniższej wartości: Pierwszość N 2, primesieve n 1 i start 0, wykładnik i przesunięcie
+  kalkulatora konstelacji 0.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

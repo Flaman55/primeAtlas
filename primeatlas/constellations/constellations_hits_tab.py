@@ -301,6 +301,9 @@ class ConstellationsHitsTab(BaseTab):
         reads the query from the entry rather than taking a parameter, matching exactly
         what a real button click does regardless of which caller triggered it."""
         T = self.T
+        if number_field.refuse_problem([self.hits_search_entry], T,
+                                       T("common.dialog_search_title")):
+            return
         raw = plain_number(self.hits_search_entry.get())
         if not raw.isdigit():
             messagebox.showerror(T("common.dialog_search_title"), T("common.error_invalid_number"))

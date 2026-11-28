@@ -46,7 +46,8 @@ class PrimalityTab(BaseTab):
         top.pack(fill="x", padx=6, pady=(10, 4))
         ttk.Label(top, text=self.T("primality.field_number")).pack(side="left")
         self.primality_number_entry = ttk.Entry(top, width=32)
-        number_field.attach(self.primality_number_entry, self.T, "field_tip.primality_number")
+        number_field.attach(self.primality_number_entry, self.T, "field_tip.primality_number",
+                            minimum=2)
         self.primality_number_entry.pack(side="left", padx=(6, 16))
 
         self.primality_use_sympy_var = tk.BooleanVar(value=True)
@@ -125,8 +126,13 @@ class PrimalityTab(BaseTab):
             raise ValueError(self.T("primality.error_number_invalid"))
         return n
 
+    def _primality_refuses(self):
+        """True after refuse_problem showed why the number field holds no usable value."""
+        return number_field.refuse_problem([self.primality_number_entry], self.T,
+                                           self.T("primality.error_dialog_title"))
+
     def _on_primality_check_compute(self):
-        if self._primality_busy:
+        if self._primality_busy or self._primality_refuses():
             return
         try:
             n = self._primality_parse_number()
@@ -137,7 +143,7 @@ class PrimalityTab(BaseTab):
         self._primality_worker.submit({"op": "check", "n": n})
 
     def _on_primality_factorize_compute(self):
-        if self._primality_busy:
+        if self._primality_busy or self._primality_refuses():
             return
         try:
             n = self._primality_parse_number()

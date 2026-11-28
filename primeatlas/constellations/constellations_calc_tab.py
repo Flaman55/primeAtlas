@@ -128,11 +128,12 @@ class ConstellationsCalcTab(BaseTab):
         input_row.pack(fill="x", pady=(0, 8))
         ttk.Label(input_row, text=T("const_calc.field_exp")).pack(side="left")
         self.exp_entry = ttk.Entry(input_row, width=10)
-        number_field.attach(self.exp_entry, self.T, "field_tip.const_calc_exp")
+        number_field.attach(self.exp_entry, self.T, "field_tip.const_calc_exp", minimum=0)
         self.exp_entry.pack(side="left", padx=(6, 16))
         ttk.Label(input_row, text=T("const_calc.field_offset")).pack(side="left")
         self.offset_entry = ttk.Entry(input_row, width=24)
-        number_field.attach(self.offset_entry, self.T, "field_tip.const_calc_offset")
+        number_field.attach(self.offset_entry, self.T, "field_tip.const_calc_offset",
+                            minimum=0)
         self.offset_entry.pack(side="left", padx=(6, 16))
         remember("constellations.calc.exp", self.exp_entry)
         remember("constellations.calc.offset", self.offset_entry)
@@ -176,6 +177,9 @@ class ConstellationsCalcTab(BaseTab):
 
     def _on_compute(self):
         T = self.T
+        if number_field.refuse_problem([self.exp_entry, self.offset_entry], T,
+                                       T("const_calc.error_dialog_title")):
+            return
         pattern = self.picker.pattern()
         if pattern is None:
             messagebox.showerror(T("const_calc.error_dialog_title"), T("const_calc.error_no_pattern"))
