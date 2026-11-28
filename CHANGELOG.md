@@ -280,6 +280,24 @@ releases. A release renames `## Since X.Y.Z` to `## A.B.C — date` and tags `vA
   poniżej najniższej wartości: Pierwszość N 2, primesieve n 1 i start 0, wykładnik i przesunięcie
   kalkulatora konstelacji 0.
 
+### +16 — Settings: a red field stops Apply and the scroll-area width
+
+- English: Settings > General now stops at a red field with the same message as the other tabs,
+  and keeps the text that was typed. Apply refuses a red background brightness, text brightness
+  or font size: nothing is saved and the app does not restart. Enter and the arrows of the
+  scroll-area width refuse a red width; leaving the field shows no message, saves nothing and
+  leaves the red text as it is. Before, a value out of range was cut to the nearest limit and
+  saved, and text that is not a number was replaced with the saved value. Reset still writes
+  the defaults, and an empty field still goes back to the saved value.
+- Polski: Ustawienia > Ogólne zatrzymują się teraz na czerwonym polu z tym samym komunikatem co
+  pozostałe zakładki i zostawiają wpisany tekst. Zastosuj odmawia przy czerwonej jasności tła,
+  jasności tekstu albo rozmiarze czcionki: nic się nie zapisuje i aplikacja się nie restartuje.
+  Enter i strzałki szerokości obszaru przewijania odmawiają przy czerwonej szerokości; wyjście z
+  pola nie pokazuje komunikatu, niczego nie zapisuje i zostawia czerwony tekst bez zmian.
+  Wcześniej wartość spoza zakresu była przycinana do najbliższej granicy i zapisywana, a tekst,
+  który nie jest liczbą, był zastępowany zapisaną wartością. Resetuj nadal wpisuje wartości
+  domyślne, a puste pole nadal wraca do zapisanej wartości.
+
 ## 1.6.0 — 2026-11-24
 
 ### +1 — One thread-count control, capped at WSL's CPUs

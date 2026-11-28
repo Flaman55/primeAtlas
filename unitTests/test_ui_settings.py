@@ -10,7 +10,8 @@ B. widgets.set_scroll_pad_width(px): resizes every live ScrollPad, pads built af
    skipped, the value is clamped.
 C. Settings tab: General has a User interface section whose spinbox starts at the saved
    width; applying a new value saves it and resizes every pad in the app (Settings
-   sub-tabs, Generation, visualization tabs); an invalid entry changes nothing.
+   sub-tabs, Generation, visualization tabs); an invalid entry is refused, changes nothing
+   and stays in the field.
 
 Usage:
     python unitTests/test_ui_settings.py
@@ -135,7 +136,7 @@ def _test_settings_tab():
         tab._on_scroll_pad_width_changed()
         check(tab.app_settings.scroll_pad_width == 72 and all(_width(p) == 72 for p in pads),
               "an invalid entry changes nothing")
-        check(var.get() == "72", "an invalid entry is reverted in the field")
+        check(var.get() == "abc", "an invalid entry is refused and kept in the field")
         _test_readability_fields(tab)
     finally:
         set_scroll_pad_width(SCROLL_PAD_WIDTH_DEFAULT)
@@ -168,14 +169,18 @@ def _test_readability_fields(tab):
     tab.text_brightness_var.set("999")
     tab.font_scale_var.set("150")
     tab._on_readability_apply()
+    check(settings.theme_brightness(theme_name) == (5, -5) and settings.font_scale == 110
+          and not restarts, "an out-of-range value is refused: nothing saved, no restart")
+    check(tab.text_brightness_var.get() == "999", "the refused value stays in the field")
+    tab.text_brightness_var.set("50")
+    tab._on_readability_apply()
     check(settings.theme_brightness(theme_name) == (20, 50) and settings.font_scale == 150,
-          "applying saves clamped values for the current theme")
+          "applying saves the values for the current theme")
     check(restarts == [1], "applying a change restarts the app")
-    check(tab.text_brightness_var.get() == "50", "the field shows the clamped value")
     tab.font_scale_var.set("huge")
     tab._on_readability_apply()
     check(settings.font_scale == 150 and restarts == [1], "an invalid entry changes nothing")
-    check(tab.font_scale_var.get() == "150", "an invalid entry is reverted in the field")
+    check(tab.font_scale_var.get() == "huge", "an invalid entry is refused and kept in the field")
     tab._on_readability_reset()
     check(settings.theme_brightness(theme_name) == (0, 0) and settings.font_scale == 100,
           "reset restores the defaults")

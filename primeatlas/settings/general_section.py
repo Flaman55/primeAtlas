@@ -100,8 +100,21 @@ class GeneralSection:
         self.after(150, restart_app)
 
     def _on_scroll_pad_width_changed(self, _event=None):
-        """Applies the field live: saves the clamped width and resizes every ScrollPad.
-        A non-integer entry is reverted to the saved width."""
+        """Enter and the spin arrows: applies the width, refusing a red field."""
+        if number_field.refuse_problem([self.scroll_pad_width_var], self.T,
+                                       self.T("common.error_dialog_title")):
+            return
+        self._apply_scroll_pad_width()
+
+    def _on_scroll_pad_width_left(self, _event=None):
+        """Leaving the field applies a usable width; a red one stays as typed and unused,
+        since FocusOut also fires on a tab or window switch, where a dialog would intrude."""
+        if number_field.problem_field([self.scroll_pad_width_var]) is None:
+            self._apply_scroll_pad_width()
+
+    def _apply_scroll_pad_width(self):
+        """Saves the width and resizes every ScrollPad; an empty field is reverted to the
+        saved width."""
         try:
             width = int(plain_number(self.scroll_pad_width_var.get()))
         except ValueError:
@@ -122,10 +135,14 @@ class GeneralSection:
 
     def _on_readability_apply(self):
         """Saves the brightness shifts (for the current theme) and the font size, then
-        restarts like the theme switch -- both are applied once at startup. A
-        non-integer entry reverts every field and saves nothing; unchanged values do not
+        restarts like the theme switch -- both are applied once at startup. A red field is
+        refused; an empty one reverts every field and saves nothing; unchanged values do not
         restart."""
         settings = self.app_settings
+        if number_field.refuse_problem(
+                [self.background_brightness_var, self.text_brightness_var, self.font_scale_var],
+                self.T, self.T("common.error_dialog_title")):
+            return
         try:
             background = int(plain_number(self.background_brightness_var.get()))
             text = int(plain_number(self.text_brightness_var.get()))
@@ -253,7 +270,7 @@ class GeneralSection:
         ttk.Label(ui_frame, text=self.T("settings.scroll_pad_width_label")).grid(
             row=0, column=0, sticky="w", padx=6, pady=6)
         self.scroll_pad_width_var = tk.StringVar(value=str(self.app_settings.scroll_pad_width))
-        width_spin = ttk.Spinbox(
+        self.scroll_pad_width_spin = width_spin = ttk.Spinbox(
             ui_frame, textvariable=self.scroll_pad_width_var, from_=SCROLL_PAD_WIDTH_MIN,
             to=SCROLL_PAD_WIDTH_MAX, increment=4, width=6,
             command=self._on_scroll_pad_width_changed)
@@ -261,7 +278,7 @@ class GeneralSection:
                             minimum=SCROLL_PAD_WIDTH_MIN, maximum=SCROLL_PAD_WIDTH_MAX)
         width_spin.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=6)
         width_spin.bind("<Return>", self._on_scroll_pad_width_changed)
-        width_spin.bind("<FocusOut>", self._on_scroll_pad_width_changed)
+        width_spin.bind("<FocusOut>", self._on_scroll_pad_width_left)
         WrapLabel(ui_frame, text=self.T("settings.scroll_pad_width_note",
                                         min=SCROLL_PAD_WIDTH_MIN, max=SCROLL_PAD_WIDTH_MAX),
                   style="Hint.TLabel").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=6)
@@ -279,12 +296,14 @@ class GeneralSection:
             ("settings.font_scale_label", self.font_scale_var,
              FONT_SCALE_MIN, FONT_SCALE_MAX, 10, "field_tip.settings_font_scale"),
         )
+        self.readability_spins = []
         for row, (label_key, var, low, high, step, purpose) in enumerate(readability_rows, start=1):
             ttk.Label(ui_frame, text=self.T(label_key)).grid(
                 row=row, column=0, sticky="w", padx=6, pady=(0, 6))
             spin = ttk.Spinbox(ui_frame, textvariable=var, from_=low, to=high, increment=step,
                                width=6)
             number_field.attach(spin, self.T, purpose, minimum=low, maximum=high)
+            self.readability_spins.append(spin)
             spin.grid(row=row, column=1, sticky="w", padx=(0, 12), pady=(0, 6))
             WrapLabel(ui_frame, text=self.T("settings.readability_range", min=low, max=high),
                       style="Hint.TLabel").grid(row=row, column=2, sticky="w", padx=(0, 6), pady=(0, 6))
