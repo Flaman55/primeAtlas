@@ -41,6 +41,7 @@ TIP_DELAY_MS = 600          # rest on a field before its hint shows: passing ove
 FOCUS_OUT_GRACE_MS = 150    # a click on the popup's button lands before it closes
 SETTLE_MS = 600             # pause in typing before red or the popup shows
 HELP_FROM = 10 ** 6         # a maximum from here on takes the notations the help lists
+SHORT_BOUND_DIGITS = 30     # a longer bound is written d·10^k (− 1) where that is shorter
 
 
 _FIELDS = weakref.WeakSet()
@@ -97,11 +98,25 @@ def _bound(limit):
 
 
 def _shown(limit):
-    """A bound as a person reads it: grouped digits, a fraction with its own places."""
+    """A bound as a person reads it: grouped digits, a fraction with its own places; past
+    SHORT_BOUND_DIGITS digits d·10^k or d·10^k − 1 when that is shorter, a form the field
+    reads back."""
     if isinstance(limit, float) and not limit.is_integer():
         places = len(format(limit, "f").rstrip("0").partition(".")[2])
         return number_format.decimal(limit, places)
-    return number_format.whole(int(limit))
+    limit = int(limit)
+    full = number_format.whole(limit)
+    if limit <= 0 or len(str(limit)) <= SHORT_BOUND_DIGITS:
+        return full
+    for value, tail in ((limit, ""), (limit + 1, " − 1")):
+        digits = str(value)
+        mantissa = digits.rstrip("0")
+        power = len(digits) - len(mantissa)
+        head = "" if mantissa == "1" else number_format.whole(int(mantissa)) + "·"
+        short = f"{head}10^{power}{tail}"
+        if power and len(short) < len(full):
+            return short
+    return full
 
 
 class NumberField:

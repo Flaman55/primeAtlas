@@ -7,6 +7,8 @@ Accepted: digit grouping by spaces of any kind, apostrophes, underscores, commas
 signs * × · ⋅ ∙ \\times \\cdot and "x" before a power of ten; minus signs - − –; + - * / and
 parentheses. Arithmetic is exact (fractions) and evaluated by a small parser, never eval().
 
+A value has at most MAX_DIGITS digits, typed out or computed: more is TOO_LARGE.
+
 A comma or dot that appears once before exactly three digits is either grouping or a decimal
 mark, so both readings are tried: only whole results count. One whole result -> OK; several
 -> AMBIGUOUS with the candidates; none -> INVALID with a reason (NOT_WHOLE, SYNTAX, TOO_LARGE).
@@ -30,7 +32,8 @@ SYNTAX = "syntax"
 TOO_LARGE = "too_large"
 
 MAX_EXPONENT = 100_000       # largest |exponent| of one power
-MAX_DIGITS = 100_000         # largest result of one power, in decimal digits
+MAX_DIGITS = 100_000         # largest value, in decimal digits; arbitrary
+_TOO_LARGE_FROM = 10 ** MAX_DIGITS
 MAX_READINGS = 64            # combinations of ambiguous number tokens tried
 
 Reading = namedtuple("Reading", "state value candidates reason")
@@ -98,6 +101,8 @@ def _mantissas(body):
 
 def _number_readings(token):
     body, _, exponent = token.lower().partition("e")
+    if len(re.sub(r"\D", "", body).lstrip("0")) > MAX_DIGITS:
+        raise _Error(TOO_LARGE)
     scale = Fraction(10) ** int(exponent) if exponent else 1
     readings = _mantissas(body)
     if not readings:
@@ -230,6 +235,9 @@ def read_number(text, fraction=False, words=()):
                 if error.reason != NOT_WHOLE:
                     raise
                 failure = error.reason
+                continue
+            if abs(value) >= _TOO_LARGE_FROM:
+                failure = TOO_LARGE
                 continue
             if value.denominator == 1:
                 value = int(value)

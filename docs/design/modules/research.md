@@ -58,7 +58,9 @@ open window.
 
 Every sub-tab computes synchronously, on opening and on its buttons, within the bounds named
 above (and `MAX_START`, `MAX_SIZE`, `MAX_COUNT` of `irreducibility_numbers.py`,
-`MAX_EXPONENT` of the Arithmetic view); errors go to the sub-tab, not a dialog. Primality is the
+`MAX_EXPONENT` of the Arithmetic view); errors go to the sub-tab, not a dialog. A^e is checked
+against A^e mod W; its digits line is exact when A^e fits W, else about floor(e·log10 A) + 1
+digits, and A^e is formed only when it can fit (`irreducibility_ops.power_size`). Primality is the
 exception: it runs only on its button, in slices of about 50 ms (`SLICE_SECONDS`) scheduled by
 the Tk event loop, so the window stays responsive and Stop can end the run; Check primality
 during a run starts over, and closing the view cancels the run.
@@ -134,4 +136,6 @@ None.
 
 ## Known gaps
 
-None.
+- A ⊗ B and A^e find the rhythm (preperiod, period) by stepping every block modulus, so a layout
+  with a block modulus above `LIMIT_BLOCK` (the info line warns about it) keeps the view busy
+  for minutes.
