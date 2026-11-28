@@ -41,6 +41,16 @@ off by Stop is left out whole. Constellations whose tail lies past a scanned win
 window after it cannot be found by the finder but are in the prediction; the difference is
 at most one pattern diameter per span. Cross-sub-tab jumps go through `primeatlas/app/constellations_section.py`.
 
+## Refused fields
+
+Each action first refuses a red number field it reads (`number_field.refuse_problem`), after its
+"already running" guard and before any other check, with exactly the fields it reads: Records
+Scan and Density Scan the floor from/to, Records PDF and CSV export the export pages from/to,
+the calculator's Compute the exponent and offset, Storage Search (button and Enter) the search
+number. An empty field behaves as before (no floor bound, offset 0, the "enter an integer"
+search error). The minima are the lower bounds the actions check: the calculator's exponent and
+offset 0, the search number 0, the export pages 1; the floors have none.
+
 ## Parameters and texts
 
 Pattern catalog: `constellation/pattern_catalog_v1.py`; texts `const.*`, `const_calc.*`, `const_records.*`, `const_density.*`, `search.*`.
@@ -56,7 +66,7 @@ None of its own.
 
 `test_constellations_tab`, `test_constellations_paging`, `test_const_records_worker`,
 `test_constellation_auto_retry`, `test_constellations_density`, `test_constellations_density_tab`,
-`test_pattern_picker`.
+`test_pattern_picker`, `test_field_refusal_tools_app` (refused fields and minima).
 
 ## Known gaps
 

@@ -688,6 +688,7 @@
   "common.finished_ok": "Zakończony poprawnie (kod 0).",
   "common.finished_code": "Zakończony z kodem {code}.",
   "common.dialog_search_title": "Szukaj",
+  "common.error_dialog_title": "Błąd",
   "common.error_invalid_number": "Wpisz liczbę całkowitą (same cyfry, bez spacji/znaku minus).",
   "common.no_floor": "Brak piętra 10p{base_exponent} ({digits}-cyfrowe liczby) w portalu.",
   "common.all_files": "Wszystkie pliki",

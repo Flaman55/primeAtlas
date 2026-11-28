@@ -688,6 +688,7 @@
   "common.finished_ok": "Finished successfully (code 0).",
   "common.finished_code": "Finished with code {code}.",
   "common.dialog_search_title": "Search",
+  "common.error_dialog_title": "Error",
   "common.error_invalid_number": "Enter an integer (digits only, no spaces or minus sign).",
   "common.no_floor": "No floor 10p{base_exponent} ({digits}-digit numbers) in the portal.",
   "common.all_files": "All files",

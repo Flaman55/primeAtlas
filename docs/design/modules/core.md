@@ -110,8 +110,12 @@ its "already running" guard, with exactly the fields it reads, so a red field ne
 default and a red field of another action never blocks it: Quick-gen Generate (the selected
 mode's fields, `_QUICK_MODE_NUMBER_VARS`), every action of the Generation tab (see
 [generation](generation.md#refused-fields)), every action of the Research tab (see
-[research](research.md#refused-fields)) and Start of every Visualization tab with its
-generate dialog (see [visualization](visualization.md#refused-fields)).
+[research](research.md#refused-fields)), Start of every Visualization tab with its
+generate dialog (see [visualization](visualization.md#refused-fields)), every action of the
+Constellations tab (see [constellations](constellations.md#refused-fields)), of the Prime
+numbers, Primality and primesieve calculator tabs (see [primes](primes.md#refused-fields)), the
+Benchmark Go and the page Go of the shared pagers: `widgets._build_goto_group` refuses a red
+page field on Go and Enter before the caller's `on_goto` runs.
 
 `unitTests/test_number_field_coverage.py` requires every `ttk.Entry` and `ttk.Spinbox` in
 `primeatlas/` to be a number field or marked `# not a number field: <why>` (folder paths,
@@ -122,9 +126,8 @@ live fields.
 
 ## Known gaps
 
-- The actions of the Constellations, Primality, Primes, Benchmark and Settings tabs and the
-  page Go of the shared pagers do not call `refuse_problem` yet: there a red field is only shown, and the action reads the
-  text with its own checks.
+- The actions of the Settings tab do not call `refuse_problem` yet: there a red field is only
+  shown, and the action reads the text with its own checks.
 - Separate dialogs and windows of a fixed size (machine details, chart windows, consent and
   confirmation dialogs) keep texts of a fixed wrap width; they are not resized with the app.
 - Separate windows (a detached terminal, chart windows, the Goldbach and Irreducibility

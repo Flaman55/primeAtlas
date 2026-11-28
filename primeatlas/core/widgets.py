@@ -159,15 +159,21 @@ def _build_goto_group(parent, T, on_goto):
     """Builds the "Page:"/entry/Go jump-to-page cluster shared by add_page_nav_group
     and add_page_nav_row, so
     the ipady height-matching fix below (entry vs. button, see its own comment) lives in
-    exactly one place. Returns (goto_frame, goto_entry); the caller packs/adds
+    exactly one place. Go and Enter refuse a red page field (number_field.refuse_problem)
+    before on_goto runs. Returns (goto_frame, goto_entry); the caller packs/adds
     goto_frame itself, since the two callers place it differently (a FlowRow item vs.
     flush against a plain row's right edge)."""
     goto_frame = ttk.Frame(parent)
     ttk.Label(goto_frame, text=T("common.page_prefix")).pack(side="left")
     goto_entry = ttk.Entry(goto_frame, width=6)
     number_field.attach(goto_entry, T, "field_tip.goto_page", minimum=1)
-    goto_entry.bind("<Return>", lambda _e: on_goto())
-    goto_btn = ttk.Button(goto_frame, text=T("common.goto"), command=on_goto)
+
+    def go():
+        # A red page field is refused here, so no caller's on_goto sees it.
+        if not number_field.refuse_problem([goto_entry], T, T("common.error_dialog_title")):
+            on_goto()
+    goto_entry.bind("<Return>", lambda _e: go())
+    goto_btn = ttk.Button(goto_frame, text=T("common.goto"), command=go)
     # The "clam" theme (see PortalBrowserApp's _apply_theme) gives TButton more
     # vertical padding than TEntry, so side by side they sit at visibly
     # different heights. Pad the entry's own height (ipady) up to the button's

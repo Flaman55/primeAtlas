@@ -862,6 +862,8 @@ class PrimesTab(BaseTab):
 
     def _search_prime(self):
         T = self.T
+        if number_field.refuse_problem([self.search_entry], T, T("common.dialog_search_title")):
+            return
         raw = plain_number(self.search_entry.get())
         if not raw.isdigit():
             messagebox.showerror(T("common.dialog_search_title"), T("common.error_invalid_number"))

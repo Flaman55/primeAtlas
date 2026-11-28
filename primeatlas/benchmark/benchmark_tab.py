@@ -594,6 +594,9 @@ class BenchmarkTab(BenchmarkExport, BenchmarkFilter, BenchmarkLineColors, Benchm
             self._show_benchmark_page(node, self._benchmark_floor_state[node]["page"] + 1)
 
     def _goto_benchmark_page(self):
+        if number_field.refuse_problem([self.benchmark_goto_entry], self.T,
+                                       self.T("common.error_dialog_title")):
+            return
         raw = plain_number(self.benchmark_goto_entry.get())
         if not raw.isdigit():
             return

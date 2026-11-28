@@ -332,6 +332,9 @@ class ConstellationsRecordsTab(BaseTab):
         if self._busy:
             return
         T = self.T
+        if number_field.refuse_problem([self.floor_from_entry, self.floor_to_entry], T,
+                                       T("const_records.error_dialog_title")):
+            return
         k_str = self.k_combo.get()
         if not k_str:
             messagebox.showerror(T("const_records.error_dialog_title"), T("const_calc.error_no_pattern"))
@@ -912,6 +915,10 @@ class ConstellationsRecordsTab(BaseTab):
         if self._busy:
             return
         T = self.T
+        if number_field.refuse_problem(
+                [self.detail_export_from_entry, self.detail_export_to_entry], T,
+                T("const_records.error_dialog_title")):
+            return
         try:
             page_range = self._parse_export_page_range()
         except ValueError:

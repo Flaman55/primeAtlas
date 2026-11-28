@@ -160,13 +160,14 @@ class PrimesieveCalcTab(BaseTab):
         ttk.Label(self._primesieve_calc_nth_frame,
                   text=self.T("primesieve_calc.field_n")).grid(row=0, column=0, sticky="e")
         self.primesieve_calc_n_entry = ttk.Entry(self._primesieve_calc_nth_frame, width=22)
-        number_field.attach(self.primesieve_calc_n_entry, self.T, "field_tip.primesieve_calc_n")
+        number_field.attach(self.primesieve_calc_n_entry, self.T, "field_tip.primesieve_calc_n",
+                            minimum=1)
         self.primesieve_calc_n_entry.grid(row=0, column=1, padx=(6, 16))
         ttk.Label(self._primesieve_calc_nth_frame,
                   text=self.T("primesieve_calc.field_start")).grid(row=0, column=2, sticky="e")
         self.primesieve_calc_start_entry = ttk.Entry(self._primesieve_calc_nth_frame, width=22)
         number_field.attach(self.primesieve_calc_start_entry, self.T,
-                            "field_tip.primesieve_calc_start")
+                            "field_tip.primesieve_calc_start", minimum=0)
         self.primesieve_calc_start_entry.grid(row=0, column=3, padx=(6, 0))
 
         self._primesieve_calc_x_frame = ttk.Frame(fields_area)
@@ -225,6 +226,14 @@ class PrimesieveCalcTab(BaseTab):
         else:  # next / prev share the same single-field layout
             self._primesieve_calc_x_frame.grid()
 
+    def _primesieve_calc_fields(self, code):
+        """The number fields operation `code` reads: only the shown ones."""
+        if code == "count":
+            return [self.primesieve_calc_lo_entry, self.primesieve_calc_hi_entry]
+        if code == "nth":
+            return [self.primesieve_calc_n_entry, self.primesieve_calc_start_entry]
+        return [self.primesieve_calc_x_entry]
+
     def _on_primesieve_calc_compute(self):
         """Validates the active operation's fields CLIENT-SIDE first (same rules
         primesieve_query.py itself enforces -- n>0, x>2 for prev, hi>lo for count -- see
@@ -237,6 +246,9 @@ class PrimesieveCalcTab(BaseTab):
         if self._primesieve_calc_busy:
             return
         code = self._primesieve_calc_ops[self.primesieve_calc_op_combo.current()][0]
+        if number_field.refuse_problem(self._primesieve_calc_fields(code), self.T,
+                                       self.T("primesieve_calc.error_dialog_title")):
+            return
         try:
             if code == "count":
                 lo = _eval_quick_number(self.primesieve_calc_lo_entry.get())

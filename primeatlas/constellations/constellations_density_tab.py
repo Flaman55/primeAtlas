@@ -140,6 +140,9 @@ class ConstellationsDensityTab(BaseTab):
         if self._busy:
             return
         T = self.T
+        if number_field.refuse_problem([self.floor_from_entry, self.floor_to_entry], T,
+                                       T("const_records.error_dialog_title")):
+            return
         k_str = self.k_combo.get()
         if not k_str:
             messagebox.showerror(T("const_records.error_dialog_title"),
